@@ -17,3 +17,7 @@ npm-debug.log*
 # OS
 .DS_Store
 Thumbs.db
+
+# Project notes (local only)
+session.md
+project-structure.md
