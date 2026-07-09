@@ -5,6 +5,8 @@ node_modules/
 .env
 .env.*
 !.env.example
+# Frontend production API URL is public (baked into client bundle) — safe to commit
+!frontend/.env.production
 
 # Build output
 frontend/dist/
