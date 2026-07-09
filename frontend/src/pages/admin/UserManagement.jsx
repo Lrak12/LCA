@@ -1,0 +1,703 @@
+import { useState, useEffect, useCallback, useRef } from "react";
+import AdminLayout from "../../components/AdminLayout.jsx";
+import { fetchUsers, setUserActive, createUser, updateUser } from "../../api/admin.js";
+import { useSchoolYear } from "../../hooks/useSchoolYear.js";
+
+const fillStyle = { fontVariationSettings: '"FILL" 1' };
+const PAGE_SIZE = 10;
+
+// role value (DB) -> display label + badge colors. `administrator` shows as "Supervisor".
+const ROLE_BADGE = {
+  principal:     { label: "Principal",  cls: "bg-orange-100 text-orange-700" },
+  administrator: { label: "Supervisor", cls: "bg-purple-100 text-purple-700" },
+  teacher:       { label: "Teacher",    cls: "bg-blue-100 text-blue-700"     },
+  student:       { label: "Student",    cls: "bg-amber-100 text-amber-700"   },
+};
+
+const ROLE_FILTERS = [
+  { value: "all",           label: "All Roles"      },
+  { value: "administrator", label: "Supervisors"    },
+  { value: "principal",     label: "Principals"     },
+  { value: "teacher",       label: "Teachers"       },
+  { value: "student",       label: "Students"       },
+];
+
+const STATUS_FILTERS = [
+  { value: "all",      label: "All Status" },
+  { value: "active",   label: "Active"     },
+  { value: "inactive", label: "Inactive"   },
+];
+
+const STAT_CARDS = [
+  { key: "totalUsers",     label: "Total Users",    icon: "groups",         iconBg: "bg-blue-100",   iconColor: "text-blue-600"   },
+  { key: "activeUsers",    label: "Active Users",   icon: "verified_user",  iconBg: "bg-green-100",  iconColor: "text-green-600"  },
+  { key: "inactiveUsers",  label: "Inactive Users", icon: "person_off",     iconBg: "bg-red-100",    iconColor: "text-red-500"    },
+  { key: "administrators", label: "Administrators", icon: "shield_person",  iconBg: "bg-purple-100", iconColor: "text-purple-600" },
+  { key: "teachers",       label: "Teachers",       icon: "school",         iconBg: "bg-teal-100",   iconColor: "text-teal-600"   },
+  { key: "students",       label: "Students",       icon: "backpack",       iconBg: "bg-amber-100",  iconColor: "text-amber-600"  },
+];
+
+const Skeleton = ({ className }) => (
+  <div className={`animate-pulse bg-surface-container-high rounded-xl ${className}`} />
+);
+
+const formatLastLogin = (iso) => {
+  if (!iso) return "Never";
+  const d = new Date(iso);
+  if (isNaN(d)) return "Never";
+  return d.toLocaleString("en-US", {
+    month: "short", day: "numeric", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+};
+
+// Compact, windowed page list with ellipsis: 1 … 4 5 [6] 7 8 … 26
+const buildPageList = (current, totalPages) => {
+  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
+  const pages = new Set([1, totalPages, current, current - 1, current + 1]);
+  const sorted = [...pages].filter((p) => p >= 1 && p <= totalPages).sort((a, b) => a - b);
+  const out = [];
+  let prev = 0;
+  for (const p of sorted) {
+    if (p - prev > 1) out.push("…");
+    out.push(p);
+    prev = p;
+  }
+  return out;
+};
+
+const RoleBadge = ({ role }) => {
+  const b = ROLE_BADGE[role] ?? { label: role, cls: "bg-slate-100 text-slate-600" };
+  return (
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${b.cls}`}>
+      {b.label}
+    </span>
+  );
+};
+
+const StatusBadge = ({ active }) => (
+  <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${
+    active ? "bg-green-100 text-green-700" : "bg-slate-200 text-slate-600"
+  }`}>
+    {active ? "Active" : "Inactive"}
+  </span>
+);
+
+// ── Add New User modal ────────────────────────────────────────────────────────
+const CREATE_ROLES = [
+  { value: "teacher",       label: "Teacher"      },
+  { value: "principal",     label: "Principal"    },
+  { value: "administrator", label: "Supervisor"   },
+];
+
+// Optional, UI-only for now — there is no department column in the data model yet.
+const DEPARTMENTS = ["Elementary", "Junior High School", "Senior High School", "Administration"];
+
+const LabeledInput = ({ label, required, icon, trailing, children }) => (
+  <div className="flex-1">
+    <label className="block text-[13px] font-semibold text-on-surface mb-1.5">
+      {label} {required && <span className="text-red-500">*</span>}
+      {!required && <span className="font-normal text-on-surface-variant">(optional)</span>}
+    </label>
+    <div className="relative">
+      {icon && (
+        <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-lg pointer-events-none">{icon}</span>
+      )}
+      {children}
+      {trailing}
+    </div>
+  </div>
+);
+
+function AddUserModal({ onClose, onCreated }) {
+  const [form, setForm] = useState({
+    first_name: "", last_name: "", email: "",
+    role: "", department: "", password: "", confirm: "",
+    status: "active",
+  });
+  const [showPw, setShowPw]           = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState("");
+
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError("");
+    if (!form.role)                       return setError("Please select a role.");
+    if (form.password.length < 6)         return setError("Password must be at least 6 characters.");
+    if (form.password !== form.confirm)   return setError("Passwords do not match.");
+
+    setSaving(true);
+    try {
+      const res = await createUser({
+        role:           form.role,
+        first_name:     form.first_name.trim(),
+        last_name:      form.last_name.trim(),
+        email:          form.email.trim(),
+        password:       form.password,
+        is_active:      form.status === "active",
+        contact_number: null,
+      });
+      onCreated(res.data);
+    } catch (err) {
+      setError(err.message ?? "Failed to create user.");
+      setSaving(false);
+    }
+  };
+
+  const inputBase = "w-full bg-white border border-outline-variant/40 rounded-lg py-2.5 text-sm text-on-surface placeholder:text-outline focus:ring-2 focus:ring-primary/20 focus:border-primary/40 focus:outline-none";
+  const withIcon  = `${inputBase} pl-10 pr-3.5`;
+  const withBoth  = `${inputBase} pl-10 pr-10`;
+  const selectCls = `${inputBase} px-3.5 pr-9 appearance-none cursor-pointer`;
+  const chevron   = <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-outline text-lg pointer-events-none">expand_more</span>;
+  const eye = (shown, toggle) => (
+    <button type="button" onClick={toggle} className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-primary">
+      <span className="material-symbols-outlined text-lg">{shown ? "visibility_off" : "visibility"}</span>
+    </button>
+  );
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+
+        {/* Header */}
+        <div className="flex items-start justify-between px-6 pt-6 pb-4">
+          <div>
+            <h3 className="font-headline text-xl font-extrabold text-on-surface">Add New User</h3>
+            <p className="text-sm text-on-surface-variant mt-0.5">Fill in the details to create a new user account.</p>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-full hover:bg-surface-container text-on-surface-variant">
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        <form onSubmit={submit} className="px-6 pb-2 space-y-4">
+          {error && (
+            <div className="px-3.5 py-2.5 rounded-lg bg-red-50 border border-red-100 text-red-600 text-sm flex items-center gap-2">
+              <span className="material-symbols-outlined text-base">error</span>{error}
+            </div>
+          )}
+
+          {/* Names */}
+          <div className="flex gap-3">
+            <LabeledInput label="First Name" required icon="person">
+              <input value={form.first_name} onChange={set("first_name")} required placeholder="Enter first name" className={withIcon} />
+            </LabeledInput>
+            <LabeledInput label="Last Name" required icon="person">
+              <input value={form.last_name} onChange={set("last_name")} required placeholder="Enter last name" className={withIcon} />
+            </LabeledInput>
+          </div>
+
+          {/* Email */}
+          <LabeledInput label="Email Address" required icon="mail">
+            <input type="email" value={form.email} onChange={set("email")} required placeholder="Enter email address" className={withIcon} />
+          </LabeledInput>
+
+          {/* Role + Department */}
+          <div className="flex gap-3">
+            <LabeledInput label="Role" required trailing={chevron}>
+              <select value={form.role} onChange={set("role")} required className={selectCls}>
+                <option value="" disabled>Select role</option>
+                {CREATE_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+              </select>
+            </LabeledInput>
+            <LabeledInput label="Department" trailing={chevron}>
+              <select value={form.department} onChange={set("department")} className={selectCls}>
+                <option value="">Select department</option>
+                {DEPARTMENTS.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </LabeledInput>
+          </div>
+
+          {/* Passwords */}
+          <div className="flex gap-3">
+            <LabeledInput label="Password" required icon="lock" trailing={eye(showPw, () => setShowPw((s) => !s))}>
+              <input type={showPw ? "text" : "password"} value={form.password} onChange={set("password")} required placeholder="Enter password" className={withBoth} />
+            </LabeledInput>
+            <LabeledInput label="Confirm Password" required icon="lock" trailing={eye(showConfirm, () => setShowConfirm((s) => !s))}>
+              <input type={showConfirm ? "text" : "password"} value={form.confirm} onChange={set("confirm")} required placeholder="Confirm password" className={withBoth} />
+            </LabeledInput>
+          </div>
+
+          {/* Status */}
+          <div className="w-1/2 pr-1.5">
+            <LabeledInput label="Status" required trailing={chevron}>
+              <select value={form.status} onChange={set("status")} className={selectCls}>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </LabeledInput>
+          </div>
+
+          {/* Info banner */}
+          <div className="flex items-start gap-2.5 px-4 py-3 rounded-lg bg-blue-50 text-blue-700">
+            <span className="material-symbols-outlined text-lg shrink-0" style={fillStyle}>info</span>
+            <p className="text-[13px]">An account activation email will be sent to the user.</p>
+          </div>
+        </form>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-3 px-6 py-4 mt-2 border-t border-outline-variant/20">
+          <button type="button" onClick={onClose} className="px-5 py-2.5 rounded-lg text-sm font-bold text-on-surface-variant hover:bg-surface-container">
+            Cancel
+          </button>
+          <button onClick={submit} disabled={saving} className="px-5 py-2.5 rounded-lg text-sm font-bold bg-primary text-white shadow-sm hover:shadow-lg disabled:opacity-60">
+            {saving ? "Creating…" : "Create User"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Edit User modal ───────────────────────────────────────────────────────────
+function EditUserModal({ user, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    full_name: `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || user.name || "",
+    email:     user.email ?? "",
+    status:    user.is_active ? "active" : "inactive",
+  });
+  const [resetPw, setResetPw]         = useState(false);
+  const [password, setPassword]       = useState("");
+  const [confirm, setConfirm]         = useState("");
+  const [showPw, setShowPw]           = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState("");
+
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const roleLabel = ROLE_BADGE[user.role]?.label ?? user.role ?? "—";
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError("");
+    if (!form.full_name.trim()) return setError("Full name is required.");
+    if (!form.email.trim())     return setError("Email address is required.");
+    if (resetPw) {
+      if (password.length < 6)     return setError("Password must be at least 6 characters.");
+      if (password !== confirm)    return setError("Passwords do not match.");
+    }
+
+    setSaving(true);
+    try {
+      const payload = {
+        full_name: form.full_name.trim(),
+        email:     form.email.trim(),
+        is_active: form.status === "active",
+      };
+      if (resetPw) payload.password = password;
+      await updateUser(user.user_id, payload);
+      onSaved(form.full_name.trim());
+    } catch (err) {
+      setError(err.response?.data?.message ?? err.message ?? "Failed to update user.");
+      setSaving(false);
+    }
+  };
+
+  const inputBase = "w-full bg-white border border-outline-variant/40 rounded-lg py-2.5 px-3.5 text-sm text-on-surface placeholder:text-outline focus:ring-2 focus:ring-primary/20 focus:border-primary/40 focus:outline-none";
+  const selectCls = `${inputBase} pr-9 appearance-none cursor-pointer`;
+  const chevron   = <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-outline text-lg pointer-events-none">expand_more</span>;
+  const labelCls  = "block text-[13px] font-bold text-on-surface mb-1.5";
+  const eye = (shown, toggle) => (
+    <button type="button" onClick={toggle} className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-primary">
+      <span className="material-symbols-outlined text-lg">{shown ? "visibility_off" : "visibility"}</span>
+    </button>
+  );
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+
+        {/* Header */}
+        <div className="flex items-start justify-between px-6 pt-6 pb-4 border-b border-outline-variant/15">
+          <div>
+            <h3 className="font-headline text-xl font-extrabold text-on-surface">Edit User</h3>
+            <p className="text-sm text-on-surface-variant mt-0.5">Update user account information and access permissions.</p>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-full hover:bg-surface-container text-on-surface-variant">
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        <form onSubmit={submit} className="px-6 py-5 space-y-6">
+          {error && (
+            <div className="px-3.5 py-2.5 rounded-lg bg-red-50 border border-red-100 text-red-600 text-sm flex items-center gap-2">
+              <span className="material-symbols-outlined text-base">error</span>{error}
+            </div>
+          )}
+
+          {/* User Information */}
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <span className="material-symbols-outlined text-on-surface" style={fillStyle}>person</span>
+              <h4 className="font-bold text-on-surface">User Information</h4>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className={labelCls}>Full Name <span className="text-red-500">*</span></label>
+                <input value={form.full_name} onChange={set("full_name")} placeholder="Enter full name" className={inputBase} />
+              </div>
+              <div>
+                <label className={labelCls}>Email Address <span className="text-red-500">*</span></label>
+                <input type="email" value={form.email} onChange={set("email")} placeholder="Enter email address" className={inputBase} />
+              </div>
+              <div>
+                <label className={labelCls}>Role <span className="text-red-500">*</span></label>
+                <div className="relative">
+                  <select value={user.role} disabled className={`${selectCls} opacity-70 cursor-not-allowed`}>
+                    <option value={user.role}>{roleLabel}</option>
+                  </select>
+                  {chevron}
+                </div>
+                <p className="text-[11px] text-on-surface-variant mt-1">Role can't be changed here — deactivate and recreate to change a user's role.</p>
+              </div>
+            </div>
+          </section>
+
+          {/* Account Status */}
+          <section className="pt-2 border-t border-outline-variant/15">
+            <div className="flex items-center gap-2 mb-4 mt-4">
+              <span className="material-symbols-outlined text-on-surface" style={fillStyle}>shield</span>
+              <h4 className="font-bold text-on-surface">Account Status</h4>
+            </div>
+            <div className="w-1/2">
+              <label className={labelCls}>Status <span className="text-red-500">*</span></label>
+              <div className="relative">
+                <select value={form.status} onChange={set("status")} className={selectCls}>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+                {chevron}
+              </div>
+            </div>
+          </section>
+
+          {/* Password Management */}
+          <section className="pt-2 border-t border-outline-variant/15">
+            <div className="flex items-center gap-2 mb-4 mt-4">
+              <span className="material-symbols-outlined text-on-surface" style={fillStyle}>lock</span>
+              <h4 className="font-bold text-on-surface">Password Management</h4>
+            </div>
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input type="checkbox" checked={resetPw} onChange={(e) => setResetPw(e.target.checked)} className="mt-0.5 w-4 h-4 accent-primary" />
+              <span>
+                <span className="block text-sm font-bold text-on-surface">Reset Password</span>
+                <span className="block text-[12px] text-on-surface-variant">Check this option to reset the user's password.</span>
+              </span>
+            </label>
+
+            {resetPw && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 p-4 rounded-xl bg-surface-container-lowest border border-outline-variant/20">
+                <div>
+                  <label className="block text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1.5">New Password <span className="text-red-500">*</span></label>
+                  <div className="relative">
+                    <input type={showPw ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter new password" className={`${inputBase} pr-10`} />
+                    {eye(showPw, () => setShowPw((s) => !s))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1.5">Confirm Password <span className="text-red-500">*</span></label>
+                  <div className="relative">
+                    <input type={showConfirm ? "text" : "password"} value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Confirm new password" className={`${inputBase} pr-10`} />
+                    {eye(showConfirm, () => setShowConfirm((s) => !s))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
+        </form>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-outline-variant/20">
+          <button type="button" onClick={onClose} className="px-5 py-2.5 rounded-lg text-sm font-bold text-on-surface-variant border border-outline-variant/40 hover:bg-surface-container">
+            Cancel
+          </button>
+          <button onClick={submit} disabled={saving} className="px-5 py-2.5 rounded-lg text-sm font-bold bg-primary text-white shadow-sm hover:shadow-lg disabled:opacity-60 flex items-center gap-2">
+            <span className="material-symbols-outlined text-base">save</span>
+            {saving ? "Saving…" : "Save Changes"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+export default function UserManagement() {
+  const schoolYearLabel = useSchoolYear();
+
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch]   = useState("");
+  const [role, setRole]       = useState("all");
+  const [status, setStatus]   = useState("all");
+  const [page, setPage]       = useState(1);
+
+  const [data, setData]       = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState("");
+
+  const [menuOpen, setMenuOpen]   = useState(null);   // user_id of open row menu
+  const [showAdd, setShowAdd]     = useState(false);
+  const [editUser, setEditUser]   = useState(null);   // user being edited
+  const [banner, setBanner]       = useState("");     // success toast text
+  const [busyId, setBusyId]       = useState(null);   // row being toggled
+
+  // debounce the search box
+  const debounceRef = useRef(null);
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => { setSearch(searchInput); setPage(1); }, 300);
+    return () => clearTimeout(debounceRef.current);
+  }, [searchInput]);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    setError("");
+    fetchUsers({ search, role, status, page, pageSize: PAGE_SIZE })
+      .then((res) => setData(res.data))
+      .catch((err) => setError(err.message ?? "Failed to load users."))
+      .finally(() => setLoading(false));
+  }, [search, role, status, page]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const stats = data?.stats ?? {};
+  const users = data?.users ?? [];
+  const totalPages = data?.totalPages ?? 1;
+  const total = data?.total ?? 0;
+  const rangeStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const rangeEnd   = Math.min(page * PAGE_SIZE, total);
+
+  const toggleActive = async (u) => {
+    setMenuOpen(null);
+    setBusyId(u.user_id);
+    try {
+      await setUserActive(u.user_id, !u.is_active);
+      setBanner(`${u.name} ${u.is_active ? "deactivated" : "activated"}.`);
+      load();
+    } catch (err) {
+      setError(err.message ?? "Failed to update user.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const onCreated = (created) => {
+    setShowAdd(false);
+    setBanner(`User created — login ID ${created.school_id ?? "—"}.`);
+    setPage(1);
+    load();
+  };
+
+  useEffect(() => {
+    if (!banner) return;
+    const t = setTimeout(() => setBanner(""), 4000);
+    return () => clearTimeout(t);
+  }, [banner]);
+
+  const selectCls = "appearance-none bg-white border border-outline-variant/30 rounded-lg pl-3.5 pr-9 py-2.5 text-sm font-medium text-on-surface focus:ring-2 focus:ring-primary/20 focus:outline-none cursor-pointer";
+
+  return (
+    <AdminLayout schoolYearLabel={schoolYearLabel}>
+      <main className="p-8 max-w-full mx-auto w-full" onClick={() => setMenuOpen(null)}>
+
+        {/* Header */}
+        <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-8">
+          <div>
+            <h2 className="font-headline text-3xl font-extrabold tracking-tight text-on-surface">User Management</h2>
+            <p className="text-on-surface-variant mt-1">Manage all user accounts, roles, and access permissions.</p>
+          </div>
+          <button
+            onClick={() => setShowAdd(true)}
+            className="flex items-center gap-2 px-5 py-3 bg-primary text-white font-bold rounded-xl shadow-sm hover:shadow-lg transition-all shrink-0"
+          >
+            <span className="material-symbols-outlined text-lg">add</span>
+            Add New User
+          </button>
+        </header>
+
+        {banner && (
+          <div className="mb-6 px-4 py-3 rounded-lg bg-green-50 border border-green-100 text-green-700 text-sm flex items-center gap-2">
+            <span className="material-symbols-outlined text-base" style={fillStyle}>check_circle</span>{banner}
+          </div>
+        )}
+        {error && (
+          <div className="mb-6 px-4 py-3 rounded-lg bg-red-50 border border-red-100 text-red-600 text-sm flex items-center gap-2">
+            <span className="material-symbols-outlined text-base">error</span>{error}
+          </div>
+        )}
+
+        {/* Stat cards */}
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
+          {loading && !data
+            ? Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-28" />)
+            : STAT_CARDS.map((c) => (
+                <div key={c.key} className="bg-white rounded-2xl p-5 border border-outline-variant/20 shadow-sm">
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center mb-3 ${c.iconBg}`}>
+                    <span className={`material-symbols-outlined text-lg ${c.iconColor}`} style={fillStyle}>{c.icon}</span>
+                  </div>
+                  <p className="text-[11px] font-bold text-on-surface-variant mb-1">{c.label}</p>
+                  <p className="font-headline text-2xl font-extrabold text-on-surface">{stats[c.key] ?? 0}</p>
+                </div>
+              ))}
+        </div>
+
+        {/* Filter bar */}
+        <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-4 mb-4 flex flex-col md:flex-row gap-3">
+          <div className="relative flex-1">
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-xl">search</span>
+            <input
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Search by name, email, role, or status…"
+              className="w-full pl-11 pr-4 py-2.5 bg-surface-container-high border-none rounded-lg focus:ring-2 focus:ring-primary/20 focus:outline-none text-sm text-on-surface placeholder:text-outline"
+            />
+          </div>
+          <div className="relative">
+            <select value={role} onChange={(e) => { setRole(e.target.value); setPage(1); }} className={selectCls}>
+              {ROLE_FILTERS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+            </select>
+            <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-outline text-lg pointer-events-none">expand_more</span>
+          </div>
+          <div className="relative">
+            <select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} className={selectCls}>
+              {STATUS_FILTERS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+            <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-outline text-lg pointer-events-none">expand_more</span>
+          </div>
+        </div>
+
+        {/* Table */}
+        <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm overflow-hidden">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="border-b border-outline-variant/20 text-[11px] uppercase tracking-wider text-on-surface-variant">
+                <th className="px-6 py-3.5 font-bold">User</th>
+                <th className="px-6 py-3.5 font-bold">Role</th>
+                <th className="px-6 py-3.5 font-bold">Email</th>
+                <th className="px-6 py-3.5 font-bold">Status</th>
+                <th className="px-6 py-3.5 font-bold">Last Login</th>
+                <th className="px-6 py-3.5 font-bold text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                Array.from({ length: 6 }).map((_, i) => (
+                  <tr key={i} className="border-b border-outline-variant/10">
+                    <td colSpan={6} className="px-6 py-4"><Skeleton className="h-6 w-full" /></td>
+                  </tr>
+                ))
+              ) : users.length === 0 ? (
+                <tr><td colSpan={6} className="px-6 py-16 text-center text-sm text-on-surface-variant">No users match your filters.</td></tr>
+              ) : (
+                users.map((u) => (
+                  <tr key={u.user_id} className="border-b border-outline-variant/10 hover:bg-surface-container-lowest/50 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container font-bold text-xs shrink-0">
+                          {(u.first_name?.[0] ?? "") + (u.last_name?.[0] ?? "") || "?"}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-on-surface leading-tight truncate">{u.name}</p>
+                          <p className="text-[11px] text-on-surface-variant">ID {u.school_id}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4"><RoleBadge role={u.role} /></td>
+                    <td className="px-6 py-4 text-sm text-on-surface-variant">{u.email}</td>
+                    <td className="px-6 py-4"><StatusBadge active={u.is_active} /></td>
+                    <td className="px-6 py-4 text-sm text-on-surface-variant whitespace-nowrap">{formatLastLogin(u.last_login)}</td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-end gap-1 relative">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setMenuOpen(null); setEditUser(u); }}
+                          disabled={busyId === u.user_id}
+                          className="p-1.5 rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-primary disabled:opacity-50"
+                          title="Edit"
+                        >
+                          <span className="material-symbols-outlined text-lg">edit</span>
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setMenuOpen(menuOpen === u.user_id ? null : u.user_id); }}
+                          disabled={busyId === u.user_id}
+                          className="p-1.5 rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-primary disabled:opacity-50"
+                          title="More"
+                        >
+                          <span className="material-symbols-outlined text-lg">more_vert</span>
+                        </button>
+
+                        {menuOpen === u.user_id && (
+                          <div
+                            onClick={(e) => e.stopPropagation()}
+                            className="absolute right-0 top-9 z-20 w-44 bg-white rounded-xl border border-outline-variant/20 shadow-xl py-1"
+                          >
+                            <button
+                              onClick={() => toggleActive(u)}
+                              className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium hover:bg-surface-container-lowest text-left text-on-surface"
+                            >
+                              <span className="material-symbols-outlined text-base">{u.is_active ? "person_off" : "check_circle"}</span>
+                              {u.is_active ? "Deactivate" : "Activate"}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+
+          {/* Pagination */}
+          <div className="flex items-center justify-between px-6 py-4 border-t border-outline-variant/20">
+            <p className="text-sm text-on-surface-variant">
+              {total === 0 ? "No users" : `Showing ${rangeStart} to ${rangeEnd} of ${total} users`}
+            </p>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="w-9 h-9 flex items-center justify-center rounded-lg border border-outline-variant/30 text-on-surface-variant hover:bg-surface-container disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <span className="material-symbols-outlined text-lg">chevron_left</span>
+              </button>
+              {buildPageList(page, totalPages).map((p, i) =>
+                p === "…" ? (
+                  <span key={`e${i}`} className="w-9 h-9 flex items-center justify-center text-on-surface-variant text-sm">…</span>
+                ) : (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p)}
+                    className={`w-9 h-9 flex items-center justify-center rounded-lg text-sm font-bold ${
+                      p === page ? "bg-primary text-white" : "border border-outline-variant/30 text-on-surface hover:bg-surface-container"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                )
+              )}
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="w-9 h-9 flex items-center justify-center rounded-lg border border-outline-variant/30 text-on-surface-variant hover:bg-surface-container disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <span className="material-symbols-outlined text-lg">chevron_right</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      {showAdd && <AddUserModal onClose={() => setShowAdd(false)} onCreated={onCreated} />}
+      {editUser && (
+        <EditUserModal
+          user={editUser}
+          onClose={() => setEditUser(null)}
+          onSaved={(name) => { setEditUser(null); setBanner(`${name} updated.`); load(); }}
+        />
+      )}
+    </AdminLayout>
+  );
+}

@@ -1,0 +1,109 @@
+import { supabaseAdmin } from "../config/supabase.js";
+
+export const getSettingsOverview = async () => {
+  const { data: schoolYear, error: syErr } = await supabaseAdmin
+    .from("school_year")
+    .select("*")
+    .eq("is_active", true)
+    .single();
+  if (syErr) throw new Error(syErr.message);
+  return { schoolYear };
+};
+
+export const getAcademicConfig = async () => {
+  const { data: schoolYear, error: syErr } = await supabaseAdmin
+    .from("school_year")
+    .select("*")
+    .eq("is_active", true)
+    .single();
+  if (syErr) throw new Error(syErr.message);
+
+  const { data: gradeLevels, error: glErr } = await supabaseAdmin
+    .from("grade_level")
+    .select("gl_id, level_name, level_order")
+    .eq("sy_id", schoolYear.sy_id)
+    .order("level_order");
+  if (glErr) throw new Error(glErr.message);
+
+  const quarters = buildQuarters(schoolYear);
+
+  return { schoolYear, quarters, gradeLevels };
+};
+
+export const addGradeLevel = async ({ level_name, level_order, sy_id }) => {
+  const { data, error } = await supabaseAdmin
+    .from("grade_level")
+    .insert({ level_name, level_order, sy_id })
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+};
+
+export const editGradeLevel = async (gl_id, { level_name }) => {
+  const { data, error } = await supabaseAdmin
+    .from("grade_level")
+    .update({ level_name })
+    .eq("gl_id", gl_id)
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+};
+
+export const removeGradeLevel = async (gl_id) => {
+  const { error } = await supabaseAdmin
+    .from("grade_level")
+    .delete()
+    .eq("gl_id", gl_id);
+  if (error) throw new Error(error.message);
+};
+
+// The four academic quarters for a school year, as date ranges. This is the
+// single source of truth for "what quarter is it" used across the app.
+export function buildQuarterRanges(schoolYear) {
+  const year  = new Date(schoolYear.start_date).getFullYear();
+  const year2 = year + 1;
+  return [
+    { quarter: 1, label: "1st Quarter", start: new Date(`${year}-08-01`),  end: new Date(`${year}-10-31`)  },
+    { quarter: 2, label: "2nd Quarter", start: new Date(`${year}-11-01`),  end: new Date(`${year}-12-31`)  },
+    { quarter: 3, label: "3rd Quarter", start: new Date(`${year2}-01-01`), end: new Date(`${year2}-03-31`) },
+    { quarter: 4, label: "4th Quarter", start: new Date(`${year2}-04-01`), end: new Date(`${year2}-06-30`) },
+  ];
+}
+
+// The currently ACTIVE quarter (today falls within it). If today is between
+// terms, fall back to the most recent quarter that has already started.
+export function getCurrentQuarter(schoolYear) {
+  const ranges = buildQuarterRanges(schoolYear);
+  const today  = new Date();
+  const active = ranges.find((q) => today >= q.start && today <= q.end);
+  if (active) return active;
+  const started = ranges.filter((q) => today >= q.start);
+  return started.length ? started[started.length - 1] : ranges[0];
+}
+
+function buildQuarters(schoolYear) {
+  const today = new Date();
+  return buildQuarterRanges(schoolYear).map((q) => ({
+    id: q.quarter,
+    label: q.label,
+    dateRange: `${fmt(q.start)} – ${fmt(q.end)}`,
+    status: today < q.start ? "PENDING" : today > q.end ? "CLOSED" : "ACTIVE",
+  }));
+}
+
+function fmt(d) {
+  return d.toLocaleDateString("en-PH", { month: "short", year: "numeric" });
+}
+
+export const updateSchoolYear = async ({ sy_id, year_label, start_date, end_date }) => {
+  const { data, error } = await supabaseAdmin
+    .from("school_year")
+    .update({ year_label, start_date, end_date })
+    .eq("sy_id", sy_id)
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+};

@@ -1,0 +1,44 @@
+import { Router } from "express";
+import authRoutes         from "./auth.routes.js";
+import studentRoutes      from "./student.routes.js";
+import teacherRoutes      from "./teacher.routes.js";
+import paceRoutes         from "./pace.routes.js";
+import assessmentRoutes   from "./assessment.routes.js";
+import attendanceRoutes   from "./attendance.routes.js";
+import announcementRoutes from "./announcement.routes.js";
+import dashboardRoutes    from "./dashboard.routes.js";
+import employeesRoutes    from "./employees.routes.js";
+import studentMonitoringRoutes from "./studentMonitoring.routes.js";
+import reportsRoutes      from "./reports.routes.js";
+import settingsRoutes     from "./settings.routes.js";
+import sectionRoutes       from "./section.routes.js";
+import studentPortalRoutes from "./student.routes.js";
+import teacherPortalRoutes from "./teacher-portal.routes.js";
+import rolloverRoutes      from "./rollover.routes.js";
+import adminRoutes         from "./admin.routes.js";
+import notificationRoutes  from "./notification.routes.js";
+import accountRoutes        from "./account.routes.js";
+
+const router = Router();
+
+router.use("/auth",          authRoutes);
+router.use("/students",      studentRoutes);
+router.use("/teachers",      teacherRoutes);
+router.use("/paces",         paceRoutes);
+router.use("/assessments",   assessmentRoutes);
+router.use("/attendance",    attendanceRoutes);
+router.use("/announcements", announcementRoutes);
+router.use("/dashboard",     dashboardRoutes);
+router.use("/admin",         adminRoutes);
+router.use("/employees",     employeesRoutes);
+router.use("/student-monitoring", studentMonitoringRoutes);
+router.use("/reports",       reportsRoutes);
+router.use("/settings",      settingsRoutes);
+router.use("/rollover",      rolloverRoutes);
+router.use("/grade-levels",  sectionRoutes);
+router.use("/notifications", notificationRoutes);
+router.use("/account",       accountRoutes);
+
+router.use("/student", studentPortalRoutes);
+router.use("/teacher", teacherPortalRoutes);
+export default router;

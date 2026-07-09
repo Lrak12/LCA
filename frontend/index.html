@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lifegiver Christian Academy</title>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Material Symbols -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-primary-container": "#86a0cd",
+              "on-secondary-container": "#167249",
+              "primary-fixed": "#d6e3ff",
+              "background": "#f7fafc",
+              "on-surface-variant": "#43474e",
+              "surface-variant": "#e0e3e5",
+              "primary": "#002045",
+              "on-tertiary-fixed": "#231b00",
+              "on-primary-fixed-variant": "#2d476f",
+              "primary-fixed-dim": "#adc7f7",
+              "surface-bright": "#f7fafc",
+              "tertiary-container": "#c9a82c",
+              "on-tertiary": "#ffffff",
+              "on-error": "#ffffff",
+              "surface-tint": "#455f88",
+              "surface-container-highest": "#e0e3e5",
+              "surface-container-low": "#f1f4f6",
+              "on-tertiary-container": "#4d3e00",
+              "surface": "#f7fafc",
+              "secondary-fixed-dim": "#83d8a6",
+              "on-error-container": "#93000a",
+              "error-container": "#ffdad6",
+              "outline-variant": "#c4c6cf",
+              "surface-container-high": "#e5e9eb",
+              "outline": "#74777f",
+              "surface-container": "#ebeef0",
+              "on-secondary-fixed": "#002111",
+              "on-secondary": "#ffffff",
+              "on-secondary-fixed-variant": "#005231",
+              "on-surface": "#181c1e",
+              "primary-container": "#1a365d",
+              "inverse-primary": "#adc7f7",
+              "error": "#ba1a1a",
+              "tertiary-fixed": "#ffe17c",
+              "on-background": "#181c1e",
+              "secondary-container": "#9ff5c1",
+              "tertiary": "#715c00",
+              "inverse-surface": "#2d3133",
+              "secondary-fixed": "#9ff5c1",
+              "secondary": "#0a6c44",
+              "on-primary": "#ffffff",
+              "inverse-on-surface": "#eef1f3",
+              "on-primary-fixed": "#001b3c",
+              "on-tertiary-fixed-variant": "#564500",
+              "tertiary-fixed-dim": "#e6c446",
+              "surface-dim": "#d7dadc",
+              "surface-container-lowest": "#ffffff"
+            },
+            borderRadius: {
+              DEFAULT: "0.25rem",
+              lg: "0.5rem",
+              xl: "0.75rem",
+              full: "9999px"
+            },
+            fontFamily: {
+              headline: ["Manrope"],
+              body: ["Inter"],
+              label: ["Inter"]
+            }
+          }
+        }
+      };
+    </script>
+    <style>
+      html, body, #root {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        /* Constrain every icon to a clean 1em square and center the glyph in it.
+           Without a fixed height the inline-flex box picks up the font's
+           ascent/descent, so the glyph's visual center sits above the box's
+           geometric center - which makes absolutely-positioned icons
+           (top-1/2 -translate-y-1/2) and icons inside flex rows look a touch
+           high. A 1em box (tracks font-size) + flex centering fixes that
+           everywhere. !important beats the Tailwind Play CDN utilities, which
+           inject after this block and would otherwise reset these. */
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: 1em !important;
+        height: 1em !important;
+        line-height: 1 !important;
+        vertical-align: middle !important;
+        flex-shrink: 0 !important;
+      }
+      /* @tailwindcss/forms (loaded via the CDN `?plugins=forms`) injects its own
+         SVG chevron as a background-image on every <select>. Our dropdowns opt
+         out of the native control with `appearance-none` and render their own
+         Material Symbols `expand_more` instead - so suppress the plugin's chevron
+         on those to stop it doubling up next to ours. Selects WITHOUT
+         `appearance-none` keep the plugin arrow (they have no custom chevron). */
+      select.appearance-none {
+        background-image: none !important;
+      }
+      body { font-family: 'Inter', sans-serif; }
+      h1, h2, h3 { font-family: 'Manrope', sans-serif; }
+      .sanctuary-glass {
+        background: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(16px);
+      }
+      .bento-card {
+        transition: all 0.3s ease;
+      }
+      .bento-card:hover {
+        background-color: #ffffff;
+        transform: translateY(-2px);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

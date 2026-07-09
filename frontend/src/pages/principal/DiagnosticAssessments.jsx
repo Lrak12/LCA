@@ -1,0 +1,651 @@
+﻿import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import PrincipalLayout from "../../components/PrincipalLayout.jsx";
+import { fetchDiagnostics } from "../../api/diagnosticAssessments.js";
+import { createStudent, fetchAllStudents } from "../../api/student.js";
+import { fetchAllSections } from "../../api/sections.js";
+import { useSchoolYear } from "../../hooks/useSchoolYear.js";
+import StudentDiagnosticDetailModal from "../../components/StudentDiagnosticDetailModal.jsx";
+
+const fillStyle = { fontVariationSettings: '"FILL" 1' };
+
+const Skeleton = ({ className }) => (
+  <div className={`animate-pulse bg-surface-container-high rounded-xl ${className}`} />
+);
+
+// Placement Basis — placeholder until a stored field exists. Colors are ready for
+// all four values; rows currently default to "Diagnostic Assessment".
+const BASIS_STYLES = {
+  "Diagnostic Assessment":       "bg-blue-50 text-blue-600",
+  "Principal Recommendation":    "bg-green-50 text-green-600",
+  "Supervisor Recommendation":   "bg-purple-50 text-purple-600",
+  "Historical PACE Performance": "bg-orange-50 text-orange-600",
+};
+const BASIS_OPTIONS = Object.keys(BASIS_STYLES);
+const DEFAULT_BASIS = "Diagnostic Assessment";
+
+// ─── New Student Modal ────────────────────────────────────────────────────────
+function NewStudentModal({ onClose, onCreated }) {
+  const [form, setForm] = useState({
+    first_name: "", last_name: "", date_of_birth: "",
+    gender: "", gl_id: "", contact_number: "", address: "",
+  });
+  const [gradeLevels,  setGradeLevels]  = useState([]);
+  const [saving,       setSaving]       = useState(false);
+  const [error,        setError]        = useState("");
+  const [credentials,  setCredentials]  = useState(null); // { email, username, password, student }
+  const [copiedField,  setCopiedField]  = useState("");
+
+  useEffect(() => {
+    fetchAllSections()
+      .then((res) => setGradeLevels(res.data ?? []))
+      .catch(() => {});
+  }, []);
+
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.first_name.trim() || !form.last_name.trim() || !form.gl_id) {
+      setError("First name, last name, and grade level are required.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      // Password = DOB digits (e.g. 20101225); fallback if no DOB provided
+      const dobDigits = form.date_of_birth
+        ? form.date_of_birth.replace(/\D/g, "")
+        : `LCA${new Date().getFullYear()}`;
+
+      // Use a temp email — backend will replace it with {student_id}@lca.edu
+      const tempBase = `${form.first_name.toLowerCase().replace(/\s+/g,"")}.${form.last_name.toLowerCase().replace(/\s+/g,"")}.${Date.now()}`;
+      const enrollment_date = new Date().toISOString().split("T")[0];
+
+      const res = await createStudent({
+        email:    `${tempBase}@lca.edu`,
+        password: dobDigits,
+        username: tempBase,
+        ...form,
+        enrollment_date,
+        source: "diagnostic",
+      });
+
+      const studentId = res.data?.student_id;
+
+      // Show credentials card — login is {student_id}@lca.edu + DOB digits
+      setCredentials({
+        studentId,
+        email:    `${studentId}@lca.edu`,
+        password: dobDigits,
+        student:  res.data,
+      });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const copyToClipboard = (text, field) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(""), 2000);
+    });
+  };
+
+  // ── Credentials card (shown after successful creation) ────────────────────
+  if (credentials) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+        <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
+
+          {/* Success header */}
+          <div className="bg-primary px-8 py-6 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-white text-2xl" style={fillStyle}>check_circle</span>
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-white font-headline">Account Created!</h2>
+              <p className="text-white/70 text-sm">
+                {credentials.student?.first_name} {credentials.student?.last_name}'s student account is ready.
+              </p>
+            </div>
+          </div>
+
+          <div className="px-8 py-6 space-y-4">
+            <p className="text-sm text-on-surface-variant">
+              Share these login credentials with the student. They can change their password later from their profile settings.
+            </p>
+
+            {/* Credentials list */}
+            {[
+              { label: "Student ID",  value: String(credentials.studentId), icon: "badge",  field: "studentId" },
+              { label: "Email",       value: credentials.email,             icon: "mail",   field: "email"     },
+              { label: "Password",    value: credentials.password,          icon: "key",    field: "password"  },
+            ].map(({ label, value, icon, field }) => (
+              <div key={field} className="flex items-center gap-3 bg-surface-container-low rounded-xl px-4 py-3">
+                <span className="material-symbols-outlined text-primary text-base" style={fillStyle}>{icon}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-0.5">{label}</p>
+                  <p className="text-sm font-bold text-on-surface truncate">{value}</p>
+                </div>
+                <button
+                  onClick={() => copyToClipboard(value, field)}
+                  className="shrink-0 text-on-surface-variant hover:text-primary transition-colors"
+                  title="Copy"
+                >
+                  <span className="material-symbols-outlined text-base">
+                    {copiedField === field ? "check" : "content_copy"}
+                  </span>
+                </button>
+              </div>
+            ))}
+
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={onClose}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-on-surface-variant border border-outline-variant hover:bg-surface-container-low transition-colors"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => onCreated(credentials.student)}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold bg-primary text-white hover:bg-primary/90 transition-colors"
+              >
+                Start Diagnostic
+                <span className="material-symbols-outlined text-sm">arrow_forward</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Form ──────────────────────────────────────────────────────────────────
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+      <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden">
+
+        {/* Header */}
+        <div className="px-8 pt-8 pb-4 flex items-start justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-primary font-headline">New Student Assessment</h2>
+            <p className="text-on-surface-variant text-sm mt-1">Enroll a new student for diagnostic placement testing.</p>
+          </div>
+          <button onClick={onClose} className="text-on-surface-variant hover:text-primary transition-colors mt-1">
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="px-8 pb-8 space-y-4">
+          {error && (
+            <div className="px-4 py-3 rounded-xl bg-error-container text-on-error-container text-sm flex items-center gap-2">
+              <span className="material-symbols-outlined text-base">error</span>
+              {error}
+            </div>
+          )}
+
+          {/* First / Last Name */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">First Name</label>
+              <input
+                type="text" value={form.first_name} onChange={(e) => set("first_name", e.target.value)}
+                placeholder="e.g. Josiah"
+                className="w-full border border-outline-variant rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Last Name</label>
+              <input
+                type="text" value={form.last_name} onChange={(e) => set("last_name", e.target.value)}
+                placeholder="e.g. Miller"
+                className="w-full border border-outline-variant rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+          </div>
+
+          {/* DOB / Gender */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Date of Birth
+                <span className="ml-1 text-primary normal-case font-normal tracking-normal">— used as password</span>
+              </label>
+              <input
+                type="date" value={form.date_of_birth} onChange={(e) => set("date_of_birth", e.target.value)}
+                className="w-full border border-outline-variant rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Gender</label>
+              <select
+                value={form.gender} onChange={(e) => set("gender", e.target.value)}
+                className="w-full border border-outline-variant rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white"
+              >
+                <option value="">Select Gender</option>
+                <option>Male</option>
+                <option>Female</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Grade Level */}
+          <div>
+            <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Grade Level</label>
+            <select
+              value={form.gl_id} onChange={(e) => set("gl_id", Number(e.target.value))}
+              className="w-full border border-outline-variant rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white"
+            >
+              <option value="">Select Grade Level</option>
+              {gradeLevels.map((g) => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Contact Number */}
+          <div>
+            <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Contact Number</label>
+            <div className="flex">
+              <span className="inline-flex items-center px-4 border border-r-0 border-outline-variant rounded-l-lg bg-surface-container-low text-sm text-on-surface-variant font-semibold">
+                +63
+              </span>
+              <input
+                type="tel" value={form.contact_number} onChange={(e) => set("contact_number", e.target.value)}
+                placeholder="912 345 6789"
+                className="flex-1 border border-outline-variant rounded-r-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+          </div>
+
+          {/* Home Address */}
+          <div>
+            <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Home Address</label>
+            <input
+              type="text" value={form.address} onChange={(e) => set("address", e.target.value)}
+              placeholder="Street, Barangay, City, Province, Zip Code"
+              className="w-full border border-outline-variant rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          </div>
+
+          {/* Credential preview hint */}
+          <div className="flex items-start gap-2 px-4 py-3 bg-primary/5 rounded-xl border border-primary/10">
+            <span className="material-symbols-outlined text-primary text-base mt-0.5" style={fillStyle}>info</span>
+            <div className="text-xs text-on-surface-variant leading-relaxed">
+              <span className="font-bold text-primary">Auto-generated credentials — </span>
+              Login: <span className="font-bold text-on-surface">{"{student_id}"}@lca.edu</span>
+              {" · "}Password: <span className="font-bold text-on-surface">
+                {form.date_of_birth ? form.date_of_birth.replace(/\D/g, "") : "date of birth digits"}
+              </span>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={onClose}
+              className="px-6 py-2.5 rounded-xl text-sm font-semibold text-on-surface-variant hover:bg-surface-container-low transition-colors">
+              Cancel
+            </button>
+            <button type="submit" disabled={saving}
+              className="px-6 py-2.5 rounded-xl text-sm font-bold bg-primary text-white hover:bg-primary/90 transition-colors disabled:opacity-60 flex items-center gap-2">
+              {saving && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+              Create & Generate Account
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+const PAGE_SIZE = 5;
+
+function buildPages(current, total) {
+  if (total <= 5) return Array.from({ length: total }, (_, i) => i + 1);
+  if (current <= 3) return [1, 2, 3, "…", total];
+  if (current >= total - 2) return [1, "…", total - 2, total - 1, total];
+  return [1, "…", current, "…", total];
+}
+
+const StatCard = ({ label, value, sub, icon, tint }) => (
+  <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-5">
+    <div className="flex items-start justify-between gap-2">
+      <p className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant leading-tight">{label}</p>
+      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${tint}`}>
+        <span className="material-symbols-outlined text-lg" style={fillStyle}>{icon}</span>
+      </div>
+    </div>
+    <p className="font-headline text-4xl font-extrabold text-on-surface mt-3">{value}</p>
+    <p className="text-[11px] text-on-surface-variant mt-1 leading-snug">{sub}</p>
+  </div>
+);
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+export default function DiagnosticAssessments() {
+  const navigate        = useNavigate();
+  const schoolYearLabel = useSchoolYear();
+  const [students,    setStudents]    = useState([]);
+  const [diagMap,     setDiagMap]     = useState({}); // student_id → diagnostic row
+  const [loading,     setLoading]     = useState(true);
+  const [error,       setError]       = useState("");
+  const [search,      setSearch]      = useState("");
+  const [gradeFilter, setGradeFilter] = useState("");
+  const [basisFilter, setBasisFilter] = useState("");
+  const [page,        setPage]        = useState(1);
+  const [openMenu,    setOpenMenu]    = useState(null); // student_id of open kebab
+  const [showModal,   setShowModal]   = useState(false);
+  const [viewTarget,  setViewTarget]  = useState(null); // student row for the detail modal
+
+  const load = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const [stuRes, diagRes] = await Promise.all([
+        fetchAllStudents(),
+        fetchDiagnostics(),
+      ]);
+      // Only show students created via the diagnostic flow
+      setStudents((stuRes.data ?? []).filter((s) => s.source === "diagnostic"));
+      const map = {};
+      (diagRes.data ?? []).forEach((d) => { map[d.student_id] = d; });
+      setDiagMap(map);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleStudentCreated = (student) => {
+    setShowModal(false);
+    navigate(`/admin/diagnostic/record/${student.student_id}`);
+  };
+
+  const diagnosticStudents = students; // already filtered by source === "diagnostic"
+
+  // Placement Basis is a placeholder until a stored field exists.
+  const basisOf = () => DEFAULT_BASIS;
+
+  const gradeOptions = [...new Set(
+    diagnosticStudents.map((s) => s.grade_level?.level_name).filter(Boolean)
+  )].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+  const filtered = diagnosticStudents.filter((s) => {
+    const name  = `${s.first_name ?? ""} ${s.last_name ?? ""}`.toLowerCase();
+    const matchSearch = name.includes(search.toLowerCase()) || String(s.student_id).includes(search);
+    const matchGrade  = !gradeFilter || s.grade_level?.level_name === gradeFilter;
+    const matchBasis  = !basisFilter || basisOf(s) === basisFilter;
+    return matchSearch && matchGrade && matchBasis;
+  });
+
+  const totalPages   = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage  = Math.min(page, totalPages);
+  const startIndex   = (currentPage - 1) * PAGE_SIZE;
+  const pageRows     = filtered.slice(startIndex, startIndex + PAGE_SIZE);
+
+  // Stats (computable; "Accepted" is a placeholder until an acceptance workflow exists)
+  const totalRecords  = diagnosticStudents.length;
+  const generated     = diagnosticStudents.filter((s) => diagMap[s.student_id]?.start_pace != null).length;
+  const accepted      = "—";
+  const assessedYear  = diagnosticStudents.length;
+
+  const resetFilters = () => { setSearch(""); setGradeFilter(""); setBasisFilter(""); setPage(1); };
+
+  return (
+    <PrincipalLayout schoolYearLabel={loading ? "..." : schoolYearLabel}>
+      {showModal && (
+        <NewStudentModal
+          onClose={() => setShowModal(false)}
+          onCreated={handleStudentCreated}
+        />
+      )}
+      {viewTarget && (
+        <StudentDiagnosticDetailModal
+          student={viewTarget}
+          onClose={() => setViewTarget(null)}
+        />
+      )}
+
+      <main className="p-8 w-full">
+
+        {error && (
+          <div className="mb-6 px-4 py-3 rounded-lg bg-error-container text-on-error-container text-sm flex items-center gap-2">
+            <span className="material-symbols-outlined text-base">error</span>
+            {error}
+          </div>
+        )}
+
+        {/* Header */}
+        <header className="flex items-start justify-between gap-6 mb-8">
+          <div className="max-w-2xl">
+            <h2 className="text-3xl font-extrabold text-primary font-headline tracking-tight">
+              Diagnostic Assessment Management
+            </h2>
+            <p className="text-on-surface-variant text-sm mt-1">
+              Manage student diagnostic assessment records and review generated PACE recommendations.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowModal(true)}
+            className="shrink-0 flex items-center gap-2 px-6 py-3 bg-primary text-white font-bold text-sm rounded-xl hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
+          >
+            <span className="material-symbols-outlined text-lg" style={fillStyle}>add</span>
+            Create New Student Assessment
+          </button>
+        </header>
+
+        {/* Stat cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-6">
+          {loading ? (
+            Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-36" />)
+          ) : (
+            <>
+              <StatCard label="Total Diagnostic Records" value={totalRecords} sub="Total students with diagnostic records" icon="description" tint="bg-blue-50 text-blue-500" />
+              <StatCard label="PACE Recommendations Generated" value={generated} sub="System recommendations generated for students" icon="description" tint="bg-orange-50 text-orange-500" />
+              <StatCard label="PACE Recommendations Accepted" value={accepted} sub="Accepted by the principal (Principal Recommendation)" icon="task_alt" tint="bg-green-50 text-green-500" />
+              <StatCard label="Students Assessed This School Year" value={assessedYear} sub="Students with diagnostic records this school year" icon="groups" tint="bg-purple-50 text-purple-500" />
+            </>
+          )}
+        </div>
+
+        {/* Filter bar */}
+        <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-4 mb-6 flex items-end gap-4 flex-wrap">
+          <div className="relative flex-1 min-w-[220px]">
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-base">search</span>
+            <input
+              type="text"
+              placeholder="Search student name or ID…"
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border-2 border-outline-variant/30 text-sm focus:outline-none focus:border-primary"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1.5">Grade Level</label>
+            <select
+              value={gradeFilter}
+              onChange={(e) => { setGradeFilter(e.target.value); setPage(1); }}
+              className="px-3.5 py-2.5 rounded-xl border-2 border-outline-variant/30 text-sm focus:outline-none focus:border-primary bg-white min-w-[150px]"
+            >
+              <option value="">All Grade Levels</option>
+              {gradeOptions.map((g) => <option key={g} value={g}>{g}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1.5">Placement Basis</label>
+            <select
+              value={basisFilter}
+              onChange={(e) => { setBasisFilter(e.target.value); setPage(1); }}
+              className="px-3.5 py-2.5 rounded-xl border-2 border-outline-variant/30 text-sm focus:outline-none focus:border-primary bg-white min-w-[170px]"
+            >
+              <option value="">All Placement Basis</option>
+              {BASIS_OPTIONS.map((b) => <option key={b} value={b}>{b}</option>)}
+            </select>
+          </div>
+          <button
+            onClick={resetFilters}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border-2 border-outline-variant/30 text-sm font-bold text-on-surface hover:bg-surface-container-low transition-colors"
+          >
+            <span className="material-symbols-outlined text-base">restart_alt</span>
+            Reset Filters
+          </button>
+        </div>
+
+        {/* Table */}
+        <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm overflow-hidden">
+          {loading ? (
+            <div className="p-8 space-y-4">
+              {[1,2,3].map((i) => (
+                <div key={i} className="flex gap-4 items-center">
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-3 w-48" />
+                    <Skeleton className="h-2 w-28" />
+                  </div>
+                  <Skeleton className="h-8 w-24" />
+                </div>
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-24 text-center px-8">
+              <div className="w-16 h-16 bg-primary-fixed rounded-full flex items-center justify-center mb-5">
+                <span className="material-symbols-outlined text-3xl text-primary" style={fillStyle}>assignment</span>
+              </div>
+              <h3 className="text-lg font-bold text-primary font-headline mb-1">No diagnostic records</h3>
+              <p className="text-on-surface-variant text-sm max-w-sm mb-6">
+                {search || gradeFilter || basisFilter
+                  ? "No students match the current filters."
+                  : "Click \"Create New Student Assessment\" to enroll a student for diagnostic testing."}
+              </p>
+              {!(search || gradeFilter || basisFilter) && (
+                <button onClick={() => setShowModal(true)}
+                  className="flex items-center gap-2 px-6 py-3 bg-primary text-white font-bold text-sm rounded-xl hover:bg-primary/90 transition-colors">
+                  <span className="material-symbols-outlined text-lg" style={fillStyle}>add</span>
+                  Create New Student Assessment
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-surface-container-lowest border-b border-outline-variant/20">
+                      {["Student ID", "Student Name", "Grade Level", "Placement Basis", "Actions"].map((h) => (
+                        <th key={h} className={`px-6 py-3.5 text-[10px] font-extrabold text-on-surface-variant uppercase tracking-widest whitespace-nowrap ${h === "Actions" ? "text-right" : "text-left"}`}>
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-outline-variant/10">
+                    {pageRows.map((s) => {
+                      const basis = basisOf(s);
+                      return (
+                        <tr key={s.student_id} className="hover:bg-surface-container-lowest transition-colors">
+                          <td className="px-6 py-4 font-bold text-on-surface whitespace-nowrap">{s.student_id}</td>
+                          <td className="px-6 py-4 font-bold text-on-surface whitespace-nowrap">{s.first_name} {s.last_name}</td>
+                          <td className="px-6 py-4 text-on-surface-variant whitespace-nowrap">{s.grade_level?.level_name ?? "—"}</td>
+                          <td className="px-6 py-4">
+                            <span className={`px-3 py-1 rounded-full text-[11px] font-bold whitespace-nowrap ${BASIS_STYLES[basis]}`}>
+                              {basis}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                onClick={() => setViewTarget(s)}
+                                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-outline-variant/40 text-xs font-bold text-on-surface hover:bg-surface-container-low transition-colors"
+                              >
+                                <span className="material-symbols-outlined text-sm">visibility</span>
+                                View Details
+                              </button>
+                              <button
+                                onClick={() => navigate(`/admin/diagnostic/record/${s.student_id}`)}
+                                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-primary text-white text-xs font-bold hover:bg-primary/90 transition-colors shadow-sm shadow-primary/20"
+                              >
+                                <span className="material-symbols-outlined text-sm">edit_note</span>
+                                Record
+                              </button>
+                              <div className="relative">
+                                <button
+                                  onClick={() => setOpenMenu(openMenu === s.student_id ? null : s.student_id)}
+                                  className="w-8 h-8 flex items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container-low transition-colors"
+                                >
+                                  <span className="material-symbols-outlined text-base">more_vert</span>
+                                </button>
+                                {openMenu === s.student_id && (
+                                  <div className="absolute right-0 top-9 z-50 w-48 bg-white rounded-xl shadow-xl border border-outline-variant/20 py-1">
+                                    <button
+                                      onClick={() => { setOpenMenu(null); navigate(`/admin/diagnostic/record/${s.student_id}`); }}
+                                      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-on-surface hover:bg-surface-container-low transition-colors"
+                                    >
+                                      <span className="material-symbols-outlined text-base">edit_note</span>
+                                      Record Diagnostic
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination */}
+              <div className="flex items-center justify-between px-6 py-4 border-t border-outline-variant/10">
+                <p className="text-xs text-on-surface-variant">
+                  Showing {startIndex + 1} to {Math.min(startIndex + PAGE_SIZE, filtered.length)} of {filtered.length} results
+                </p>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container-low disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-base">chevron_left</span>
+                  </button>
+                  {buildPages(currentPage, totalPages).map((p, i) =>
+                    p === "…" ? (
+                      <span key={`e${i}`} className="w-8 text-center text-sm text-on-surface-variant">…</span>
+                    ) : (
+                      <button
+                        key={p}
+                        onClick={() => setPage(p)}
+                        className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm font-bold transition-colors ${
+                          currentPage === p ? "bg-primary text-white shadow-sm" : "text-on-surface-variant hover:bg-surface-container-low"
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    )
+                  )}
+                  <button
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container-low disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-base">chevron_right</span>
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Click-away for kebab menus */}
+        {openMenu !== null && (
+          <div className="fixed inset-0 z-40" onClick={() => setOpenMenu(null)} />
+        )}
+      </main>
+    </PrincipalLayout>
+  );
+}
+

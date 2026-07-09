@@ -1,0 +1,34 @@
+@import "tailwindcss";
+
+/* ── Accessibility foundations ───────────────────────────────────────────── */
+:root {
+  --app-font-size: 16px;
+  --worksheet-scale: 1;
+}
+
+html {
+  font-size: var(--app-font-size);
+  font-family: var(--app-font-family, inherit);
+}
+
+/* Dark mode: invert everything, then re-invert media (images, video) */
+html.mode-dark {
+  filter: invert(1) hue-rotate(180deg);
+  color-scheme: dark;
+}
+html.mode-dark img,
+html.mode-dark video,
+html.mode-dark canvas,
+html.mode-dark [data-no-invert] {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+/* High contrast */
+html.mode-high-contrast {
+  filter: contrast(1.5) saturate(1.3);
+}
+
+/* Color-blind friendly: reduce red–green saturation */
+html.mode-color-blind {
+  filter: saturate(0.5) hue-rotate(30deg);
+}
