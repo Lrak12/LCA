@@ -1,12 +1,5 @@
-// ============================================================================
-// FEATURE MAP - Student Monitoring > "View Student Details" modal   (UI / FRONTEND)
-// ----------------------------------------------------------------------------
-// Opened from the principal Student Monitoring page (pages/principal/
-// StudentMonitoring.jsx) when "View Details" is clicked on a student row.
-// Backend for this modal's data:
-//   route > studentMonitoring.routes.js  (GET /student-monitoring/:id/summary)
-//   > controller.getStudentSummary > service.getStudentSummary > model queries (DB)
-// ============================================================================
+// "View Student Details" modal, opened from the principal Student Monitoring page.
+// Data: GET /student-monitoring/:id/summary (studentMonitoring.service.getStudentSummary).
 import { useState, useEffect } from "react";
 import { fetchStudentSummary } from "../api/studentMonitoring.js";
 import StudentProfileModal from "./StudentProfileModal.jsx";
@@ -58,13 +51,8 @@ const SkeletonLine = ({ className = "" }) => (
   <div className={`animate-pulse bg-surface-container-high rounded h-4 ${className}`} />
 );
 
-// MODAL - "View Student Details".
-// SHOWS: one student's Student Information, PACE Progress Summary (total/completed/
-//   completion rate/on-time/late/points/readiness), Projected PACE Plan table, and
-//   Ranking Information.
-// CALLS: fetchStudentSummary(studentId) on open (> backend getStudentSummary) to
-//   load all of the above; the "View Full Plan" button opens <StudentProfileModal>
-//   (the per-subject grade grid), and onClose closes this modal.
+// Shows student info, PACE progress summary, projected plan, and ranking.
+// "View Full Plan" opens StudentProfileModal (the per-subject grade grid).
 export default function StudentSummaryModal({ studentId, onClose }) {
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);

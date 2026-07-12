@@ -1,3 +1,7 @@
+// Record Self-Test and PACE-Test scores per student, per PACE. Rules: self-test
+// READY = average of attempts >= 90; PACE test is locked until READY, and passes at
+// any attempt >= 90. Backend: teacher.service getStudentAssessments / recordSelfTest
+// / recordPaceTest (under /teacher/record-assessments).
 import { useState, useEffect, useCallback } from "react";
 import TeacherLayout from "../../components/TeacherLayout.jsx";
 import {
@@ -13,12 +17,14 @@ const fillStyle = { fontVariationSettings: '"FILL" 1' };
 const formatDate = (date = new Date()) =>
   date.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
+// fmtDate - short date for the attempts tables ("Jul 10, 2026"), or a dash if none.
 const fmtDate = (iso) => {
   if (!iso) return "—";
   const d = new Date(iso);
   return isNaN(d) ? "—" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 };
 
+// STATUS_BADGE - pill colours per PACE row status (Completed / Ready / In Progress / Not Ready).
 const STATUS_BADGE = {
   "Completed":   "bg-emerald-100 text-emerald-700",
   "Ready":       "bg-green-100 text-green-700",
@@ -27,6 +33,7 @@ const STATUS_BADGE = {
 };
 
 // ─── Self-Test Recording (full view) ─────────────────────────────────────────
+// small labelled icon card (Student / Subject / PACE No.)
 function InfoCard({ icon, label, value }) {
   return (
     <div className="flex-1 min-w-[180px] border border-outline-variant/20 rounded-xl px-5 py-4 flex items-center gap-3">
@@ -41,26 +48,29 @@ function InfoCard({ icon, label, value }) {
   );
 }
 
+// Full-page self-test recorder for one PACE: attempts table + summary + add form.
+// recordSelfTest() saves, then onRecorded() reloads; onBack() returns to the list.
 function SelfTestRecordingView({ row, student, passMark, onBack, onRecorded }) {
-  const st = row.selfTest;
-  const [open,   setOpen]   = useState(false);   // record form open
-  const [score,  setScore]  = useState("");
-  const [date,   setDate]   = useState(new Date().toISOString().split("T")[0]);
-  const [saving, setSaving] = useState(false);
-  const [error,  setError]  = useState("");
+  const st = row.selfTest;                              // this PACE's self-test data from the API
+  const [open,   setOpen]   = useState(false);   // is the "record attempt" form open?
+  const [score,  setScore]  = useState("");            // score input value
+  const [date,   setDate]   = useState(new Date().toISOString().split("T")[0]); // date input (defaults today)
+  const [saving, setSaving] = useState(false);         // save in flight
+  const [error,  setError]  = useState("");            // inline validation/save error
 
-  const nextAttempt = st.attemptsUsed + 1;
+  const nextAttempt = st.attemptsUsed + 1;             // which attempt # the form will create
 
+  // handleSave - validate 0-100, POST the attempt, then refresh + close the form.
   const handleSave = async () => {
     const sc = Number(score);
     if (isNaN(sc) || sc < 0 || sc > 100) { setError("Enter a score between 0 and 100."); return; }
     setSaving(true);
     setError("");
     try {
-      await recordSelfTest({ sp_id: row.sp_id, score: sc, date_taken: date });
+      await recordSelfTest({ sp_id: row.sp_id, score: sc, date_taken: date }); // POST .../self-test
       setOpen(false);
       setScore("");
-      onRecorded();
+      onRecorded();                                     // parent reloads the assessments
     } catch (err) {
       setError(err.response?.data?.message ?? err.message ?? "Failed to record.");
     } finally {
@@ -68,7 +78,7 @@ function SelfTestRecordingView({ row, student, passMark, onBack, onRecorded }) {
     }
   };
 
-  // Three fixed attempt slots
+  // Always render 3 fixed rows; fill each with its recorded attempt or null (empty).
   const slots = [1, 2, 3].map((n) => st.attempts.find((a) => a.attempt === n) ?? null);
 
   return (
@@ -196,24 +206,27 @@ function SelfTestRecordingView({ row, student, passMark, onBack, onRecorded }) {
 }
 
 // ─── PACE Test Recording (full view) ─────────────────────────────────────────
+// Same as the self-test view but for the PACE test: shows latest score (not
+// average), PASSED/FAILED, and a Venue column (= grade level). recordPaceTest() saves.
 function PaceTestRecordingView({ row, student, passMark, onBack, onRecorded }) {
-  const pt = row.paceTest;
-  const [open,   setOpen]   = useState(false);
+  const pt = row.paceTest;                             // this PACE's pace-test data from the API
+  const [open,   setOpen]   = useState(false);         // add-attempt form open?
   const [score,  setScore]  = useState("");
   const [date,   setDate]   = useState(new Date().toISOString().split("T")[0]);
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState("");
 
   const nextAttempt = pt.attemptsUsed + 1;
-  const venue = student?.gradeLevel ?? "—";
+  const venue = student?.gradeLevel ?? "—";            // Venue column = student's grade level (no schema field)
 
+  // handleSave - validate 0-100, POST the attempt, then refresh + close the form.
   const handleSave = async () => {
     const sc = Number(score);
     if (isNaN(sc) || sc < 0 || sc > 100) { setError("Enter a score between 0 and 100."); return; }
     setSaving(true);
     setError("");
     try {
-      await recordPaceTest({ sp_id: row.sp_id, score: sc, date_taken: date });
+      await recordPaceTest({ sp_id: row.sp_id, score: sc, date_taken: date }); // POST .../pace-test
       setOpen(false);
       setScore("");
       onRecorded();
@@ -224,7 +237,7 @@ function PaceTestRecordingView({ row, student, passMark, onBack, onRecorded }) {
     }
   };
 
-  const slots = [1, 2, 3].map((n) => pt.attempts.find((a) => a.attempt === n) ?? null);
+  const slots = [1, 2, 3].map((n) => pt.attempts.find((a) => a.attempt === n) ?? null); // 3 fixed rows (attempt or null)
 
   return (
     <>
@@ -349,17 +362,20 @@ function PaceTestRecordingView({ row, student, passMark, onBack, onRecorded }) {
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
+// Student picker + that student's current PACE per subject; the Record/View buttons
+// swap in the recording views above. Loads via fetchTeacherStudents +
+// fetchStudentAssessments.
 export default function Assessments() {
   const schoolYearLabel = useSchoolYear();
 
-  const [students,  setStudents]  = useState([]);
-  const [selId,     setSelId]     = useState(null);
-  const [data,      setData]      = useState(null);
+  const [students,  setStudents]  = useState([]);      // dropdown options
+  const [selId,     setSelId]     = useState(null);    // selected student_id
+  const [data,      setData]      = useState(null);    // that student's assessments payload
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState("");
-  const [rec,       setRec]       = useState(null); // { sp_id, kind: 'self'|'pace' } recording view
+  const [rec,       setRec]       = useState(null); // which recording view is open: { sp_id, kind:'self'|'pace' } or null
 
-  // Load students
+  // Load the student dropdown once; auto-select the first student.
   useEffect(() => {
     fetchTeacherStudents()
       .then((res) => {
@@ -370,26 +386,31 @@ export default function Assessments() {
       .catch((err) => setError(err.response?.data?.message ?? err.message ?? "Failed to load students."));
   }, []);
 
+  // load - fetch the selected student's assessments. useCallback so the effect below
+  //   re-runs only when selId changes; also reused as onRecorded() after each save.
   const load = useCallback(() => {
     if (!selId) return;
     setLoading(true);
     setError("");
-    fetchStudentAssessments(selId)
+    fetchStudentAssessments(selId)                     // GET /record-assessments?student_id=
       .then((res) => setData(res.data ?? null))
       .catch((err) => setError(err.response?.data?.message ?? err.message ?? "Failed to load assessments."))
       .finally(() => setLoading(false));
   }, [selId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load]);                // reload whenever the selected student changes
 
-  const rows     = data?.rows ?? [];
-  const passMark = data?.passMark ?? 90;
-  const recRow   = rec ? rows.find((r) => r.sp_id === rec.sp_id) ?? null : null;
+  const rows     = data?.rows ?? [];                   // one row per current PACE (per subject)
+  const passMark = data?.passMark ?? 90;               // pass threshold from the backend
+  const recRow   = rec ? rows.find((r) => r.sp_id === rec.sp_id) ?? null : null; // the PACE being recorded, if any
 
   return (
     <TeacherLayout schoolYearLabel={schoolYearLabel}>
       <main className="p-8 max-w-full mx-auto w-full">
 
+        {/* The page renders one of 3 states: the Self-Test recording view, the
+            PACE-Test recording view, or (default) the student picker + Assigned
+            PACEs table. `rec` decides which; onBack sets it back to null. */}
         {recRow && rec.kind === "self" ? (
           <SelfTestRecordingView
             row={recRow}
@@ -432,7 +453,7 @@ export default function Assessments() {
           {/* Search student */}
           <label className="block text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-2">Search Student</label>
           <div className="relative max-w-md mb-7">
-            <span className="material-symbols-outlined absolute left-3 inset-y-0 flex items-center text-on-surface-variant text-base" style={fillStyle}>person</span>
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1 text-base text-on-surface-variant pointer-events-none" style={fillStyle}>person</span>
             <select value={selId ?? ""} onChange={(e) => setSelId(e.target.value ? parseInt(e.target.value, 10) : null)} disabled={!students.length}
               className="w-full pl-9 pr-10 py-2.5 text-sm font-bold text-on-surface bg-white border border-outline-variant/30 rounded-xl appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60"
               style={{ WebkitAppearance: "none", MozAppearance: "none", appearance: "none" }}>
@@ -444,7 +465,7 @@ export default function Assessments() {
                   </option>
                 ))}
             </select>
-            <span className="material-symbols-outlined absolute right-3 inset-y-0 flex items-center text-on-surface-variant text-base pointer-events-none">expand_more</span>
+            <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1 text-xl leading-none text-on-surface-variant pointer-events-none">expand_more</span>
           </div>
 
           {/* Assigned PACEs */}

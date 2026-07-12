@@ -1,6 +1,7 @@
 import * as StudentModel from "../models/student.model.js";
 import * as UserModel from "../models/user.model.js";
 import * as StudentParentContactModel from "../models/studentParentContact.model.js";
+import * as NotificationService from "./notification.service.js";
 import { supabase, supabaseAdmin } from "../config/supabase.js";
 
 // ── PACE projection helpers (source of truth: pace_quarterly_projection) ──────
@@ -1140,7 +1141,7 @@ export const getStudentPace = async (user_id) => {
 export const submitPaceTestRequest = async (user_id, sp_id) => {
   const { data: student, error: sErr } = await supabaseAdmin
     .from("student")
-    .select("student_id, gl_id")
+    .select("student_id, gl_id, first_name, last_name")
     .eq("user_id", user_id)
     .single();
   if (sErr) throw new Error(sErr.message);
@@ -1226,6 +1227,26 @@ export const submitPaceTestRequest = async (user_id, sp_id) => {
     .from("pace_test_result")
     .insert({ sp_id: spId, attempt_no, assessment_status: "Requested", passed: false, date_taken: today, recorded_by, quarter });
   if (insErr) throw new Error(insErr.message);
+
+  // Notify the supervisor that a new request is waiting to be scheduled.
+  // Non-fatal: the request itself already succeeded.
+  try {
+    const { data: sup } = await supabaseAdmin
+      .from("teacher")
+      .select("user_id")
+      .eq("teacher_id", recorded_by)
+      .maybeSingle();
+    if (sup?.user_id) {
+      const studentName = `${student.first_name ?? ""} ${student.last_name ?? ""}`.trim() || "A student";
+      const subjLabel   = subj != null ? `${subj} PACE ${paceNum ?? ""}`.trim() : "a PACE";
+      await NotificationService.createForUsers([sup.user_id], {
+        title: "New PACE Test Request",
+        message_content: `${studentName} requested a PACE test for ${subjLabel}. Schedule it from PACE Test Scheduling.`,
+      });
+    }
+  } catch (e) {
+    console.warn("[pace-request] supervisor notification failed:", e.message);
+  }
 
   return { requested: true };
 };

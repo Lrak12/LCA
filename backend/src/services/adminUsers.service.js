@@ -43,6 +43,7 @@ const fetchLastLoginMap = async () => {
 // names + the login "school ID" come from the role tables, joined in JS by user_id
 // (no PostgREST embeds, so we don't depend on FK relationships being declared).
 const collectUsers = async () => {
+  // fetch users + all four role tables in parallel (one query each)
   const [{ data: userRows }, ...profileResults] = await Promise.all([
     supabaseAdmin.from("users").select("user_id, auth_id, email, role, is_active, created_at"),
     ...ROLE_SOURCES.map(({ table, pk }) =>
@@ -50,20 +51,21 @@ const collectUsers = async () => {
     ),
   ]);
 
-  // user_id -> { first_name, last_name, school_id }
+  // index every profile row by user_id -> { first_name, last_name, school_id }
   const profileByUserId = new Map();
   profileResults.forEach(({ data }, idx) => {
-    const { pk } = ROLE_SOURCES[idx];
+    const { pk } = ROLE_SOURCES[idx];                 // profileResults line up with ROLE_SOURCES order
     (data ?? []).forEach((row) => {
-      if (row.user_id == null) return;
+      if (row.user_id == null) return;               // skip profile rows not linked to a user
       profileByUserId.set(row.user_id, {
         first_name: row.first_name ?? "",
         last_name:  row.last_name ?? "",
-        school_id:  row[pk] ?? null,
+        school_id:  row[pk] ?? null,                 // the role-table PK is the login "school ID"
       });
     });
   });
 
+  // merge: users row (role/email/status) + its profile (name/school_id)
   return (userRows ?? []).map((u) => {
     const p = profileByUserId.get(u.user_id) ?? {};
     const name = `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim();
@@ -82,6 +84,7 @@ const collectUsers = async () => {
   });
 };
 
+// list users with stats + filters + pagination (User Management page)
 export const listUsers = async ({
   search = "",
   role   = "all",
@@ -89,9 +92,10 @@ export const listUsers = async ({
   page   = 1,
   pageSize = DEFAULT_PAGE_SIZE,
 } = {}) => {
+  // merged user list + last-login map, fetched in parallel
   const [all, lastLoginMap] = await Promise.all([collectUsers(), fetchLastLoginMap()]);
 
-  all.forEach((u) => { u.last_login = lastLoginMap[u.auth_id] ?? null; });
+  all.forEach((u) => { u.last_login = lastLoginMap[u.auth_id] ?? null; }); // stitch last_login onto each user
 
   // Stats are computed over the FULL set, before any filtering.
   const stats = {
@@ -104,10 +108,12 @@ export const listUsers = async ({
     principals:     all.filter((u) => u.role === "principal").length,
   };
 
+  // apply role + status filters
   let filtered = all;
   if (role !== "all")   filtered = filtered.filter((u) => u.role === role);
   if (status !== "all") filtered = filtered.filter((u) => (status === "active" ? u.is_active : !u.is_active));
 
+  // free-text search across name / email / role / school ID
   const q = String(search).trim().toLowerCase();
   if (q) {
     filtered = filtered.filter((u) =>
@@ -118,8 +124,9 @@ export const listUsers = async ({
     );
   }
 
-  filtered.sort((a, b) => a.name.localeCompare(b.name));
+  filtered.sort((a, b) => a.name.localeCompare(b.name)); // alphabetical by name
 
+  // paginate the filtered set in JS (clamped so page is always in range)
   const total      = filtered.length;
   const size       = Math.max(1, parseInt(pageSize, 10) || DEFAULT_PAGE_SIZE);
   const totalPages = Math.max(1, Math.ceil(total / size));
@@ -155,10 +162,12 @@ export const listRolePermissions = async () => {
 };
 
 // Bulk activate/deactivate every user of a role.
+// bulk activate/deactivate every user of a role (User Permissions)
 export const setRoleActive = async (key, is_active) => {
-  const dbRole = PERMISSION_ROLE_MAP[key];
+  const dbRole = PERMISSION_ROLE_MAP[key];             // map UI key -> DB role name
   if (!dbRole) throw new Error(`Unknown role "${key}".`);
 
+  // one UPDATE across every user of that role; `count` = how many rows changed
   const { error, count } = await supabaseAdmin
     .from("users")
     .update({ is_active: !!is_active }, { count: "exact" })
@@ -168,12 +177,13 @@ export const setRoleActive = async (key, is_active) => {
   return { key, role: dbRole, is_active: !!is_active, affected: count ?? 0 };
 };
 
+// activate/deactivate one user
 export const setUserActive = async (user_id, is_active) => {
   const { data, error } = await supabaseAdmin
     .from("users")
-    .update({ is_active })
+    .update({ is_active })                             // flip the flag
     .eq("user_id", user_id)
-    .select("user_id, is_active")
+    .select("user_id, is_active")                      // return the updated row
     .single();
   if (error) throw new Error(error.message);
   return data;
@@ -183,6 +193,7 @@ export const setUserActive = async (user_id, is_active) => {
 // reset their password. Role changes are intentionally NOT supported here — that
 // would require migrating the profile across role tables and reassigning the login
 // ID, so it's done by deactivating + recreating instead.
+// edit a user (name / email / active / password)
 export const updateUser = async (user_id, { full_name, email, is_active, password } = {}) => {
   const { data: userRow, error } = await supabaseAdmin
     .from("users")
@@ -250,6 +261,7 @@ const waitForUserRow = async (auth_id, tries = 8, delayMs = 250) => {
   return null;
 };
 
+// create a teacher/principal/administrator user (auto-assigns the role-table id)
 export const createUser = async ({
   role,
   first_name,
@@ -260,6 +272,7 @@ export const createUser = async ({
   contact_number = null,
   is_active = true,
 }) => {
+  // only staff roles can be created here; students go through Enrollment
   if (!STAFF_PROFILE[role]) {
     throw new Error(`Cannot create role "${role}" here. Students are added through Enrollment.`);
   }
@@ -271,8 +284,8 @@ export const createUser = async ({
   let admin_id = null;
   if (role === "administrator") {
     const { data: admins } = await supabaseAdmin.from("administrator").select("admin_id");
-    const used = new Set((admins ?? []).map((a) => a.admin_id));
-    for (let i = ADMIN_ID_MIN; i <= ADMIN_ID_MAX; i++) {
+    const used = new Set((admins ?? []).map((a) => a.admin_id)); // IDs already taken
+    for (let i = ADMIN_ID_MIN; i <= ADMIN_ID_MAX; i++) {          // pick the first free one in range
       if (!used.has(i)) { admin_id = i; break; }
     }
     if (admin_id == null) {
@@ -280,23 +293,27 @@ export const createUser = async ({
     }
   }
 
+  // create the Supabase Auth user (this fires the handle_new_user trigger)
   const { data: authData, error: authErr } = await supabaseAdmin.auth.admin.createUser({
     email,
     password,
-    email_confirm: true,
+    email_confirm: true,                             // no confirmation email; account is usable immediately
     user_metadata: { username: username || email.split("@")[0], role },
   });
   if (authErr) throw new Error(authErr.message);
   const authId = authData.user.id;
 
+  // if anything below fails, delete the auth user so we don't leave an orphan
   const rollback = async (message) => {
     await supabaseAdmin.auth.admin.deleteUser(authId);
     throw new Error(message);
   };
 
+  // wait for the trigger to create the matching public.users row
   const user_id = await waitForUserRow(authId);
   if (!user_id) await rollback("User profile was not created by the trigger. Please try again.");
 
+  // insert the role-profile row (admin gets the reserved admin_id; others store contact_number)
   const { table, pk } = STAFF_PROFILE[role];
   const profile = { user_id, first_name, last_name };
   if (role === "administrator") profile.admin_id = admin_id;
@@ -310,6 +327,7 @@ export const createUser = async ({
     await supabaseAdmin.from("users").update({ is_active: false }).eq("user_id", user_id);
   }
 
+  // resolve the login "school ID": admin already has it; others get the DB-generated PK
   let school_id = admin_id;
   if (role !== "administrator") {
     const { data: created } = await supabaseAdmin

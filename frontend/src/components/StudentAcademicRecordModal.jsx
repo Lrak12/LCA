@@ -13,6 +13,10 @@ const fmtDate = (iso) => {
 };
 const QLABEL = ["1st Quarter", "2nd Quarter", "3rd Quarter", "4th Quarter"];
 
+// "View Student" academic record modal (opened from the supervisor Student
+// Monitoring page). Loads everything from GET /teacher/student-record
+// (teacher.service.getStudentAcademicRecord); the Save-note and Ready-for-next
+// buttons hit saveSupervisorNote / markReadyForNext. Edit Student Info is a stub.
 export default function StudentAcademicRecordModal({ studentId, onClose }) {
   const [data,    setData]    = useState(null);
   const [loading, setLoading] = useState(true);

@@ -124,6 +124,10 @@ export const getStudentsForTeacher = async (user_id) => {
 // ── Load an existing pace_quarterly_projection for one student ────────────────
 // Returns { rows, lockedQuarters } — a quarter is locked once any official
 // PACE test score has been recorded in it (the plan can no longer be edited).
+// getStudentPaceProjection - returns a student's saved pace_quarterly_projection
+//   rows for the active school year (+ which quarters are locked because a PACE test
+//   was already recorded). Ownership-checked. Called by controller.getPaceProjection
+//   (GET /teacher/pace-projection) from teacher/AssignPace.jsx.
 export const getStudentPaceProjection = async (user_id, student_id) => {
   const empty = { rows: [], lockedQuarters: [] };
 
@@ -216,71 +220,80 @@ export const getLastCompletedPaces = async (user_id, student_id) => {
   return maxBySubject;
 };
 
+// Builds the supervisor dashboard data (4 stat cards, today's attendance tallies,
+// recent-completions feed), all scoped to the teacher's students.
 export const getTeacherDashboard = async (user_id) => {
+  // Look up this supervisor's teacher row (id + name) from their user_id.
   const { data: teacher, error: teacherErr } = await supabaseAdmin
     .from("teacher")
     .select("teacher_id, first_name, last_name")
     .eq("user_id", user_id)
     .single();
-  if (teacherErr) throw new Error(teacherErr.message);
+  if (teacherErr) throw new Error(teacherErr.message);   // no teacher profile > surface the error
 
+  // studentIds = only the students in this teacher's grade level(s). Everything
+  // below is filtered to these ids so a supervisor only sees their own class.
   const { studentIds } = await resolveTeacherScope(user_id);
 
-  // Total students (scoped)
+  // Total students (scoped) - a COUNT only (head:true = no rows returned).
   const { count: totalStudents } = await supabaseAdmin
     .from("student")
     .select("*", { count: "exact", head: true })
     .in("student_id", studentIds);
 
-  // All student paces (scoped)
+  // All PACE rows for those students (status + name + grade level, for grouping).
   const { data: allPaces } = await supabaseAdmin
     .from("student_pace")
     .select("student_id, status, student(first_name, last_name), pace_module(grade_level(level_name))")
     .in("student_id", studentIds);
 
-  // Group by student
+  // Group the flat PACE rows BY student, so each student holds a list of paces.
   const studentMap = {};
   (allPaces ?? []).forEach((p) => {
     const sid = p.student_id;
-    if (!studentMap[sid]) {
+    if (!studentMap[sid]) {                              // first time we see this student:
       studentMap[sid] = {
-        name:  `${p.student?.first_name ?? ""} ${p.student?.last_name ?? ""}`.trim(),
-        level: p.pace_module?.grade_level?.level_name ?? "—",
+        name:  `${p.student?.first_name ?? ""} ${p.student?.last_name ?? ""}`.trim(), // display name
+        level: p.pace_module?.grade_level?.level_name ?? "—",                         // grade level label
         paces: [],
       };
     }
-    studentMap[sid].paces.push(p);
+    studentMap[sid].paces.push(p);                       // add this pace to the student's bucket
   });
 
+  // Turn each student's pace bucket into one row: counts + a % + a status label.
   const studentRows = Object.values(studentMap).map((s) => {
-    const total     = s.paces.length;
-    const completed = s.paces.filter((p) => p.status === "Completed").length;
-    const inProgress = s.paces.filter((p) => p.status === "In Progress").length;
-    const progress  = total ? Math.round((completed / total) * 100) : 0;
-    const onTrack   = inProgress > 0 || completed > 0;
+    const total     = s.paces.length;                                          // paces assigned
+    const completed = s.paces.filter((p) => p.status === "Completed").length;  // finished
+    const inProgress = s.paces.filter((p) => p.status === "In Progress").length; // started
+    const progress  = total ? Math.round((completed / total) * 100) : 0;       // % complete (guard /0)
+    const onTrack   = inProgress > 0 || completed > 0;                         // any activity = on track
     return { name: s.name, level: s.level, progress, status: onTrack ? "On Track" : "Needs Attention" };
   });
 
-  const onTrack  = studentRows.filter((s) => s.status === "On Track").length;
-  const behind   = studentRows.filter((s) => s.status === "Needs Attention").length;
-  const ahead    = studentRows.filter((s) => s.progress >= 80).length;
+  // Roll the rows up into the 3 headline counts for the stat cards.
+  const onTrack  = studentRows.filter((s) => s.status === "On Track").length;        // >=1 pace active/done
+  const behind   = studentRows.filter((s) => s.status === "Needs Attention").length; // no activity yet
+  const ahead    = studentRows.filter((s) => s.progress >= 80).length;               // 80%+ complete
 
   // Today's attendance (scoped) — local date, not UTC
   const now = new Date();
+  // Build today's date as YYYY-MM-DD from LOCAL parts (avoids the UTC off-by-one).
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  const { data: todayAtt } = await supabaseAdmin
+  const { data: todayAtt } = await supabaseAdmin        // today's attendance rows for scoped students
     .from("attendance")
     .select("status")
     .eq("date_recorded", today)
     .in("student_id", studentIds);
 
+  // Tally those rows into the 3 numbers the attendance panel shows.
   const attStats = {
     present: (todayAtt ?? []).filter((r) => r.status === "Present").length,
     late:    (todayAtt ?? []).filter((r) => r.status === "Late").length,
     absent:  (todayAtt ?? []).filter((r) => r.status === "Absent").length,
   };
 
-  // Recent completed PACEs (scoped)
+  // The 3 most-recently completed PACEs (newest end_date first) for the feed.
   const { data: recentCompleted } = await supabaseAdmin
     .from("student_pace")
     .select("student_id, student(first_name, last_name), pace_module(module_name, subject), end_date")
@@ -289,8 +302,9 @@ export const getTeacherDashboard = async (user_id) => {
     .order("end_date", { ascending: false })
     .limit(3);
 
+  // Shape each completion into a ready-to-render feed item (icon + text + date).
   const recentActivity = (recentCompleted ?? [])
-    .filter((r) => r.end_date)
+    .filter((r) => r.end_date)                          // skip rows with no completion date
     .map((r) => ({
       icon:      "check_circle",
       iconBg:    "bg-green-100",
@@ -299,6 +313,7 @@ export const getTeacherDashboard = async (user_id) => {
       time:      new Date(r.end_date).toLocaleDateString("en-US", { month: "long", day: "numeric" }),
     }));
 
+  // Final payload consumed by TeacherDashboard.jsx (data.stats / data.attendance / ...).
   return {
     teacher,
     stats: {
@@ -306,13 +321,13 @@ export const getTeacherDashboard = async (user_id) => {
       onTrack,
       behind,
       ahead,
-      onTrackPct: totalStudents ? Math.round((onTrack / totalStudents) * 100) : 0,
-      behindPct:  totalStudents ? Math.round((behind  / totalStudents) * 100) : 0,
-      aheadPct:   totalStudents ? Math.round((ahead   / totalStudents) * 100) : 0,
+      onTrackPct: totalStudents ? Math.round((onTrack / totalStudents) * 100) : 0, // % of class on track
+      behindPct:  totalStudents ? Math.round((behind  / totalStudents) * 100) : 0, // % needing attention
+      aheadPct:   totalStudents ? Math.round((ahead   / totalStudents) * 100) : 0, // % at 80%+
     },
-    attendance: attStats,
-    projectedPaces: studentRows,
-    recentActivity,
+    attendance: attStats,          // { present, late, absent } for today
+    projectedPaces: studentRows,   // per-student rows (name / level / progress / status)
+    recentActivity,                // up to 3 recent completions
   };
 };
 
@@ -397,15 +412,19 @@ export const getAssessments = async (user_id) => {
   };
 };
 
+// Loads one day's attendance for the teacher's class: one row per student (saved
+// status/notes/time, or null if unmarked) plus a summary tally.
 export const getAttendance = async (user_id, date) => {
+  // Find this supervisor's teacher_id from their login user_id.
   const { data: teacher, error: tErr } = await supabaseAdmin
     .from("teacher")
     .select("teacher_id")
     .eq("user_id", user_id)
     .maybeSingle();
   if (tErr) throw new Error(tErr.message);
-  if (!teacher) return { date, students: [], summary: { total: 0, present: 0, absent: 0, tardy: 0 } };
+  if (!teacher) return { date, students: [], summary: { total: 0, present: 0, absent: 0, tardy: 0 } }; // no profile > empty day
 
+  // The grade level(s) this teacher owns (their class).
   const { data: gradeLevels } = await supabaseAdmin
     .from("grade_level")
     .select("gl_id, level_name")
@@ -413,8 +432,9 @@ export const getAttendance = async (user_id, date) => {
 
   const glIds = (gradeLevels ?? []).map((g) => g.gl_id);
   const emptySummary = { total: 0, present: 0, absent: 0, tardy: 0, excused: 0 };
-  if (!glIds.length) return { date, students: [], summary: emptySummary, gradeLevels: [] };
+  if (!glIds.length) return { date, students: [], summary: emptySummary, gradeLevels: [] }; // no class assigned > empty
 
+  // All students in those grade levels (alphabetical by last name).
   const { data: students, error: sErr } = await supabaseAdmin
     .from("student")
     .select("student_id, first_name, last_name, gl_id, grade_level(level_name)")
@@ -422,6 +442,7 @@ export const getAttendance = async (user_id, date) => {
     .order("last_name", { ascending: true });
   if (sErr) throw new Error(sErr.message);
 
+  // Any attendance already recorded for those students on THIS date.
   const { data: records, error: recErr } = await supabaseAdmin
     .from("attendance")
     .select("student_id, status, notes, time_recorded")
@@ -429,26 +450,30 @@ export const getAttendance = async (user_id, date) => {
     .in("student_id", (students ?? []).map((s) => s.student_id));
   if (recErr) throw new Error(recErr.message);
 
+  // Index records by student_id for O(1) lookup (status lowercased for the UI).
   const recordMap = {};
   (records ?? []).forEach((r) => { recordMap[r.student_id] = { ...r, status: r.status?.toLowerCase() }; });
 
+  // One row per student: their saved status/notes/time, or nulls if not marked yet.
   const rows = (students ?? []).map((s) => {
     const rec = recordMap[s.student_id];
     return {
       student_id:    s.student_id,
       name:          `${s.first_name} ${s.last_name}`.trim(),
       grade:         s.grade_level?.level_name ?? "—",
-      status:        rec?.status ?? null,
+      status:        rec?.status ?? null,           // null = not marked yet
       notes:         rec?.notes  ?? "",
       time_recorded: rec?.time_recorded ?? null,
     };
   });
 
+  // Tally the recorded statuses for the summary cards.
   const present = rows.filter((r) => r.status === "present").length;
   const absent  = rows.filter((r) => r.status === "absent").length;
   const tardy   = rows.filter((r) => r.status === "late").length;
   const excused = rows.filter((r) => r.status === "excused").length;
 
+  // Payload consumed by teacher/Attendance.jsx (students / summary / gradeLevels).
   return {
     date,
     students: rows,
@@ -457,11 +482,15 @@ export const getAttendance = async (user_id, date) => {
   };
 };
 
+// Saves one day's attendance. Validates input, confirms every submitted student
+// belongs to this teacher (security), then upserts one row per student for the date.
 export const submitAttendance = async (user_id, date, records) => {
+  // Reject empty/malformed payloads up front.
   if (!date || !Array.isArray(records) || records.length === 0) {
     throw new Error("date and records[] are required");
   }
 
+  // Resolve the submitting teacher.
   const { data: teacher, error: tErr } = await supabaseAdmin
     .from("teacher")
     .select("teacher_id")
@@ -479,17 +508,20 @@ export const submitAttendance = async (user_id, date, records) => {
   const glIds = (gradeLevels ?? []).map((g) => g.gl_id);
   if (!glIds.length) throw new Error("No grade level assigned to this teacher");
 
+  // The set of student ids this teacher is actually allowed to mark.
   const { data: ownedStudents } = await supabaseAdmin
     .from("student")
     .select("student_id")
     .in("gl_id", glIds);
 
   const ownedIds = new Set((ownedStudents ?? []).map((s) => s.student_id));
+  // Any submitted id NOT in that set = tampering > reject the whole request.
   const foreign  = [...new Set(records.map((r) => r.student_id))].filter((id) => !ownedIds.has(id));
   if (foreign.length) {
     throw new Error(`Students not assigned to this teacher: ${foreign.join(", ")}`);
   }
 
+  // Shape each record into an attendance row (stamped with teacher_id + date).
   const rows = records.map((r) => ({
     student_id:    r.student_id,
     teacher_id:    teacher.teacher_id,
@@ -498,6 +530,8 @@ export const submitAttendance = async (user_id, date, records) => {
     notes:         r.notes ?? "",
   }));
 
+  // Upsert: insert new rows or overwrite existing ones for the same student+date
+  //   (so re-submitting a day edits it instead of duplicating).
   const { error } = await supabaseAdmin
     .from("attendance")
     .upsert(rows, { onConflict: "student_id,date_recorded" });
@@ -635,6 +669,8 @@ export const getStudentMonitoring = async (user_id, { grade, section, status, pa
 const SM_PAGE_SIZE = 8;
 const ON_TRACK_MARK = 50;   // completion % threshold for "On Track"
 
+// Backs the Records + Progress tabs. Returns { stats, students(page), totalStudents,
+// totalPages, gradeLevels, subjects }. Filters run before paging so counts are right.
 export const getStudentMonitoringOverview = async (user_id, { grade, search, paceStatus, assessStatus, subject, page = 1 } = {}) => {
   const empty = {
     stats: { totalStudents: 0, assessed: 0, scheduledToTake: 0, notAssessed: 0,
@@ -777,6 +813,8 @@ export const getStudentMonitoringOverview = async (user_id, { grade, search, pac
 };
 
 // ─── Ranking tab ─────────────────────────────────────────────────────────────
+// Ranking tab: ranks all scoped students by rankBy (points/completed/onTime, tiebreak
+// points then name), assigns rank over the full list, then paginates by pageSize (=Top).
 export const getStudentRankings = async (user_id, { grade, rankBy = "points", pageSize = 10, page = 1 } = {}) => {
   const empty = { rows: [], total: 0, totalPages: 1, pageSize };
 
@@ -830,6 +868,8 @@ export const getStudentRankings = async (user_id, { grade, rankBy = "points", pa
 };
 
 // ─── PACE Analytics tab (charts) ─────────────────────────────────────────────
+// PACE Analytics tab: aggregates for the charts (completion by quarter, on-time vs
+// late donut, completion by subject, points distribution, below-50% list).
 export const getPaceAnalyticsOverview = async (user_id, { grade } = {}) => {
   const empty = {
     stats: { avgCompletionRate: 0, avgPerformancePoints: 0, studentsReady: 0, needingIntervention: 0, totalStudents: 0 },
@@ -1195,8 +1235,11 @@ function _quarterReadiness(subjectMap) {
   return "Not Ready";
 }
 
+// Builds the PACE Monitoring data from each student's pace_quarterly_projection:
+// `students` (selector list), `individual` (one student's 7x4x3 grid + profile
+// card), and `classView` (per-student quarter readiness).
 export const getPaceMonitoring = async (user_id, { student_id } = {}) => {
-  const empty = { students: [], individual: null, classView: [] };
+  const empty = { students: [], individual: null, classView: [] }; // safe shape when nothing is scoped
 
   // Resolve teacher
   const { data: teacher } = await supabaseAdmin
@@ -1348,6 +1391,12 @@ export const getPaceMonitoring = async (user_id, { student_id } = {}) => {
   return { students: studentList, individual, classView };
 };
 
+// updatePaceProjectionCell - re-bases ONE quarter of a subject's plan by upserting
+//   its pace_quarterly_projection row (student_id, sy_id, quarter, subject) with a
+//   new pace_start/pace_count. The grid derives its 3 numbers consecutively from
+//   pace_start, and the row's statuses are reset. Ownership-checked; blocked once a
+//   PACE test exists for that quarter. Called by controller.updatePaceCell
+//   (PATCH /teacher/pace-projection/cell) from teacher/PaceMonitoring.jsx.
 export const updatePaceProjectionCell = async (user_id, { student_id, subject, quarter, pace_start, pace_count }) => {
   const { data: teacher } = await supabaseAdmin
     .from("teacher")
@@ -1417,6 +1466,10 @@ export const updatePaceProjectionCell = async (user_id, { student_id, subject, q
   return { updated: true };
 };
 
+// updatePaceProjectionStatus - sets the status of ONE cell (row_index 0/1/2) in a
+//   subject+quarter's projection row (status_r0 / status_r1 / status_r2). Ownership-
+//   checked. Called by controller.updatePaceCellStatus (PATCH /teacher/pace-projection/
+//   status) from teacher/PaceMonitoring.jsx (the status picker).
 export const updatePaceProjectionStatus = async (user_id, { student_id, subject, quarter, row_index, status }) => {
   const { data: teacher } = await supabaseAdmin
     .from("teacher")
@@ -1534,7 +1587,9 @@ export const schedulePaceTest = async (user_id, { student_id, subject, pace_numb
   return data;
 };
 
-export const cancelPaceTest = async (user_id, pts_id) => {
+// Cancel a scheduled test. The schedule lifecycle lives on pace_test_result
+// (assessment_status), not the dead pace_test_schedule table.
+export const cancelPaceTest = async (user_id, pacetest_id) => {
   const { data: teacher } = await supabaseAdmin
     .from("teacher")
     .select("teacher_id")
@@ -1543,10 +1598,10 @@ export const cancelPaceTest = async (user_id, pts_id) => {
   if (!teacher) throw new Error("Teacher not found");
 
   const { error } = await supabaseAdmin
-    .from("pace_test_schedule")
-    .update({ status: "Cancelled" })
-    .eq("pts_id", Number(pts_id))
-    .eq("teacher_id", teacher.teacher_id);
+    .from("pace_test_result")
+    .update({ assessment_status: "Cancelled" })
+    .eq("pacetest_id", Number(pacetest_id))
+    .eq("recorded_by", teacher.teacher_id);
 
   if (error) throw new Error(error.message);
   return { cancelled: true };
@@ -1640,16 +1695,8 @@ export const getScheduledTests = async (user_id, { quarter, subject, status, fro
   const studentIds  = students.map((s) => s.student_id);
   const studentById = new Map(students.map((s) => [s.student_id, s]));
 
-  // Only actually-scheduled rows — exclude un-scheduled requests and cancellations.
-  const { data: rows } = await supabaseAdmin
-    .from("pace_test_schedule")
-    .select("pts_id, student_id, subject, pace_number, quarter, scheduled_at, status, notes, created_at")
-    .in("student_id", studentIds)
-    .not("status", "in", '("Requested","Cancelled")')
-    .order("scheduled_at", { ascending: true });
-  if (!rows?.length) return { ...empty, subjects: [] };
-
-  // Readiness (eligibility): self-test AVERAGE >= 90, keyed student|subject|pace
+  // sp_id → { student_id, subject, pace_number } (schedules live on pace_test_result,
+  // keyed by sp_id, so resolve subject/pace via student_pace → pace_module).
   const { data: paces } = await supabaseAdmin
     .from("student_pace")
     .select("sp_id, student_id, pace_module!inner(subject, module_number)")
@@ -1658,6 +1705,39 @@ export const getScheduledTests = async (user_id, { quarter, subject, status, fro
     student_id: p.student_id, subject: p.pace_module?.subject, pace_number: p.pace_module?.module_number,
   }]));
   const spIds = (paces ?? []).map((p) => p.sp_id);
+  if (!spIds.length) return empty;
+
+  // Scheduled tests live on pace_test_result: assessment_status lifecycle +
+  // assessment_timestamp (schedule) + venue. Exclude un-scheduled requests and
+  // cancellations; only rows that carry a schedule date.
+  const lc = (s) => String(s ?? "").toLowerCase();
+  const { data: ptRows } = await supabaseAdmin
+    .from("pace_test_result")
+    .select("pacetest_id, sp_id, quarter, assessment_status, assessment_timestamp, venue, date_taken, recorded_by")
+    .in("sp_id", spIds);
+  const rows = (ptRows ?? [])
+    .filter((r) =>
+      ["scheduled", "rescheduled", "completed", "missed"].includes(lc(r.assessment_status)) &&
+      r.assessment_timestamp,
+    )
+    .map((r) => {
+      const info = spInfo.get(r.sp_id) ?? {};
+      return {
+        pts_id:       r.pacetest_id,
+        student_id:   info.student_id ?? null,
+        subject:      info.subject ?? "—",
+        pace_number:  info.pace_number ?? null,
+        quarter:      r.quarter,
+        scheduled_at: r.assessment_timestamp,
+        status:       r.assessment_status,
+        venue:        r.venue ?? null,
+        created_at:   r.date_taken ?? null,
+      };
+    })
+    .sort((a, b) => String(a.scheduled_at).localeCompare(String(b.scheduled_at)));
+  if (!rows.length) return { ...empty, subjects: [] };
+
+  // Readiness (eligibility): self-test AVERAGE >= 90, keyed student|subject|pace
   const readySet = new Set();
   if (spIds.length) {
     const { data: selfTests } = await supabaseAdmin
@@ -1706,7 +1786,7 @@ export const getScheduledTests = async (user_id, { quarter, subject, status, fro
       pts_id:       row.pts_id,
       student_id:   row.student_id,
       studentName:  stu ? `${stu.first_name} ${stu.last_name}`.trim() : "—",
-      gradeLevel:   stu?.grade_level?.level_name ?? "—",  // = Venue
+      gradeLevel:   row.venue ?? stu?.grade_level?.level_name ?? "—",  // = Venue (stored, else grade level)
       studentType:  returningSet.has(row.student_id) ? "Returning Student" : "New Student",
       subject:      row.subject,
       paceNumber:   row.pace_number,
@@ -1741,8 +1821,8 @@ export const getScheduledTests = async (user_id, { quarter, subject, status, fro
 
 // ─── PACE Test Scheduling page (student requests awaiting scheduling) ─────────
 // Flow: a student who PASSED the self-test (score >= 90) requests the PACE test,
-// creating a pace_test_schedule row with status 'Requested'. This page lists those
-// pending requests; the supervisor schedules each one (fills date/time → 'Scheduled').
+// creating a pace_test_result row with assessment_status 'Requested'. This page lists
+// those pending requests; the supervisor schedules each one (date/time → 'Scheduled').
 const PACE_TEST_READY_MARK = 90;
 
 export const getPaceTestScheduling = async (user_id, { subject, quarter } = {}) => {
@@ -1983,6 +2063,14 @@ async function _ownedStudent(user_id, student_id) {
 const _displayStatus = (sp) => {
   if (!sp) return "Not Yet Started";
   if (sp.status === "Completed") return "Completed";
+  // Past the expected end date and still unfinished → Overdue (regardless of
+  // whether it was started). The completion status/points are computed only on
+  // completion, so an incomplete PACE would otherwise sit as "Assigned" forever.
+  if (sp.end_date) {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const end = new Date(sp.end_date);
+    if (!isNaN(end) && end < today) return "Overdue";
+  }
   if (sp.status === "In Progress") return "Ongoing";
   return "Assigned";
 };
@@ -1991,6 +2079,10 @@ const _action = (sp) => {
   return sp.status === "Completed" ? "View" : "Manage";
 };
 
+// getStudentPaceManage - data for the Assign/Manage modal. Returns { student, stats
+//   (completed/ongoing/remaining/points), rows (one per subject, each with ALL that
+//   subject's student_pace rows + a defaultPaceNumber), moduleOptions }. Ownership-
+//   checked. Called by controller.getStudentPaceManage (GET /teacher/student-pace-manage).
 export const getStudentPaceManage = async (user_id, student_id) => {
   const { student } = await _ownedStudent(user_id, student_id);
 
@@ -2147,6 +2239,10 @@ export const getStudentPaceManage = async (user_id, student_id) => {
   };
 };
 
+// saveStudentPace - upserts ONE student_pace (resolving/creating its pace_module).
+//   When status becomes "Completed" it AUTO-computes completion_status (On Time /
+//   Extended / Late) + points_earned (10/7/5/0, from the latest pace_test pass).
+//   Ownership-checked. Called by controller.saveStudentPace (POST /teacher/student-pace-manage).
 export const saveStudentPace = async (user_id, payload) => {
   const { student_id, subject, pace_number, status, assigned_date, start_date, end_date, completion_date, extension_count } = payload;
   const { teacher, student } = await _ownedStudent(user_id, student_id);
@@ -2249,6 +2345,8 @@ function _currentQuarter(startDate) {
   return Math.min(4, Math.max(1, Math.floor(months / 3) + 1));
 }
 
+// The "View Student" academic record modal: profile, average/points/rank, PACE
+// completion + attendance summaries, the per-subject grade grid, remarks, etc.
 export const getStudentAcademicRecord = async (user_id, student_id) => {
   const { teacher, student } = await _ownedStudent(user_id, student_id);
 
@@ -2476,6 +2574,7 @@ const _subjAbbr = (subj = "") => {
   return map[subj] ?? (subj ? subj.slice(0, 3).toUpperCase() : "PACE");
 };
 
+// Saves the supervisor's note (student_academic_remarks.supervisor_comments) for the current quarter.
 export const saveSupervisorNote = async (user_id, student_id, note) => {
   const { teacher, student } = await _ownedStudent(user_id, student_id);
   const { data: sy } = await supabaseAdmin
@@ -2506,6 +2605,7 @@ export const saveSupervisorNote = async (user_id, student_id, note) => {
   return { saved: true };
 };
 
+// Flags the student's current (or latest) PACE ready_for_next = true.
 export const markReadyForNext = async (user_id, student_id) => {
   const { student } = await _ownedStudent(user_id, student_id);
   // Flag the current In Progress PACE (else the most recently assigned) as ready
@@ -2546,9 +2646,13 @@ async function _ownsSpId(user_id, sp_id) {
   return teacher;
 }
 
+// One student's current PACE per subject + their test attempts. Finds the current
+// PACE per subject, pulls all self-test + pace-test attempts, and derives each row's
+// average/ready/passed flags and status label.
 export const getStudentAssessments = async (user_id, student_id) => {
-  const { student } = await _ownedStudent(user_id, student_id);
+  const { student } = await _ownedStudent(user_id, student_id); // ownership check + student record
 
+  // Every PACE assigned to this student (+ its module info).
   const { data: paces } = await supabaseAdmin
     .from("student_pace")
     .select("sp_id, status, assigned_date, pace_module(subject, module_number, module_name)")
@@ -2571,10 +2675,11 @@ export const getStudentAssessments = async (user_id, student_id) => {
     currentBySubject.set(subj, inProg[0] ?? assigned[0] ?? completed[0] ?? arr[0]);
   });
 
-  const current = [...currentBySubject.values()];
-  const spIds   = current.map((p) => p.sp_id);
+  const current = [...currentBySubject.values()];      // one current PACE per subject
+  const spIds   = current.map((p) => p.sp_id);          // their student_pace ids
 
-  // Fetch all attempts for these PACEs in two batches
+  // Fetch all attempts for these PACEs in two batches (self-test + pace-test), then
+  //   index each list by sp_id for quick per-row lookup below.
   let selfBySp = new Map(), paceBySp = new Map();
   if (spIds.length) {
     const [{ data: selfRows }, { data: paceRows }] = await Promise.all([
@@ -2595,6 +2700,7 @@ export const getStudentAssessments = async (user_id, student_id) => {
 
   const orderIndex = (s) => { const i = PACE_SUBJECT_ORDER.indexOf(s); return i === -1 ? 999 : i; };
 
+  // Build one display row per current PACE: attempts + averages + gating flags + status.
   const rows = current
     .map((p) => {
       const subject     = p.pace_module?.subject ?? "—";
@@ -2604,6 +2710,7 @@ export const getStudentAssessments = async (user_id, student_id) => {
       const selfReady   = selfAvg != null && selfAvg >= PASS;   // average-based READY
       const pacePassed  = passedAny(paceAtt);
 
+      // Status precedence: PACE passed > PACE attempted > self-test ready > not ready.
       let status;
       if (pacePassed)            status = "Completed";
       else if (paceAtt.length)   status = "In Progress";
@@ -2642,11 +2749,13 @@ export const getStudentAssessments = async (user_id, student_id) => {
   };
 };
 
+// Insert one self-test attempt for a PACE (max 3); returns whether this attempt passed.
 export const recordSelfTest = async (user_id, { sp_id, score, date_taken }) => {
-  const teacher = await _ownsSpId(user_id, sp_id);
+  const teacher = await _ownsSpId(user_id, sp_id);     // ownership check (teacher owns this PACE)
   const sc = Number(score);
-  if (isNaN(sc) || sc < 0 || sc > 100) throw new Error("Score must be between 0 and 100");
+  if (isNaN(sc) || sc < 0 || sc > 100) throw new Error("Score must be between 0 and 100"); // validate range
 
+  // Count existing attempts to enforce the 3-attempt cap and pick the next attempt #.
   const { data: existing } = await supabaseAdmin
     .from("self_test_result")
     .select("attempt_no")
@@ -2654,6 +2763,7 @@ export const recordSelfTest = async (user_id, { sp_id, score, date_taken }) => {
   if ((existing?.length ?? 0) >= MAX_ATTEMPTS) throw new Error(`Maximum ${MAX_ATTEMPTS} self-test attempts already recorded`);
   const attempt_no = (existing?.length ?? 0) + 1;
 
+  // Insert the attempt (passed flag is per-attempt: this score >= pass mark).
   const { error } = await supabaseAdmin
     .from("self_test_result")
     .insert({ sp_id: Number(sp_id), attempt_no, score: sc, date_taken: date_taken || new Date().toISOString().split("T")[0], passed: sc >= ASSESS_PASS_MARK, recorded_by: teacher.teacher_id });
@@ -2672,25 +2782,29 @@ async function _selfTestReady(sp_id) {
   return (xs.reduce((a, b) => a + b, 0) / xs.length) >= ASSESS_PASS_MARK;
 }
 
+// Insert one PACE-test attempt (max 3), gated on the self-test average passing. A
+// passing score also completes the PACE (below), which feeds Progress/Analytics/Ranking.
 export const recordPaceTest = async (user_id, { sp_id, score, date_taken }) => {
-  const teacher = await _ownsSpId(user_id, sp_id);
+  const teacher = await _ownsSpId(user_id, sp_id);     // ownership check
   const sc = Number(score);
-  if (isNaN(sc) || sc < 0 || sc > 100) throw new Error("Score must be between 0 and 100");
+  if (isNaN(sc) || sc < 0 || sc > 100) throw new Error("Score must be between 0 and 100"); // validate range
 
   // Gate: self-test AVERAGE must reach the pass mark first
   if (!(await _selfTestReady(sp_id))) {
     throw new Error("The student's self-test average must reach 90% before recording a PACE test");
   }
 
+  // Enforce the 3-attempt cap.
   const { data: existing } = await supabaseAdmin
     .from("pace_test_result")
     .select("pacetest_id")
     .eq("sp_id", Number(sp_id));
   if ((existing?.length ?? 0) >= MAX_ATTEMPTS) throw new Error(`Maximum ${MAX_ATTEMPTS} PACE test attempts already recorded`);
 
-  const passed  = sc >= ASSESS_PASS_MARK;
+  const passed  = sc >= ASSESS_PASS_MARK;               // did this attempt pass?
   const takenOn = date_taken || new Date().toISOString().split("T")[0];
 
+  // Insert the pace-test attempt.
   const { error } = await supabaseAdmin
     .from("pace_test_result")
     .insert({ sp_id: Number(sp_id), score: sc, date_taken: takenOn, passed, recorded_by: teacher.teacher_id });

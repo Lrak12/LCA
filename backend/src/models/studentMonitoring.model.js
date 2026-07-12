@@ -1,13 +1,4 @@
-// ============================================================================
-// FEATURE MAP - Student Monitoring   (BACKEND · LAYER 4 of 4: MODEL)
-// ----------------------------------------------------------------------------
-// This is the backend for the Student Monitoring feature - the DATA-ACCESS layer
-// and the LAST stop. Each function here is one raw query to the database
-// (Supabase / PostgreSQL) and returns rows with NO business logic applied.
-//   Comes from:  studentMonitoring.service.js (which crunches these rows)
-//   Goes next >  the database, then the rows travel back up:
-//                model > service > controller > api/studentMonitoring.js > UI
-// ============================================================================
+// Raw Supabase queries for Student Monitoring (called by studentMonitoring.service).
 import { supabaseAdmin } from "../config/supabase.js";
 
 // All students + their grade level (the base list for the monitoring table).

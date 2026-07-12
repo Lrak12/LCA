@@ -1,3 +1,8 @@
+// Admin (sysadmin) home dashboard: user-count stat cards, a system-activity feed,
+// and quick actions.
+// Backend chain (frontend api/admin.js fetchAdminDashboard -> routes/dashboard.routes.js):
+//   GET /dashboard/admin -> controllers/dashboard.controller.js > getAdminStats (~line 10)
+//                        -> services/dashboard.service.js > getAdminDashboard (~line 21)
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import AdminLayout from "../../components/AdminLayout.jsx";
@@ -7,20 +12,24 @@ import { useSchoolYear } from "../../hooks/useSchoolYear.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
+// grey pulsing placeholder shown while loading
 const Skeleton = ({ className }) => (
   <div className={`animate-pulse bg-surface-container-high rounded-xl ${className}`} />
 );
 
+// greeting based on the local hour
 const getGreeting = () => {
-  const h = new Date().getHours();
+  const h = new Date().getHours();                 // 0-23 local hour
   if (h < 12) return "Good morning";
   if (h < 17) return "Good afternoon";
   return "Good evening";
 };
 
+// "July 10, 2026" for the header date
 const formatDate = (d = new Date()) =>
   d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
+// clock time for an activity timestamp (blank if missing/invalid)
 const formatTime = (iso) => {
   if (!iso) return "";
   const d = new Date(iso);
@@ -58,10 +67,11 @@ export default function AdminDashboard() {
   const schoolYearLabel = useSchoolYear();
   const navigate        = useNavigate();
 
-  const [data, setData]       = useState(null);
+  const [data, setData]       = useState(null);    // API response { stats, activity }
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState("");
 
+  // load the dashboard once on mount
   useEffect(() => {
     fetchAdminDashboard()
       .then((res) => setData(res.data))
@@ -69,9 +79,9 @@ export default function AdminDashboard() {
       .finally(() => setLoading(false));
   }, []);
 
-  const stats    = data?.stats ?? { totalUsers: 0, activeUsers: 0, newUsers: 0, auditEvents: 0 };
-  const activity = data?.activity ?? [];
-  const firstName = user?.first_name ?? user?.username ?? "Admin";
+  const stats    = data?.stats ?? { totalUsers: 0, activeUsers: 0, newUsers: 0, auditEvents: 0 }; // zero-fallback for first render
+  const activity = data?.activity ?? [];           // system-activity feed rows
+  const firstName = user?.first_name ?? user?.username ?? "Admin"; // greeting name
 
   return (
     <AdminLayout schoolYearLabel={schoolYearLabel}>
@@ -97,7 +107,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Stat cards */}
+        {/* Stat cards - map STAT_CARDS to the matching `stats` value (skeletons while loading) */}
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
           {loading
             ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-32" />)
@@ -115,10 +125,11 @@ export default function AdminDashboard() {
         {/* Two columns */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
-          {/* System Activity */}
+          {/* System Activity - the `activity` feed; each row's icon comes from activityIcon(title) */}
           <section className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-6">
             <div className="flex items-center justify-between mb-5">
               <h3 className="font-headline text-lg font-extrabold text-on-surface">System Activity</h3>
+              {/* View All -> navigate() to the full Audit Logs page */}
               <button onClick={() => navigate("/sysadmin/audit")} className="text-sm font-bold text-blue-600 hover:underline">View All</button>
             </div>
             {loading ? (
@@ -146,10 +157,11 @@ export default function AdminDashboard() {
             )}
           </section>
 
-          {/* Quick Actions */}
+          {/* Quick Actions - static shortcut buttons that navigate to other sysadmin pages */}
           <section className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-6">
             <h3 className="font-headline text-lg font-extrabold text-on-surface mb-5">Quick Actions</h3>
             <div className="space-y-3">
+              {/* each shortcut -> navigate(q.path) to the matching sysadmin page */}
               {QUICK_ACTIONS.map((q) => (
                 <button
                   key={q.label}

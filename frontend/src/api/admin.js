@@ -1,5 +1,6 @@
 import client from "./client.js";
 
+// Admin dashboard data (dashboard.service.getAdminDashboard)
 export const fetchAdminDashboard = () => client.get("/dashboard/admin");
 
 export const fetchUsers = (params = {}) => client.get("/admin/users", { params });

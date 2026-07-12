@@ -141,7 +141,7 @@ export default function Attendance() {
           <div>
             <label className="block text-xs font-bold text-on-surface-variant mb-1">Month</label>
             <div className="relative inline-block">
-              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-base pointer-events-none">calendar_month</span>
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1 text-on-surface-variant text-base pointer-events-none">calendar_month</span>
               <select
                 value={selected}
                 onChange={(e) => setMonth(e.target.value)}
@@ -154,7 +154,7 @@ export default function Attendance() {
                   <option key={m.value} value={m.value}>{m.label}</option>
                 ))}
               </select>
-              <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant text-base pointer-events-none">expand_more</span>
+              <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1 text-on-surface-variant text-base pointer-events-none">expand_more</span>
             </div>
           </div>
 

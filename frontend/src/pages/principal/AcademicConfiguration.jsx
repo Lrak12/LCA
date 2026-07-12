@@ -1,3 +1,9 @@
+// Academic Configuration (principal): read-only overview of the active school year, its
+// four quarters, and the grade levels/sections; buttons hand off to the Manage Year modal
+// and grade-level editors (handlers passed in by the parent).
+// Backend chain (frontend api/settings.js fetchAcademicConfig -> routes/settings.routes.js):
+//   GET /settings/academic -> controllers/settings.controller.js > getAcademicConfig (~line 4)
+//                          -> services/settings.service.js > getAcademicConfig (~line 13)
 import { useState, useEffect } from "react";
 import {
   fetchAcademicConfig,
@@ -9,6 +15,7 @@ import {
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
 // ─── Status badge config ──────────────────────────────────────────────────────
+// quarter status -> label + colours
 const STATUS = {
   ACTIVE:  { label: "Active",  bg: "bg-amber-100", text: "text-amber-700" },
   PENDING: { label: "Pending", bg: "bg-slate-100",  text: "text-slate-500" },
@@ -65,12 +72,13 @@ export default function AcademicConfiguration({
   onAddGrade   = () => {},
   onEditGrade  = () => {},
 }) {
-  const [schoolYear, setSchoolYear] = useState(null);
-  const [quarters, setQuarters]     = useState([]);
-  const [grades, setGrades]         = useState([]);
+  const [schoolYear, setSchoolYear] = useState(null); // active school year
+  const [quarters, setQuarters]     = useState([]);    // the four grading periods
+  const [grades, setGrades]         = useState([]);    // grade levels + section counts
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState("");
 
+  // load the whole academic config in one call
   useEffect(() => {
     fetchAcademicConfig()
       .then((res) => {
@@ -131,6 +139,7 @@ export default function AcademicConfiguration({
                 </p>
               </div>
             </div>
+            {/* Manage Year -> onManageYear() callback (parent opens <ManageYearModal>) */}
             <button
               onClick={onManageYear}
               className="px-5 py-2.5 rounded-lg border border-outline-variant/40 bg-white text-sm font-bold text-on-surface hover:border-primary hover:text-primary transition-all shadow-sm"
@@ -174,6 +183,7 @@ export default function AcademicConfiguration({
           <p className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant">
             Grade Levels &amp; Sections
           </p>
+          {/* Add Grade Level -> onAddGrade() callback (parent handles the add flow) */}
           <button
             onClick={onAddGrade}
             className="flex items-center gap-1.5 text-secondary font-bold text-xs hover:underline transition-all"
@@ -214,6 +224,7 @@ export default function AcademicConfiguration({
             >
               <span className="font-extrabold text-sm text-on-surface">{gl.level_name}</span>
               <SectionsBadge count={gl.sections ?? 0} />
+              {/* row actions -> onEditGrade(gl.gl_id) callback (edit / manage sections) */}
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => onEditGrade(gl.gl_id)}

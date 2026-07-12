@@ -1,6 +1,13 @@
+// Math Intermediate Diagnostic scoring modal (principal): same as Math Beginner but for
+// PACEs 1049-1096; mark learning gaps, start PACE auto-fills to the lowest miss (editable).
+// Opened from RecordDiagnostic.jsx.
+// Backend chain (frontend api/diagnosticAssessments.js -> routes/assessment.routes.js):
+//   create: POST /assessments/diagnostic     -> controllers/assessment.controller.js > createDiagnostic (~line 50) -> services/assessment.service.js > createDiagnostic (~line 26)
+//   update: PUT  /assessments/diagnostic/:id  -> controllers/assessment.controller.js > updateDiagnostic (~line 55) -> services/assessment.service.js > updateDiagnostic (~line 43)
 import { useState } from "react";
 import { createDiagnostic, updateDiagnostic } from "../../api/diagnosticAssessments.js";
 
+// "1,5,9" (stored) -> Set of numbers for the clickable grid
 const parseGaps = (raw) =>
   raw ? new Set(String(raw).split(",").map((n) => Number(n.trim())).filter((n) => n > 0)) : new Set();
 
@@ -21,13 +28,14 @@ const formatDOB = (dob) => {
 };
 
 export default function MathIntermediateDiagnosticModal({ student, existing, onClose, onSaved }) {
-  const [gaps,      setGaps]      = useState(() => parseGaps(existing?.learning_gaps));
-  const [startPace, setStartPace] = useState(existing?.start_pace != null ? String(existing.start_pace) : "");
+  const [gaps,      setGaps]      = useState(() => parseGaps(existing?.learning_gaps)); // selected gap PACEs
+  const [startPace, setStartPace] = useState(existing?.start_pace != null ? String(existing.start_pace) : ""); // ready-to-advance PACE
   // ACE rule: start PACE auto-fills to the lowest missed PACE, unless overridden.
-  const [manual,    setManual]    = useState(existing?.start_pace != null);
+  const [manual,    setManual]    = useState(existing?.start_pace != null); // true once the user types a PACE by hand
   const [saving,    setSaving]    = useState(false);
   const [error,     setError]     = useState("");
 
+  // toggle a gap cell; while not manually overridden, keep start PACE = lowest gap
   const toggleGap = (pace) => {
     const next = new Set(gaps);
     next.has(pace) ? next.delete(pace) : next.add(pace);
@@ -138,7 +146,7 @@ export default function MathIntermediateDiagnosticModal({ student, existing, onC
               </p>
             </div>
 
-            {/* PACE Grid — 4 rows × 12 cols (1049–1096) */}
+            {/* PACE Grid — 4 rows × 12 cols (1049–1096); each cell -> toggleGap(pace) (also auto-fills startPace) */}
             <div className="border border-outline-variant rounded-lg overflow-hidden">
               {PACE_ROWS.map((row, ri) => (
                 <div
@@ -207,6 +215,7 @@ export default function MathIntermediateDiagnosticModal({ student, existing, onC
           >
             Cancel
           </button>
+          {/* Save Record -> handleSave() (create/update diagnostic, then onSaved) */}
           <button
             onClick={handleSave}
             disabled={saving}

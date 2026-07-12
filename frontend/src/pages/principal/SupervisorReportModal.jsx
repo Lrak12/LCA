@@ -1,3 +1,10 @@
+// Supervisor Report viewer (principal): opened from Reports.jsx "View Report". Wraps the
+// three report bodies in tabs; each tab's content lives in its own *ViewModal file and is
+// re-exported here as a *Content component.
+// No backend call of its own - each tab's data is fetched inside its *ViewModal file:
+//   Academic  -> ClassAcademicRecordViewModal.jsx  (GET /reports/teacher/:id/academic)
+//   Attendance-> AttendanceReportViewModal.jsx      (GET /reports/teacher/:id/attendance)
+//   PACE      -> PaceProgressViewModal.jsx          (GET /reports/teacher/:id/pace)
 import { useState } from "react";
 import { ClassAcademicRecordContent } from "./ClassAcademicRecordViewModal.jsx";
 import { AttendanceReportContent } from "./AttendanceReportViewModal.jsx";
@@ -7,6 +14,7 @@ const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
 const QUARTER_LABELS = { 1: "1st Quarter", 2: "2nd Quarter", 3: "3rd Quarter", 4: "4th Quarter" };
 
+// the report tabs (analytics is a placeholder for now)
 const TABS = [
   { key: "academic",   label: "Class Academic Record Summary", icon: "menu_book"       },
   { key: "attendance", label: "Attendance Summary Report",     icon: "event_available" },
@@ -41,7 +49,7 @@ export default function SupervisorReportModal({
   initialTab = "academic",
   onClose,
 }) {
-  const [activeTab, setActiveTab] = useState(initialTab);
+  const [activeTab, setActiveTab] = useState(initialTab); // which report tab is showing
   const teacherName  = teacher ? `${teacher.firstName} ${teacher.lastName}` : "—";
   const quarterLabel = QUARTER_LABELS[quarter] ?? `Quarter ${quarter}`;
 
@@ -96,6 +104,7 @@ export default function SupervisorReportModal({
         {/* Report preview */}
         <div className="px-7 pt-4 shrink-0">
           <p className="text-sm font-extrabold text-on-surface mb-3">Report Preview</p>
+          {/* report tabs -> setActiveTab(key) switches which *Content component renders below */}
           <div className="flex items-center gap-1 overflow-x-auto">
             {TABS.map((t) => {
               const active = activeTab === t.key;
@@ -117,7 +126,7 @@ export default function SupervisorReportModal({
           </div>
         </div>
 
-        {/* Active report body */}
+        {/* Active report body — renders the content module for the selected tab */}
         <div className="flex-1 overflow-auto px-7 py-5 border-t border-outline-variant/15">
           {activeTab === "academic"   && <ClassAcademicRecordContent teacher={teacher} quarter={quarter} />}
           {activeTab === "attendance" && <AttendanceReportContent teacher={teacher} quarter={quarter} />}
@@ -131,6 +140,7 @@ export default function SupervisorReportModal({
 
         {/* Footer */}
         <div className="flex items-center justify-end gap-3 px-7 py-4 border-t border-outline-variant/20 bg-surface-container-lowest shrink-0">
+          {/* Download PDF -> window.print() (browser print-to-PDF; no backend) */}
           <button
             onClick={() => window.print()}
             className="flex items-center gap-2 text-sm font-bold text-on-surface border border-outline-variant/30 rounded-xl px-5 py-2.5 hover:bg-surface-container-low transition-colors"

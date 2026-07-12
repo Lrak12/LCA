@@ -1,3 +1,7 @@
+// User Support Management (sysadmin): support requests + admin responses.
+// Backend chain (frontend api/admin.js -> routes/admin.routes.js):
+//   list:    GET /admin/support-requests      -> controllers/userSupport.controller.js > getRequests (~line 6)       -> services/userSupport.service.js > listSupportRequests (~line 82)
+//   respond: PUT /admin/support-requests/:id  -> controllers/userSupport.controller.js > respondToRequest (~line 25) -> services/userSupport.service.js > respondToRequest (~line 349)
 import { useState, useEffect, useCallback, useRef } from "react";
 import AdminLayout from "../../components/AdminLayout.jsx";
 import { fetchSupportRequests, respondToSupportRequest } from "../../api/admin.js";
@@ -5,8 +9,9 @@ import { useSchoolYear } from "../../hooks/useSchoolYear.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 const PAGE_SIZE = 8;
-const STATUS_OPTIONS = ["Open", "In Progress", "Resolved"];
+const STATUS_OPTIONS = ["Open", "In Progress", "Resolved"]; // choices in the detail-panel Status dropdown
 
+// top summary cards; `key` indexes into the API's stats object
 const STAT_CARDS = [
   { key: "total",         label: "Total Requests", icon: "forum",        iconBg: "bg-blue-100",   iconColor: "text-blue-600"   },
   { key: "passwordReset", label: "Password Reset", icon: "lock_reset",   iconBg: "bg-amber-100",  iconColor: "text-amber-600"  },
@@ -15,6 +20,7 @@ const STAT_CARDS = [
   { key: "resolved",      label: "Resolved",       icon: "task_alt",     iconBg: "bg-green-100",  iconColor: "text-green-600"  },
 ];
 
+// request category -> icon + pill colour
 const CATEGORY_BADGE = {
   "Password Reset":   { icon: "lock_reset",   cls: "bg-amber-100 text-amber-700"  },
   "Technical Issue":  { icon: "build",        cls: "bg-teal-100 text-teal-700"    },
@@ -23,16 +29,19 @@ const CATEGORY_BADGE = {
   "General Inquiry":  { icon: "help",         cls: "bg-orange-100 text-orange-700"},
 };
 
+// status -> pill colour
 const STATUS_BADGE = {
   "Open":        "bg-amber-100 text-amber-700",
   "In Progress": "bg-purple-100 text-purple-700",
   "Resolved":    "bg-green-100 text-green-700",
 };
 
+// role value -> display label (teacher shows as "Supervisor")
 const ROLE_LABEL = {
   administrator: "Administrator", principal: "Principal",
   teacher: "Supervisor", student: "Student", parent: "Parent",
 };
+// role value -> pill colour
 const ROLE_BADGE = {
   administrator: "bg-purple-100 text-purple-700",
   principal:     "bg-blue-100 text-blue-700",
@@ -45,27 +54,31 @@ const Skeleton = ({ className }) => (
   <div className={`animate-pulse bg-surface-container-high rounded-lg ${className}`} />
 );
 
+// "Month Day, Year" date, or em dash when missing
 const fmtDate = (iso) => {
   if (!iso) return "—";
   const d = new Date(iso);
   if (isNaN(d)) return "—";
   return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 };
+// "HH:MM AM/PM" time shown under the date
 const fmtTime = (iso) => {
   if (!iso) return "";
   const d = new Date(iso);
   return isNaN(d) ? "" : d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
 };
 
+// Compact, windowed page list with ellipsis: 1 … 4 5 [6] 7 8 … 26
 const buildPageList = (current, totalPages) => {
   if (totalPages <= 6) return Array.from({ length: totalPages }, (_, i) => i + 1);
-  const pages = new Set([1, totalPages, current, current - 1, current + 1]);
+  const pages = new Set([1, totalPages, current, current - 1, current + 1]); // first/last + window around current
   const sorted = [...pages].filter((p) => p >= 1 && p <= totalPages).sort((a, b) => a - b);
   const out = []; let prev = 0;
-  for (const p of sorted) { if (p - prev > 1) out.push("…"); out.push(p); prev = p; }
+  for (const p of sorted) { if (p - prev > 1) out.push("…"); out.push(p); prev = p; } // gaps -> ellipsis
   return out;
 };
 
+// category pill: coloured icon + label (neutral fallback for unknown categories)
 const CategoryBadge = ({ category }) => {
   const c = CATEGORY_BADGE[category] ?? { icon: "label", cls: "bg-slate-100 text-slate-600" };
   return (
@@ -78,21 +91,21 @@ const CategoryBadge = ({ category }) => {
 export default function UserSupport() {
   const schoolYearLabel = useSchoolYear();
 
-  const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch]   = useState("");
-  const [category, setCategory] = useState("all");
-  const [status, setStatus]     = useState("all");
+  const [searchInput, setSearchInput] = useState("");  // raw search text (debounced into `search`)
+  const [search, setSearch]   = useState("");           // debounced term sent to the API
+  const [category, setCategory] = useState("all");      // category filter
+  const [status, setStatus]     = useState("all");      // status filter
   const [page, setPage]         = useState(1);
 
-  const [data, setData]       = useState(null);
+  const [data, setData]       = useState(null);         // API response { stats, requests, filters, total, totalPages }
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState("");
-  const [banner, setBanner]   = useState("");
+  const [banner, setBanner]   = useState("");           // success toast text
 
-  const [selected, setSelected] = useState(null);
-  const [resetChoice, setResetChoice] = useState("link");
-  const [responseText, setResponseText] = useState("");
-  const [statusValue, setStatusValue]   = useState("Open");
+  const [selected, setSelected] = useState(null);       // request open in the detail panel
+  const [resetChoice, setResetChoice] = useState("link"); // password-assist option for reset tickets
+  const [responseText, setResponseText] = useState(""); // editable admin response
+  const [statusValue, setStatusValue]   = useState("Open"); // editable status
   const [sending, setSending] = useState(false);
 
   // Select a request and seed the editable response/status fields from it
@@ -103,6 +116,7 @@ export default function UserSupport() {
     setStatusValue(r?.status ?? "Open");
   };
 
+  // debounce the search box so we don't fire a request per keystroke
   const debounceRef = useRef(null);
   useEffect(() => {
     clearTimeout(debounceRef.current);
@@ -110,10 +124,11 @@ export default function UserSupport() {
     return () => clearTimeout(debounceRef.current);
   }, [searchInput]);
 
+  // fetch the current page of support requests; re-runs on filter/page change
   const load = useCallback(() => {
     setLoading(true);
     setError("");
-    fetchSupportRequests({ search, category, status, page, pageSize: PAGE_SIZE })
+    fetchSupportRequests({ search, category, status, page, pageSize: PAGE_SIZE }) // GET /admin/support-requests
       .then((res) => setData(res.data))
       .catch((err) => setError(err.message ?? "Failed to load support requests."))
       .finally(() => setLoading(false));
@@ -121,18 +136,18 @@ export default function UserSupport() {
 
   useEffect(() => { load(); }, [load]);
 
-  useEffect(() => {
+  useEffect(() => {                                     // auto-dismiss the success banner
     if (!banner) return;
     const t = setTimeout(() => setBanner(""), 4000);
     return () => clearTimeout(t);
   }, [banner]);
 
-  const stats = data?.stats ?? {};
-  const requests = data?.requests ?? [];
-  const opts = data?.filters ?? { categories: [], statuses: [] };
+  const stats = data?.stats ?? {};                     // top stat-card counts
+  const requests = data?.requests ?? [];               // this page's rows
+  const opts = data?.filters ?? { categories: [], statuses: [] }; // dropdown options from the data
   const total = data?.total ?? 0;
   const totalPages = data?.totalPages ?? 1;
-  const rangeStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const rangeStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1; // "Showing X to Y" numbers
   const rangeEnd   = Math.min(page * PAGE_SIZE, total);
 
   // Single save: applies status + response (+ copies the reset link if chosen) and
@@ -210,8 +225,9 @@ export default function UserSupport() {
                 <p className="text-sm text-on-surface-variant">View and manage all support requests in one place.</p>
               </div>
               <div className="flex items-center gap-2">
+                {/* search box -> setSearchInput (debounced into `search` -> load()) */}
                 <div className="relative">
-                  <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-outline text-lg">search</span>
+                  <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1 text-outline text-lg">search</span>
                   <input
                     value={searchInput}
                     onChange={(e) => setSearchInput(e.target.value)}
@@ -219,19 +235,21 @@ export default function UserSupport() {
                     className="w-48 pl-9 pr-3 py-2 bg-surface-container-high border-none rounded-lg text-sm text-on-surface placeholder:text-outline focus:ring-2 focus:ring-primary/20 focus:outline-none"
                   />
                 </div>
+                {/* category filter -> setCategory + setPage(1) -> load(); options from `opts.categories` */}
                 <div className="relative">
                   <select value={category} onChange={(e) => { setCategory(e.target.value); setPage(1); }} className={selectCls}>
                     <option value="all">All Categories</option>
                     {opts.categories.map((c) => <option key={c} value={c}>{c}</option>)}
                   </select>
-                  <span className="material-symbols-outlined absolute right-1.5 top-1/2 -translate-y-1/2 text-outline text-base pointer-events-none">expand_more</span>
+                  <span className="material-symbols-outlined absolute right-1.5 top-1/2 -translate-y-1 text-outline text-base pointer-events-none">expand_more</span>
                 </div>
+                {/* status filter -> setStatus + setPage(1) -> load(); options from `opts.statuses` */}
                 <div className="relative">
                   <select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} className={selectCls}>
                     <option value="all">All Status</option>
                     {opts.statuses.map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
-                  <span className="material-symbols-outlined absolute right-1.5 top-1/2 -translate-y-1/2 text-outline text-base pointer-events-none">expand_more</span>
+                  <span className="material-symbols-outlined absolute right-1.5 top-1/2 -translate-y-1 text-outline text-base pointer-events-none">expand_more</span>
                 </div>
               </div>
             </div>
@@ -256,6 +274,7 @@ export default function UserSupport() {
                   ) : requests.length === 0 ? (
                     <tr><td colSpan={6} className="px-4 py-16 text-center text-sm text-on-surface-variant">No support requests match your filters.</td></tr>
                   ) : (
+                    // `requests` -> one row each; row onClick -> selectRequest(r) opens the detail panel on the right
                     requests.map((r) => (
                       <tr
                         key={r.sr_id}
@@ -290,6 +309,7 @@ export default function UserSupport() {
               <p className="text-sm text-on-surface-variant">
                 {total === 0 ? "No requests" : `Showing ${rangeStart} to ${rangeEnd} of ${total} requests`}
               </p>
+              {/* pager -> setPage(prev/exact/next); page change re-runs load() */}
               <div className="flex items-center gap-1">
                 <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}
                   className="w-8 h-8 flex items-center justify-center rounded-lg border border-outline-variant/30 text-on-surface-variant hover:bg-surface-container disabled:opacity-40 disabled:cursor-not-allowed">
@@ -361,7 +381,7 @@ export default function UserSupport() {
                   </div>
                 </div>
 
-                {/* Administrator Response */}
+                {/* Administrator Response -> setResponseText; sent to the user by onUpdateRequest() */}
                 <div className="mb-4">
                   <p className="text-[10px] uppercase tracking-wider font-bold text-on-surface-variant mb-1">Administrator Response</p>
                   <textarea
@@ -374,7 +394,7 @@ export default function UserSupport() {
                   <p className="text-[11px] text-on-surface-variant mt-1">The user is notified only when you write a response.</p>
                 </div>
 
-                {/* Status */}
+                {/* Status -> setStatusValue; saved by onUpdateRequest() */}
                 <div className="mb-4">
                   <p className="text-[10px] uppercase tracking-wider font-bold text-on-surface-variant mb-1">Status</p>
                   <select
@@ -398,6 +418,7 @@ export default function UserSupport() {
                           <span className="block text-[11px] text-on-surface-variant">Coming soon.</span>
                         </span>
                       </label>
+                      {/* -> setResetChoice("link"); onUpdateRequest() copies the reset link when chosen */}
                       <label className={`flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer ${resetChoice === "link" ? "border-primary bg-primary/5" : "border-outline-variant/40"}`}>
                         <input type="radio" name="reset" checked={resetChoice === "link"} onChange={() => setResetChoice("link")} className="mt-0.5" />
                         <span>
@@ -409,7 +430,7 @@ export default function UserSupport() {
                   </div>
                 )}
 
-                {/* Footer */}
+                {/* Footer: Cancel -> setSelected(null); Update Request -> onUpdateRequest() (respondToSupportRequest + reload) */}
                 <div className="flex justify-end gap-3">
                   <button onClick={() => setSelected(null)} className="px-4 py-2.5 rounded-lg text-sm font-bold text-on-surface-variant hover:bg-surface-container">Cancel</button>
                   <button onClick={onUpdateRequest} disabled={sending}

@@ -1,3 +1,11 @@
+// System Configuration (sysadmin): two tabs - School Year Management (list/create/edit/
+// activate school years) and User Access Management (list users + toggle active status).
+// Backend chain (frontend api/admin.js -> routes/admin.routes.js, mounted at /admin):
+//   school years list: GET  /admin/school-years              -> controllers/schoolYear.controller.js > list (~line 6)     -> services/schoolYear.service.js > listSchoolYears (~line 3)
+//   create:            POST /admin/school-years              -> controllers/schoolYear.controller.js > create (~line 11)  -> services/schoolYear.service.js > createSchoolYear (~line 9)
+//   edit:              PUT  /admin/school-years/:id          -> controllers/schoolYear.controller.js > update (~line 23)  -> services/schoolYear.service.js > updateSchoolYear (~line 24)
+//   activate:          POST /admin/school-years/:id/activate -> controllers/schoolYear.controller.js > activate (~line 36) -> services/schoolYear.service.js > activateSchoolYear (~line 39)
+//   user access:       GET  /admin/users + PATCH /admin/users/:id/status -> controllers/adminUsers.controller.js > getUsers (~line 6) / updateUserStatus (~line 12) -> services/adminUsers.service.js > listUsers (~line 88) / setUserActive (~line 181)
 import { useState, useEffect, useRef } from "react";
 import AdminLayout from "../../components/AdminLayout.jsx";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
@@ -9,11 +17,13 @@ import {
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 const USER_PAGE_SIZE = 8;
 
+// the page's two tabs
 const TABS = [
   { key: "school", label: "School Year Management", icon: "calendar_month" },
   { key: "access", label: "User Access Management",  icon: "manage_accounts" },
 ];
 
+// role value -> label + pill colour (teacher shows as "Supervisor")
 const ROLE_BADGE = {
   principal:     { label: "Principal",     cls: "bg-orange-100 text-orange-700" },
   administrator: { label: "Administrator", cls: "bg-purple-100 text-purple-700" },
@@ -29,18 +39,20 @@ const ROLE_FILTERS = [
   { value: "student",       label: "Student"      },
 ];
 
+// "Month Day, Year" for display; falls back to the raw string if unparseable
 const fmtDate = (iso) => {
   if (!iso) return "—";
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 };
+// last-login timestamp for the access table, or "Never" if none/invalid
 const fmtDateTime = (iso) => {
   if (!iso) return "Never";
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? "Never" : d.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
 };
-const toInputDate = (iso) => (iso ? new Date(iso).toISOString().slice(0, 10) : "");
-const syLabel = (label) => (label ? (/^sy\s/i.test(label) ? label : `SY ${label}`) : "—");
+const toInputDate = (iso) => (iso ? new Date(iso).toISOString().slice(0, 10) : ""); // ISO -> yyyy-mm-dd for <input type=date>
+const syLabel = (label) => (label ? (/^sy\s/i.test(label) ? label : `SY ${label}`) : "—"); // ensure a leading "SY " prefix
 
 const Skeleton = ({ className }) => <div className={`animate-pulse bg-surface-container-high rounded-lg ${className}`} />;
 
@@ -48,15 +60,16 @@ const inputCls = "w-full bg-white border border-outline-variant/40 rounded-lg px
 const labelCls = "block text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1.5";
 
 // ── Edit School Year modal ────────────────────────────────────────────────────
+// Small modal to rename a school year or adjust its start/end dates.
 function EditSchoolYearModal({ sy, onClose, onSaved }) {
-  const [form, setForm] = useState({
+  const [form, setForm] = useState({                 // seeded from the row being edited
     year_label: sy.year_label ?? "",
-    start_date: toInputDate(sy.start_date),
+    start_date: toInputDate(sy.start_date),          // ISO -> yyyy-mm-dd for the date inputs
     end_date:   toInputDate(sy.end_date),
   });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState("");
-  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value })); // curried onChange per field
 
   const submit = async (e) => {
     e.preventDefault();
@@ -64,8 +77,8 @@ function EditSchoolYearModal({ sy, onClose, onSaved }) {
     if (!form.year_label.trim() || !form.start_date || !form.end_date) return setError("All fields are required.");
     setSaving(true);
     try {
-      await updateSchoolYear(sy.sy_id, form);
-      onSaved();
+      await updateSchoolYear(sy.sy_id, form);        // PATCH /admin/school-years/:id
+      onSaved();                                     // parent closes + reloads
     } catch (err) {
       setError(err.response?.data?.message ?? err.message ?? "Failed to update.");
       setSaving(false);
@@ -102,6 +115,7 @@ function EditSchoolYearModal({ sy, onClose, onSaved }) {
             </div>
           </div>
         </form>
+        {/* Cancel -> onClose; Save Changes -> submit() (updateSchoolYear, then onSaved) */}
         <div className="flex justify-end gap-3 px-6 py-4 border-t border-outline-variant/20">
           <button onClick={onClose} className="px-5 py-2.5 rounded-lg text-sm font-bold text-on-surface-variant border border-outline-variant/40 hover:bg-surface-container">Cancel</button>
           <button onClick={submit} disabled={saving} className="px-5 py-2.5 rounded-lg text-sm font-bold bg-primary text-white shadow-sm hover:shadow-lg disabled:opacity-60">
@@ -114,23 +128,25 @@ function EditSchoolYearModal({ sy, onClose, onSaved }) {
 }
 
 // ── School Year Management tab ─────────────────────────────────────────────────
+// Lists all school years, lets the admin create one, edit one, or mark one active.
 function SchoolYearTab({ setBanner }) {
-  const [years, setYears]     = useState([]);
+  const [years, setYears]     = useState([]);        // all school year records
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState("");
-  const [reloadKey, setReloadKey] = useState(0);
-  const [editing, setEditing] = useState(null);
-  const [form, setForm]       = useState({ year_label: "", start_date: "", end_date: "" });
+  const [reloadKey, setReloadKey] = useState(0);     // bump to refetch the list
+  const [editing, setEditing] = useState(null);      // school year open in the edit modal
+  const [form, setForm]       = useState({ year_label: "", start_date: "", end_date: "" }); // create form
   const [creating, setCreating] = useState(false);
-  const [busyId, setBusyId]   = useState(null);
+  const [busyId, setBusyId]   = useState(null);      // sy_id currently being activated
 
   const reload = () => setReloadKey((k) => k + 1);
 
+  // (re)load the school year list whenever reloadKey changes
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
-        const res = await fetchSchoolYears();
+        const res = await fetchSchoolYears();          // GET /admin/school-years
         setYears(res.data ?? []);
       } catch (err) {
         setError(err.response?.data?.message ?? err.message);
@@ -141,17 +157,18 @@ function SchoolYearTab({ setBanner }) {
     load();
   }, [reloadKey]);
 
-  const active = years.find((y) => y.is_active) ?? null;
-  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const active = years.find((y) => y.is_active) ?? null; // the one active year (at most one)
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value })); // curried onChange per create field
 
+  // create a new school year from the form
   const onCreate = async (e) => {
     e.preventDefault();
     setError("");
     if (!form.year_label.trim() || !form.start_date || !form.end_date) { setError("Fill in all fields to create a school year."); return; }
     setCreating(true);
     try {
-      await createSchoolYear(form);
-      setForm({ year_label: "", start_date: "", end_date: "" });
+      await createSchoolYear(form);                    // POST /admin/school-years
+      setForm({ year_label: "", start_date: "", end_date: "" }); // clear the form
       setBanner("School year created.");
       reload();
     } catch (err) {
@@ -161,10 +178,11 @@ function SchoolYearTab({ setBanner }) {
     }
   };
 
+  // mark one school year active (the backend deactivates the others)
   const onActivate = async (sy) => {
     setBusyId(sy.sy_id);
     try {
-      await activateSchoolYear(sy.sy_id);
+      await activateSchoolYear(sy.sy_id);              // PATCH /admin/school-years/:id/activate
       setBanner(`${syLabel(sy.year_label)} is now active.`);
       reload();
     } catch (err) {
@@ -194,6 +212,7 @@ function SchoolYearTab({ setBanner }) {
               {active && <span className="text-[10px] font-extrabold tracking-widest uppercase bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Active</span>}
             </h3>
           </div>
+          {/* Edit Active School Year -> setEditing(active) opens <EditSchoolYearModal> */}
           {active && (
             <button onClick={() => setEditing(active)} className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-outline-variant/40 text-sm font-bold text-on-surface hover:bg-surface-container-low">
               <span className="material-symbols-outlined text-base">edit</span> Edit Active School Year
@@ -229,6 +248,7 @@ function SchoolYearTab({ setBanner }) {
             <p className="text-sm text-on-surface-variant">Create a new school year for future academic use.</p>
           </div>
         </div>
+        {/* create form: inputs -> set(field); submit -> onCreate() (createSchoolYear + reload) */}
         <form onSubmit={onCreate} className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
           <div><label className={labelCls}>School Year Label</label><input value={form.year_label} onChange={set("year_label")} placeholder="e.g., SY 2026-2027" className={inputCls} /></div>
           <div><label className={labelCls}>Start Date</label><input type="date" value={form.start_date} onChange={set("start_date")} className={inputCls} /></div>
@@ -281,11 +301,13 @@ function SchoolYearTab({ setBanner }) {
                             <span className="material-symbols-outlined text-sm">check</span> Current Active
                           </span>
                         ) : (
+                          /* Set as Active -> onActivate(sy) (activateSchoolYear + reload) */
                           <button onClick={() => onActivate(sy)} disabled={busyId === sy.sy_id}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-outline-variant/40 text-on-surface text-xs font-bold hover:bg-surface-container-low disabled:opacity-60">
                             <span className="material-symbols-outlined text-sm">star</span> Set as Active
                           </button>
                         )}
+                        {/* Edit -> setEditing(sy) opens <EditSchoolYearModal> */}
                         <button onClick={() => setEditing(sy)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-outline-variant/40 text-on-surface text-xs font-bold hover:bg-surface-container-low">
                           <span className="material-symbols-outlined text-sm">edit</span> Edit
                         </button>
@@ -302,6 +324,7 @@ function SchoolYearTab({ setBanner }) {
         </div>
       </div>
 
+      {/* `editing` (set by Edit buttons) -> EditSchoolYearModal; onSaved reloads the list */}
       {editing && (
         <EditSchoolYearModal
           sy={editing}
@@ -314,19 +337,22 @@ function SchoolYearTab({ setBanner }) {
 }
 
 // ── User Access Management tab ─────────────────────────────────────────────────
+// Reuses the /admin/users list to toggle each user's active status (per row, or via a
+// pending dropdown edit + Save).
 function UserAccessTab({ setBanner }) {
-  const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch] = useState("");
-  const [role, setRole]     = useState("all");
-  const [status, setStatus] = useState("all");
+  const [searchInput, setSearchInput] = useState(""); // raw search text (debounced into `search`)
+  const [search, setSearch] = useState("");            // debounced term sent to the API
+  const [role, setRole]     = useState("all");         // role filter
+  const [status, setStatus] = useState("all");         // active/inactive filter
   const [page, setPage]     = useState(1);
-  const [data, setData]     = useState(null);
+  const [data, setData]     = useState(null);          // API response { users, stats, total, totalPages }
   const [loading, setLoading] = useState(true);
   const [error, setError]   = useState("");
-  const [statusEdits, setStatusEdits] = useState({}); // user_id -> "active"|"inactive"
-  const [busyId, setBusyId] = useState(null);
-  const [reloadKey, setReloadKey] = useState(0);
+  const [statusEdits, setStatusEdits] = useState({}); // user_id -> "active"|"inactive" (unsaved dropdown edits)
+  const [busyId, setBusyId] = useState(null);          // row currently saving
+  const [reloadKey, setReloadKey] = useState(0);       // bump to refetch
 
+  // debounce the search box
   const debounceRef = useRef(null);
   useEffect(() => {
     clearTimeout(debounceRef.current);
@@ -334,13 +360,14 @@ function UserAccessTab({ setBanner }) {
     return () => clearTimeout(debounceRef.current);
   }, [searchInput]);
 
+  // (re)load the current page of users; clears any pending edits on fresh data
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
-        const res = await fetchUsers({ search, role, status, page, pageSize: USER_PAGE_SIZE });
+        const res = await fetchUsers({ search, role, status, page, pageSize: USER_PAGE_SIZE }); // GET /admin/users
         setData(res.data);
-        setStatusEdits({});
+        setStatusEdits({});                            // discard unsaved dropdown edits after a reload
       } catch (err) {
         setError(err.response?.data?.message ?? err.message);
       } finally {
@@ -351,11 +378,11 @@ function UserAccessTab({ setBanner }) {
   }, [search, role, status, page, reloadKey]);
 
   const reload = () => setReloadKey((k) => k + 1);
-  const users = data?.users ?? [];
+  const users = data?.users ?? [];                     // this page's rows
   const stats = data?.stats ?? {};
   const totalPages = data?.totalPages ?? 1;
   const total = data?.total ?? 0;
-  const totalRoles = ["administrators", "teachers", "students", "principals"].filter((k) => (stats[k] ?? 0) > 0).length;
+  const totalRoles = ["administrators", "teachers", "students", "principals"].filter((k) => (stats[k] ?? 0) > 0).length; // # of roles that have any users
 
   const statCards = [
     { label: "Total Users",    value: stats.totalUsers,    icon: "groups",        bg: "bg-blue-100",   color: "text-blue-600",  sub: "All system users" },
@@ -364,13 +391,14 @@ function UserAccessTab({ setBanner }) {
     { label: "Total Roles",    value: totalRoles,          icon: "shield_person", bg: "bg-purple-100", color: "text-purple-600",sub: "System roles" },
   ];
 
-  const rowStatus = (u) => statusEdits[u.user_id] ?? (u.is_active ? "active" : "inactive");
-  const dirty = (u) => rowStatus(u) !== (u.is_active ? "active" : "inactive");
+  const rowStatus = (u) => statusEdits[u.user_id] ?? (u.is_active ? "active" : "inactive"); // pending edit, else saved value
+  const dirty = (u) => rowStatus(u) !== (u.is_active ? "active" : "inactive");               // dropdown differs from saved -> enable Save
 
+  // commit a row's pending dropdown status via Save Changes
   const saveStatus = async (u) => {
     setBusyId(u.user_id);
     try {
-      await setUserActive(u.user_id, rowStatus(u) === "active");
+      await setUserActive(u.user_id, rowStatus(u) === "active"); // PATCH /admin/users/:id/status
       setBanner(`${u.name} updated.`);
       reload();
     } catch (err) {
@@ -380,6 +408,7 @@ function UserAccessTab({ setBanner }) {
     }
   };
 
+  // one-click flip of a user's active flag (the Deactivate/Activate button)
   const toggleActive = async (u) => {
     setBusyId(u.user_id);
     try {
@@ -393,7 +422,7 @@ function UserAccessTab({ setBanner }) {
     }
   };
 
-  const clearFilters = () => { setSearchInput(""); setSearch(""); setRole("all"); setStatus("all"); setPage(1); };
+  const clearFilters = () => { setSearchInput(""); setSearch(""); setRole("all"); setStatus("all"); setPage(1); }; // reset all filters
 
   return (
     <div className="space-y-6">
@@ -419,7 +448,7 @@ function UserAccessTab({ setBanner }) {
         ))}
       </div>
 
-      {/* Filters */}
+      {/* Filters: search -> setSearchInput; role/status -> setRole/setStatus (+ page 1); Clear -> clearFilters() */}
       <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-4 flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[220px]">
           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-lg">search</span>
@@ -464,6 +493,7 @@ function UserAccessTab({ setBanner }) {
               ) : users.length === 0 ? (
                 <tr><td colSpan={6} className="px-6 py-10 text-center text-sm text-on-surface-variant">No users match the current filters.</td></tr>
               ) : (
+                // one row per user: role badge, editable status dropdown, and action buttons
                 users.map((u) => {
                   const badge = ROLE_BADGE[u.role] ?? { label: u.role, cls: "bg-slate-100 text-slate-600" };
                   return (
@@ -473,6 +503,7 @@ function UserAccessTab({ setBanner }) {
                       <td className="px-6 py-4">
                         <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${badge.cls}`}>{badge.label}</span>
                       </td>
+                      {/* status dropdown -> setStatusEdits (pending edit for this row) */}
                       <td className="px-6 py-4">
                         <select
                           value={rowStatus(u)}
@@ -486,6 +517,7 @@ function UserAccessTab({ setBanner }) {
                       <td className="px-6 py-4 text-xs text-on-surface-variant whitespace-nowrap">{fmtDateTime(u.last_login)}</td>
                       <td className="px-6 py-4">
                         <div className="flex items-center justify-end gap-2">
+                          {/* Save Changes -> saveStatus(u) commits the dropdown edit; enabled only when dirty(u) */}
                           <button
                             onClick={() => saveStatus(u)}
                             disabled={busyId === u.user_id || !dirty(u)}
@@ -493,6 +525,7 @@ function UserAccessTab({ setBanner }) {
                           >
                             <span className="material-symbols-outlined text-sm">save</span> Save Changes
                           </button>
+                          {/* Deactivate/Activate -> toggleActive(u) one-click flip */}
                           <button
                             onClick={() => toggleActive(u)}
                             disabled={busyId === u.user_id}
@@ -514,6 +547,7 @@ function UserAccessTab({ setBanner }) {
           <p className="text-sm text-on-surface-variant">
             {total === 0 ? "No users" : `Showing ${(page - 1) * USER_PAGE_SIZE + 1} to ${Math.min(page * USER_PAGE_SIZE, total)} of ${total} users`}
           </p>
+          {/* pager -> setPage; page change re-runs the user-access load() */}
           <div className="flex items-center gap-1">
             <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} className="w-9 h-9 flex items-center justify-center rounded-lg border border-outline-variant/30 text-on-surface-variant hover:bg-surface-container disabled:opacity-40">
               <span className="material-symbols-outlined text-lg">chevron_left</span>
@@ -532,12 +566,13 @@ function UserAccessTab({ setBanner }) {
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
+// Shell: header + banner + tab switcher; the two tabs own their own data.
 export default function SystemConfiguration() {
   const schoolYearLabel = useSchoolYear();
-  const [tab, setTab] = useState("school");
-  const [banner, setBanner] = useState("");
+  const [tab, setTab] = useState("school");   // active tab
+  const [banner, setBanner] = useState("");   // shared success toast (set by either tab)
 
-  useEffect(() => {
+  useEffect(() => {                            // auto-dismiss the success banner
     if (!banner) return;
     const t = setTimeout(() => setBanner(""), 4000);
     return () => clearTimeout(t);
@@ -557,7 +592,7 @@ export default function SystemConfiguration() {
           </div>
         )}
 
-        {/* Tabs */}
+        {/* Tabs -> setTab(key) switches between <SchoolYearTab> and <UserAccessTab> */}
         <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm px-4 mb-6">
           <div className="flex items-center gap-6">
             {TABS.map((t) => {
@@ -574,6 +609,7 @@ export default function SystemConfiguration() {
           </div>
         </div>
 
+        {/* render the active tab (each fetches its own data) */}
         {tab === "school" ? <SchoolYearTab setBanner={setBanner} /> : <UserAccessTab setBanner={setBanner} />}
       </main>
     </AdminLayout>

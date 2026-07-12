@@ -1,3 +1,5 @@
+// Principal home dashboard: 4 stat cards, quick-access shortcuts, and recent
+// announcements. Data from fetchDashboardStats (dashboard.service.getDashboardStats).
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchDashboardStats } from "../api/dashboard.js";
@@ -83,7 +85,7 @@ export default function PrincipalDashboard() {
   const today    = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
   const schoolYearLabel = stats?.schoolYear?.year_label ?? "—";
-  const notifications   = stats?.recentAnnouncements ?? [];
+  const notifications   = stats?.recentAnnouncements ?? [];   // shown in the notifications panel
 
   return (
     <PrincipalLayout schoolYearLabel={loading ? "..." : schoolYearLabel}>

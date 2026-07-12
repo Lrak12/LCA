@@ -1,6 +1,13 @@
+// PACE Progress Track report (principal): per-student PACE ranges + counts per subject
+// for the quarter. Exports PaceProgressContent (embedded in SupervisorReportModal) + a
+// standalone modal.
+// Backend chain (frontend api/reports.js fetchPaceReport -> routes/reports.routes.js):
+//   GET /reports/teacher/:id/pace -> controllers/reports.controller.js > getTeacherPaceReport (~line 30)
+//                                 -> services/reports.service.js > getTeacherPaceReport (~line 878)
 import { useState, useEffect } from "react";
 import { fetchPaceReport } from "../../api/reports.js";
 
+// per-PACE status -> text colour (completed / ongoing / not started)
 const STATUS_COLOR = {
   completed:    "text-green-600",
   ongoing:      "text-orange-500",
@@ -33,14 +40,16 @@ const SkeletonRow = ({ cols }) => (
   </tr>
 );
 
+// Embeddable report body (used standalone below and inside SupervisorReportModal)
 export function PaceProgressContent({ teacher, quarter }) {
   const [report,  setReport]  = useState(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState("");
-  const [search,  setSearch]  = useState("");
+  const [search,  setSearch]  = useState("");           // student name filter
 
   const teacherName = teacher ? `${teacher.firstName} ${teacher.lastName}` : "—";
 
+  // fetch this teacher's PACE progress report for the quarter
   useEffect(() => {
     if (!teacher?.teacher_id) return;
     setLoading(true);
@@ -50,8 +59,8 @@ export function PaceProgressContent({ teacher, quarter }) {
       .finally(() => setLoading(false));
   }, [teacher?.teacher_id, quarter]);
 
-  const subjects = report?.subjects ?? [];
-  const students = (report?.students ?? []).filter((s) =>
+  const subjects = report?.subjects ?? [];              // subject column groups
+  const students = (report?.students ?? []).filter((s) => // rows filtered by search
     s.name.toLowerCase().includes(search.toLowerCase())
   );
   const totalCols = 1 + subjects.length * 2 + 1; // name + (range+count)*subjects + total
@@ -82,6 +91,7 @@ export function PaceProgressContent({ teacher, quarter }) {
           </div>
           <div className="relative shrink-0">
             <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant" style={{ fontSize: 15 }}>search</span>
+            {/* search -> setSearch filters the `students` rows client-side */}
             <input
               type="text"
               placeholder="Search student..."
@@ -145,6 +155,7 @@ export function PaceProgressContent({ teacher, quarter }) {
   );
 }
 
+// Standalone modal wrapper around the content body
 export default function PaceProgressViewModal({ teacher, quarter, onClose }) {
   const teacherName = teacher ? `${teacher.firstName} ${teacher.lastName}` : "—";
   return (

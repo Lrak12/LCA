@@ -1,3 +1,6 @@
+// Security & Audit Logs (principal): security overview cards (last login, active sessions,
+// failed attempts). NOTE: currently backed by mock data (see the TODO in load()) - no real
+// API yet.
 import { useState, useEffect } from "react";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
@@ -6,6 +9,7 @@ const Skeleton = ({ className }) => (
   <div className={`animate-pulse bg-surface-container-high rounded-xl ${className}`} />
 );
 
+// one security overview stat card
 const StatCard = ({ icon, iconBg, iconColor, badge, badgeColor, label, value, sub }) => (
   <div className="flex-1 min-w-[180px] bg-white rounded-2xl p-6 border border-outline-variant/20 shadow-sm">
     <div className="flex items-center justify-between mb-4">
@@ -34,9 +38,10 @@ const StatCard = ({ icon, iconBg, iconColor, badge, badgeColor, label, value, su
 
 export default function SecurityAuditLogs({ onRefresh = () => {} }) {
   const [loading, setLoading]   = useState(true);
-  const [overview, setOverview] = useState(null);
+  const [overview, setOverview] = useState(null);  // security overview data (mock for now)
   const [error, setError]       = useState("");
 
+  // load the overview; currently fakes a network delay + returns mock data
   const load = () => {
     setLoading(true);
     setError("");
@@ -80,6 +85,7 @@ export default function SecurityAuditLogs({ onRefresh = () => {} }) {
             Monitor system access and track administrative changes.
           </p>
         </div>
+        {/* Refresh Logs -> handleRefresh() (re-runs load() + fires onRefresh) */}
         <button
           onClick={handleRefresh}
           className="flex items-center gap-2 bg-primary text-white px-5 py-2.5 rounded-lg font-bold text-sm hover:opacity-90 transition-opacity shadow-sm"

@@ -1,4 +1,9 @@
-﻿import { useState, useEffect, useRef } from "react";
+﻿// Student Management (principal): list/search enrolled students, export to CSV, and
+// bulk-import students from a CSV file.
+// Backend chain (frontend api/student.js -> routes/student.routes.js):
+//   list:   GET  /students        -> controllers/student.controller.js > getAll (~line 5)          -> services/student.service.js > getAllStudents (~line 95)
+//   import: POST /students/import -> controllers/student.controller.js > importStudents (~line 108) -> services/student.service.js > importStudents (~line 1247)
+import { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import PrincipalLayout from "../../components/PrincipalLayout.jsx";
 import { fetchAllStudents, importStudentsCSV } from "../../api/student.js";
@@ -6,6 +11,7 @@ import { useSchoolYear } from "../../hooks/useSchoolYear.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
+// columns the import CSV must contain (also used to build the template + preview table)
 const REQUIRED_COLS = [
   "first_name", "last_name", "date_of_birth",
   "gender", "address", "contact_number", "enrollment_date", "grade_level",
@@ -16,6 +22,7 @@ const Skeleton = ({ className }) => (
 );
 
 // ─── CSV Helpers ──────────────────────────────────────────────────────────────
+// split one CSV line into fields, respecting quoted values that contain commas
 const parseCSVLine = (line) => {
   const result = [];
   let current  = "";
@@ -23,27 +30,29 @@ const parseCSVLine = (line) => {
   for (let i = 0; i < line.length; i++) {
     const ch = line[i];
     if (ch === '"') {
-      inQuotes = !inQuotes;
+      inQuotes = !inQuotes;                          // toggle in/out of a quoted field
     } else if (ch === "," && !inQuotes) {
-      result.push(current.trim());
+      result.push(current.trim());                   // comma outside quotes = field break
       current = "";
     } else {
       current += ch;
     }
   }
-  result.push(current.trim());
+  result.push(current.trim());                       // last field
   return result;
 };
 
+// parse full CSV text into { headers, rows[] } with each row keyed by header name
 const parseCSV = (text) => {
   const lines   = text.replace(/\r/g, "").trim().split("\n");
-  const headers = parseCSVLine(lines[0]).map((h) => h.toLowerCase().trim());
+  const headers = parseCSVLine(lines[0]).map((h) => h.toLowerCase().trim()); // first line = headers
   return { headers, rows: lines.slice(1).filter(Boolean).map((line) => {
     const vals = parseCSVLine(line);
-    return headers.reduce((obj, h, i) => { obj[h] = vals[i] ?? ""; return obj; }, {});
+    return headers.reduce((obj, h, i) => { obj[h] = vals[i] ?? ""; return obj; }, {}); // header -> value
   })};
 };
 
+// build + download a sample CSV so users know the exact expected format
 const downloadTemplate = () => {
   const sample = [
     "Juan", "dela Cruz", "2013-03-15",
@@ -57,12 +66,14 @@ const downloadTemplate = () => {
   URL.revokeObjectURL(url);
 };
 
+// "Mon D, YYYY" date for the table, or the raw string if unparseable
 const formatDate = (raw) => {
   if (!raw) return "—";
   const d = new Date(raw);
   return isNaN(d) ? raw : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 };
 
+// export the current student list to a CSV download (quotes values containing commas)
 const exportCSV = (students) => {
   const headers = ["student_id", "first_name", "last_name", "gender", "date_of_birth", "address", "contact_number", "enrollment_date"];
   const rows = students.map((s) =>
@@ -82,14 +93,16 @@ const exportCSV = (students) => {
 };
 
 // ─── Import Modal ─────────────────────────────────────────────────────────────
+// 4-step CSV import wizard: upload > preview rows > import > show result.
 function ImportModal({ onClose, onSuccess }) {
-  const [step,       setStep]       = useState("upload"); // upload | preview | importing | result
-  const [rows,       setRows]       = useState([]);
-  const [parseError, setParseError] = useState("");
-  const [result,     setResult]     = useState(null);
+  const [step,       setStep]       = useState("upload"); // which wizard step is showing
+  const [rows,       setRows]       = useState([]);       // parsed CSV rows awaiting import
+  const [parseError, setParseError] = useState("");       // client-side parse/validation error
+  const [result,     setResult]     = useState(null);     // backend import result { imported, failed[] }
   const [fileName,   setFileName]   = useState("");
-  const fileRef = useRef();
+  const fileRef = useRef();                               // hidden <input type=file> ref
 
+  // read + validate the chosen file, then move to the preview step
   const handleFile = (file) => {
     if (!file) return;
     if (!file.name.endsWith(".csv")) { setParseError("Please select a .csv file."); return; }
@@ -99,14 +112,14 @@ function ImportModal({ onClose, onSuccess }) {
     reader.onload = (e) => {
       try {
         const { headers, rows: parsed } = parseCSV(e.target.result);
-        const missing = REQUIRED_COLS.filter((c) => !headers.includes(c));
+        const missing = REQUIRED_COLS.filter((c) => !headers.includes(c)); // required columns absent?
         if (missing.length) {
           setParseError(`Missing required columns: ${missing.join(", ")}`);
           return;
         }
         if (parsed.length === 0) { setParseError("The CSV file has no data rows."); return; }
         setRows(parsed);
-        setStep("preview");
+        setStep("preview");                              // parsed OK -> preview
       } catch {
         setParseError("Failed to parse the CSV file. Check the format and try again.");
       }
@@ -114,26 +127,29 @@ function ImportModal({ onClose, onSuccess }) {
     reader.readAsText(file);
   };
 
+  // drag-and-drop onto the drop zone
   const handleDrop = (e) => {
     e.preventDefault();
     handleFile(e.dataTransfer.files[0]);
   };
 
+  // send the previewed rows to the backend and capture the result
   const confirmImport = async () => {
     setStep("importing");
     try {
-      const payload = rows.map((r) =>
+      const payload = rows.map((r) =>                    // keep only the required columns per row
         REQUIRED_COLS.reduce((obj, col) => { obj[col] = r[col]; return obj; }, {})
       );
-      const res = await importStudentsCSV(payload);
+      const res = await importStudentsCSV(payload);      // POST import to the backend
       setResult(res.data);
-      onSuccess();
+      onSuccess();                                       // parent reloads the student list
     } catch (err) {
-      setResult({ imported: 0, failed: [{ name: "All rows", reason: err.message }] });
+      setResult({ imported: 0, failed: [{ name: "All rows", reason: err.message }] }); // whole batch failed
     }
     setStep("result");
   };
 
+  // start over from the upload step
   const reset = () => { setStep("upload"); setRows([]); setParseError(""); setFileName(""); setResult(null); };
 
   return (
@@ -221,7 +237,7 @@ function ImportModal({ onClose, onSuccess }) {
                 </p>
               </div>
 
-              {/* Drop zone */}
+              {/* Drop zone: drop -> handleDrop(); click -> opens the hidden file input (both feed handleFile) */}
               <div
                 onDrop={handleDrop}
                 onDragOver={(e) => e.preventDefault()}
@@ -239,6 +255,7 @@ function ImportModal({ onClose, onSuccess }) {
                     or <span className="text-primary font-bold">browse files</span> — .csv only
                   </p>
                 </div>
+                {/* hidden file input: file picked -> handleFile() */}
                 <input
                   ref={fileRef}
                   type="file"
@@ -354,8 +371,9 @@ function ImportModal({ onClose, onSuccess }) {
           )}
         </div>
 
-        {/* Modal footer */}
+        {/* Modal footer — buttons vary by step */}
         <div className="flex items-center justify-between px-7 py-5 border-t border-outline-variant/20 shrink-0">
+          {/* left button: on result step -> reset() (start over); otherwise -> onClose */}
           <button
             onClick={step === "result" ? reset : onClose}
             className="text-sm font-bold text-on-surface-variant hover:text-on-surface transition-colors"
@@ -365,12 +383,14 @@ function ImportModal({ onClose, onSuccess }) {
           <div className="flex items-center gap-3">
             {step === "preview" && (
               <>
+                {/* Back -> reset() returns to upload step */}
                 <button
                   onClick={reset}
                   className="text-sm font-bold text-on-surface border border-outline-variant/30 rounded-lg px-4 py-2 hover:bg-surface-container-low transition-colors"
                 >
                   Back
                 </button>
+                {/* Confirm Import -> confirmImport() (importStudentsCSV, then onSuccess) */}
                 <button
                   onClick={confirmImport}
                   className="text-sm font-bold bg-primary text-white rounded-lg px-5 py-2 hover:bg-primary/90 transition-colors flex items-center gap-2 shadow-sm shadow-primary/20"
@@ -380,6 +400,7 @@ function ImportModal({ onClose, onSuccess }) {
                 </button>
               </>
             )}
+            {/* Done -> onClose closes the wizard */}
             {step === "result" && (
               <button
                 onClick={onClose}
@@ -401,26 +422,27 @@ export default function Students() {
   const location        = useLocation();
   const navigate        = useNavigate();
 
-  const [students, setStudents]     = useState([]);
+  const [students, setStudents]     = useState([]);   // full student list from the API
   const [loading,  setLoading]      = useState(true);
   const [error,    setError]        = useState("");
-  const [search,   setSearch]       = useState("");
+  const [search,   setSearch]       = useState("");   // name/ID search box
   const [page,     setPage]         = useState(1);
-  const [showModal, setShowModal]   = useState(false);
+  const [showModal, setShowModal]   = useState(false); // import wizard open?
   const PER_PAGE = 10;
 
-  // Auto-open modal when ?action=import
+  // Auto-open modal when ?action=import (e.g. arriving from a dashboard shortcut)
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     if (params.get("action") === "import") {
       setShowModal(true);
-      navigate("/admin/students", { replace: true });
+      navigate("/admin/students", { replace: true });  // strip the query param so refresh doesn't reopen it
     }
   }, [location.search, navigate]);
 
+  // fetch all students (called on mount and after a successful import)
   const loadStudents = () => {
     setLoading(true);
-    fetchAllStudents()
+    fetchAllStudents()                                 // GET all students
       .then((res) => setStudents(res.data ?? []))
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
@@ -428,6 +450,7 @@ export default function Students() {
 
   useEffect(() => { loadStudents(); }, []);
 
+  // client-side filter by name or student ID
   const filtered = students.filter((s) => {
     const q = search.toLowerCase();
     return (
@@ -436,9 +459,11 @@ export default function Students() {
     );
   });
 
+  // paginate the filtered list
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const paginated  = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
+  // windowed page numbers with "..." gaps for the pager
   const buildPages = () => {
     if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
     if (page <= 3) return [1, 2, 3, "...", totalPages];
@@ -470,6 +495,7 @@ export default function Students() {
             <p className="text-on-surface-variant mt-1">Manage and import enrolled students.</p>
           </div>
           <div className="flex items-center gap-3 shrink-0">
+            {/* Export CSV (download current list) + Import CSV (open the wizard) */}
             <button
               onClick={() => exportCSV(students)}
               disabled={students.length === 0}
@@ -495,6 +521,7 @@ export default function Students() {
           <div className="flex items-center gap-4 px-6 py-4 border-b border-outline-variant/20 flex-wrap">
             <div className="relative flex-1 min-w-[200px]">
               <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-base">search</span>
+              {/* search box -> setSearch + reset to page 1 (filters the loaded list client-side) */}
               <input
                 type="text"
                 placeholder="Search by name or ID…"
@@ -536,10 +563,11 @@ export default function Students() {
                     </td>
                   </tr>
                 ) : (
+                  // one row per student on the current page
                   paginated.map((s, idx) => (
                     <tr key={s.student_id} className="hover:bg-surface-container-lowest transition-colors">
                       <td className="px-5 py-4 text-xs text-on-surface-variant font-mono">
-                        {(page - 1) * PER_PAGE + idx + 1}
+                        {(page - 1) * PER_PAGE + idx + 1}   {/* running row number across pages */}
                       </td>
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
@@ -574,6 +602,7 @@ export default function Students() {
                 : `Showing ${Math.min((page - 1) * PER_PAGE + 1, filtered.length)}–${Math.min(page * PER_PAGE, filtered.length)} of `}
               {filtered.length > 0 && <span className="font-bold text-on-surface">{filtered.length}</span>}
             </p>
+            {/* pager -> setPage (client-side slice of the filtered list) */}
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}

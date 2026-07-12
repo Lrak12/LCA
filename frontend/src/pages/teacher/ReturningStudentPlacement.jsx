@@ -171,7 +171,7 @@ export default function ReturningStudentPlacement() {
             <div>
               <label className="block text-xs font-bold text-on-surface-variant mb-1.5">Search Student</label>
               <div className="relative">
-                <span className="material-symbols-outlined absolute left-3 inset-y-0 flex items-center text-on-surface-variant text-base">search</span>
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1 text-base text-on-surface-variant pointer-events-none">search</span>
                 <input type="text" placeholder="Search by name or ID..." value={search} onChange={(e) => setSearch(e.target.value)}
                   className="w-full pl-9 pr-4 py-2.5 text-sm bg-white border border-outline-variant/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30" />
               </div>

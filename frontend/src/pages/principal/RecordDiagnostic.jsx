@@ -1,4 +1,11 @@
-﻿import { useState, useEffect } from "react";
+﻿// Record Diagnostic Assessment (principal): per-student hub with a card per subject; each
+// card opens that subject's scoring modal, and once at least one result exists you can
+// generate the projected PACE recommendation. Reached from DiagnosticAssessments.jsx "Record".
+// Backend chain:
+//   student's diagnostics: GET /assessments/diagnostic?student_id (api/diagnosticAssessments.js fetchDiagnostics)
+//        -> controllers/assessment.controller.js > getDiagnostics (~line 43) -> services/assessment.service.js > getDiagnosticsByStudent (~line 20)
+//   student record:        GET /students/:id -> controllers/student.controller.js > getById (~line 10) -> services/student.service.js > getStudentById (~line 101)
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import PrincipalLayout from "../../components/PrincipalLayout.jsx";
 import { fetchDiagnostics } from "../../api/diagnosticAssessments.js";
@@ -54,11 +61,12 @@ export default function RecordDiagnostic() {
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState("");
   const [assessmentDate, setAssessmentDate] = useState(new Date().toISOString().split("T")[0]); // display-only
-  const [showEnglish,       setShowEnglish]       = useState(false);
+  const [showEnglish,       setShowEnglish]       = useState(false); // which subject modal is open
   const [showMathBeginner,     setShowMathBeginner]     = useState(false);
   const [showMathIntermediate, setShowMathIntermediate] = useState(false);
   const [socialSciSubject,  setSocialSciSubject]  = useState(null); // "Social Studies" | "Science" | null
 
+  // load the student + all their diagnostic rows; seed the date from the first recorded test
   const load = async () => {
     setLoading(true);
     try {
@@ -80,11 +88,13 @@ export default function RecordDiagnostic() {
 
   useEffect(() => { load(); }, [studentId]);
 
+  // find the recorded diagnostic row for a subject (undefined if not yet recorded)
   const getSubjectRow = (subjectLabel) =>
     diagRows.find((r) => r.subject === subjectLabel);
 
-  const hasResults = diagRows.some((r) => r.start_pace != null);
+  const hasResults = diagRows.some((r) => r.start_pace != null); // enables the "Generate" button
 
+  // open the matching subject modal for the clicked card
   const handleSubjectClick = (subject) => {
     if (subject.label === "English")                  { setShowEnglish(true);          return; }
     if (subject.label === "Math Beginner")            { setShowMathBeginner(true);     return; }
@@ -92,6 +102,7 @@ export default function RecordDiagnostic() {
     if (subject.label === "Social Studies / Science") { setSocialSciSubject(subject.label); return; }
   };
 
+  // each subject modal calls its handler on save: close it, then reload the rows
   const handleMathBegSaved = () => {
     setShowMathBeginner(false);
     load();
@@ -272,6 +283,7 @@ export default function RecordDiagnostic() {
                     )}
                   </div>
 
+                  {/* Record/View -> handleSubjectClick(subject) opens that subject's diagnostic modal */}
                   <div className="mt-4 pt-4 border-t border-outline-variant/10">
                     <button
                       onClick={() => handleSubjectClick(subject)}
@@ -293,6 +305,7 @@ export default function RecordDiagnostic() {
 
         {/* Generate Projected PACE Recommendation */}
         <div className="mt-8 flex flex-col items-end gap-1.5">
+          {/* Generate -> navigate() to ProjectedPaceRecommendation.jsx; disabled until hasResults */}
           <button
             onClick={() => navigate(`/admin/diagnostic/recommendation/${studentId}`)}
             disabled={!hasResults}

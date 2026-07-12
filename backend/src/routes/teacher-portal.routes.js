@@ -6,9 +6,12 @@ import { authenticate, requireRole } from "../middlewares/auth.middleware.js";
 
 const router = Router();
 
-router.use(authenticate);
+router.use(authenticate); // every /teacher/* route below requires a logged-in user
+// GET /teacher/dashboard - supervisor home page data. NEXT > controller.getDashboard
+//   > service.getTeacherDashboard. UI: pages/teacher/TeacherDashboard.jsx.
 router.get("/dashboard",        requireRole("teacher"), TeacherController.getDashboard);
 router.get("/students",         requireRole("teacher"), TeacherController.getStudents);
+// GET /teacher/pace-monitoring - PACE Monitoring page data. NEXT > controller.getPaceMonitoring.
 router.get("/pace-monitoring",  requireRole("teacher"), TeacherController.getPaceMonitoring);
 router.get("/assessments",        requireRole("teacher"), TeacherController.getAssessments);
 router.get("/student-monitoring", requireRole("teacher"), TeacherController.getStudentMonitoring);
@@ -26,7 +29,9 @@ router.post("/account/support-requests", requireRole("teacher"), AccountControll
 router.get("/student-record",     requireRole("teacher"), TeacherController.getStudentAcademicRecord);
 router.post("/student-record/note", requireRole("teacher"), TeacherController.saveSupervisorNote);
 router.post("/student-record/ready-next", requireRole("teacher"), TeacherController.markReadyForNext);
+// GET /teacher/attendance  - load a day's roster + saved status. NEXT > controller.getAttendance
 router.get("/attendance",         requireRole("teacher"), TeacherController.getAttendance);
+// POST /teacher/attendance - save the day's records.         NEXT > controller.submitAttendance
 router.post("/attendance",        requireRole("teacher"), TeacherController.submitAttendance);
 
 router.get("/assessments/self-test/results",      requireRole("teacher"), TeacherController.getExistingSelfTestResults);
@@ -49,9 +54,10 @@ router.post("/assign-pace",      requireRole("teacher"), ReportsController.assig
 router.get("/returning-students",     requireRole("teacher"), TeacherController.getReturningStudents);
 router.get("/student-pace-manage",    requireRole("teacher"), TeacherController.getStudentPaceManage);
 router.post("/student-pace-manage",   requireRole("teacher"), TeacherController.saveStudentPace);
-router.get("/record-assessments",     requireRole("teacher"), TeacherController.getStudentAssessments);
-router.post("/record-assessments/self-test", requireRole("teacher"), TeacherController.recordSelfTest);
-router.post("/record-assessments/pace-test", requireRole("teacher"), TeacherController.recordPaceTest);
+// Record Assessments page (teacher/Assessments.jsx). NEXT > the matching controller > service.
+router.get("/record-assessments",     requireRole("teacher"), TeacherController.getStudentAssessments); // load one student's PACEs + attempts
+router.post("/record-assessments/self-test", requireRole("teacher"), TeacherController.recordSelfTest);  // add a self-test attempt
+router.post("/record-assessments/pace-test", requireRole("teacher"), TeacherController.recordPaceTest);  // add a pace-test attempt
 router.get("/pace-test-scheduling",   requireRole("teacher"), TeacherController.getPaceTestScheduling);
 router.get("/scheduled-tests",        requireRole("teacher"), TeacherController.getScheduledTests);
 router.get("/pace-test-schedule",     requireRole("teacher"), TeacherController.getPaceTestSchedule);

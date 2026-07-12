@@ -94,12 +94,12 @@ export default function PaceAnalyticsRankingsModal({ onClose }) {
         {/* ── Filters ──────────────────────────────────────────────────── */}
         <div className="flex items-center gap-3 px-6 py-3 border-b border-outline-variant/10 flex-wrap">
           <select value={grade} onChange={(e) => setGrade(e.target.value)}
-            className="text-sm font-bold text-on-surface bg-white border border-outline-variant/30 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30">
+            className="text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl pl-4 pr-8 py-2.5 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
             <option value="all">All Grades</option>
             {gradeLevels.map((g) => <option key={g} value={g}>{g}</option>)}
           </select>
           <select value={quarter} onChange={(e) => setQuarter(Number(e.target.value))}
-            className="text-sm font-bold text-on-surface bg-white border border-outline-variant/30 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30">
+            className="text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl pl-4 pr-8 py-2.5 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
             {[1, 2, 3, 4].map((q) => <option key={q} value={q}>{QUARTERS[q - 1]}</option>)}
           </select>
           <span className="text-sm font-bold text-on-surface border border-outline-variant/30 rounded-lg px-3 py-2 bg-surface-container-lowest">{schoolYear}</span>

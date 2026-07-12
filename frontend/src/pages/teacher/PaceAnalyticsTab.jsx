@@ -71,6 +71,9 @@ function LineChart({ values }) {
 const BAR_COLORS = ["bg-green-500", "bg-blue-500", "bg-orange-500", "bg-red-500", "bg-purple-500", "bg-cyan-500"];
 const DIST_COLORS = ["bg-green-500", "bg-blue-500", "bg-purple-500", "bg-red-500"];
 
+// PACE Analytics tab of Student Monitoring. Charts (hand-rolled SVG: Donut/LineChart
+// above) built from GET /teacher/pace-analytics-overview
+// (teacher.service.getPaceAnalyticsOverview). Respects the page's Grade Level filter.
 export default function PaceAnalyticsTab({ grade }) {
   const [data,    setData]    = useState(null);
   const [loading, setLoading] = useState(true);

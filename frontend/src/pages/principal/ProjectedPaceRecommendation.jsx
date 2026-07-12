@@ -1,3 +1,10 @@
+// Projected PACE Recommendation (principal): after diagnostics are recorded, review the
+// system-recommended starting PACEs, accept or modify them, then proceed to the plan
+// modal. Reached from RecordDiagnostic.jsx "Generate".
+// Backend chain:
+//   student's diagnostics: GET /assessments/diagnostic?student_id (api/diagnosticAssessments.js fetchDiagnostics)
+//        -> controllers/assessment.controller.js > getDiagnostics (~line 43) -> services/assessment.service.js > getDiagnosticsByStudent (~line 20)
+//   student record:        GET /students/:id -> controllers/student.controller.js > getById (~line 10) -> services/student.service.js > getStudentById (~line 101)
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import PrincipalLayout from "../../components/PrincipalLayout.jsx";
@@ -8,7 +15,7 @@ import ProjectedPacePlanModal from "./ProjectedPacePlanModal.jsx";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
-// Modify dropdown: a window around the recommended starting PACE.
+// Modify dropdown: a window around the recommended starting PACE (-2 to +12).
 const paceOptions = (start) => {
   const s = Number(start);
   if (!s || isNaN(s)) return [];
@@ -24,23 +31,24 @@ export default function ProjectedPaceRecommendation() {
   const schoolYearLabel = useSchoolYear();
 
   const [student,   setStudent]   = useState(null);
-  const [diag,      setDiag]      = useState([]);
+  const [diag,      setDiag]      = useState([]);       // recorded diagnostic rows (with a start_pace)
   const [decision,  setDecision]  = useState("accept"); // accept | modify
-  const [overrides, setOverrides] = useState({});       // subject → pace
+  const [overrides, setOverrides] = useState({});       // subject → chosen pace (Modify mode)
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState("");
   const [planPaces, setPlanPaces] = useState(null);     // chosen starts → opens plan modal
 
+  // load the student + their recorded diagnostics; seed overrides with the recommended PACEs
   useEffect(() => {
-    let cancelled = false;
+    let cancelled = false;                              // guard against setState after unmount
     Promise.all([client.get(`/students/${studentId}`), fetchDiagnostics(studentId)])
       .then(([stuRes, diagRes]) => {
         if (cancelled) return;
         setStudent(stuRes.data);
-        const rows = (diagRes.data ?? []).filter((r) => r.start_pace != null);
+        const rows = (diagRes.data ?? []).filter((r) => r.start_pace != null); // only recorded subjects
         setDiag(rows);
         const init = {};
-        rows.forEach((r) => { init[r.subject] = r.start_pace; });
+        rows.forEach((r) => { init[r.subject] = r.start_pace; }); // default each override to the recommendation
         setOverrides(init);
       })
       .catch((err) => !cancelled && setError(err.response?.data?.message ?? err.message))
@@ -48,8 +56,9 @@ export default function ProjectedPaceRecommendation() {
     return () => { cancelled = true; };
   }, [studentId]);
 
-  const setOverride = (subject, val) => setOverrides((o) => ({ ...o, [subject]: Number(val) }));
+  const setOverride = (subject, val) => setOverrides((o) => ({ ...o, [subject]: Number(val) })); // Modify dropdown change
 
+  // build the final per-subject start PACEs (accepted or modified) and open the plan modal
   const handleProceed = () => {
     const paces = {};
     diag.forEach((d) => {
@@ -193,6 +202,7 @@ export default function ProjectedPaceRecommendation() {
                 <h3 className="font-bold text-on-surface">Principal Decision</h3>
               </div>
 
+              {/* Accept / Modify options -> setDecision(key); Modify reveals the per-subject override dropdowns */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {[
                   { key: "accept", label: "Accept Recommendation", desc: "Use the system-generated recommended PACEs as the starting PACEs." },
@@ -225,6 +235,7 @@ export default function ProjectedPaceRecommendation() {
                   {diag.map((d) => (
                     <div key={d.diag_id ?? d.subject}>
                       <label className="block text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1.5">{d.subject}</label>
+                      {/* per-subject override -> setOverride(subject, value) */}
                       <select
                         value={overrides[d.subject] ?? d.start_pace}
                         onChange={(e) => setOverride(d.subject, e.target.value)}

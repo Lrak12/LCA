@@ -1,3 +1,10 @@
+// Supervisor Management (principal): list/search supervisors (teachers) with stats,
+// add a supervisor + assign grade levels, view details, export CSV.
+// Backend chain (frontend api/employees.js -> routes/employees.routes.js):
+//   list:  GET  /employees/supervisors       -> controllers/employees.controller.js > getSupervisors (~line 15)     -> services/employees.service.js > getSupervisors (~line 42)
+//   stats: GET  /employees/supervisors/stats -> controllers/employees.controller.js > getSupervisorStats (~line 20) -> services/employees.service.js > getSupervisorStats (~line 114)
+//   add:   POST /employees                   -> controllers/employees.controller.js > createEmployee (~line 25)     -> services/employees.service.js > createEmployee (~line 156)
+//   grade-level picker uses api/sections.js fetchAllSections (see SchoolSections.jsx chain).
 import { useState, useEffect, useMemo, useRef } from "react";
 import PrincipalLayout from "../../components/PrincipalLayout.jsx";
 import { fetchSupervisors, fetchSupervisorStats, addSupervisor } from "../../api/employees.js";
@@ -14,11 +21,12 @@ const Skeleton = ({ className }) => (
 const formatSupervisorId = (id, year) =>
   `SUP-${year}-${String(id ?? 0).padStart(3, "0")}`;
 
+// join an array as "a, b, c" (with optional prefix per item), or em dash if empty
 const listOrDash = (arr, prefix = "") =>
   arr && arr.length ? arr.map((v) => `${prefix}${v}`).join(", ") : "—";
 
 // ─── Add Supervisor Modal ─────────────────────────────────────────────────────
-const defaultForm = {
+const defaultForm = {                                // blank Add Supervisor form
   first_name: "",
   last_name: "",
   contact_number: "",
@@ -29,21 +37,23 @@ const defaultForm = {
   account_status: "active",
 };
 
-// Multi-select dropdown for grade levels
+// Multi-select dropdown for grade levels (assigns which grades a supervisor covers)
 function GradeLevelSelect({ options, selected, onChange, loading }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
+  // close the dropdown when clicking anywhere outside it
   useEffect(() => {
     const onClickOutside = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
     document.addEventListener("mousedown", onClickOutside);
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, []);
 
+  // add/remove a grade-level id from the selection
   const toggle = (id) =>
     onChange(selected.includes(id) ? selected.filter((s) => s !== id) : [...selected, id]);
 
-  const labels = options.filter((o) => selected.includes(o.id)).map((o) => o.name);
+  const labels = options.filter((o) => selected.includes(o.id)).map((o) => o.name); // names shown on the button
 
   return (
     <div className="relative" ref={ref}>
@@ -85,16 +95,17 @@ function GradeLevelSelect({ options, selected, onChange, loading }) {
 
 function AddSupervisorModal({ onClose, onSuccess }) {
   const [form, setForm]       = useState(defaultForm);
-  const [gradeIds, setGradeIds] = useState([]);
-  const [levels, setLevels]   = useState([]);
+  const [gradeIds, setGradeIds] = useState([]);        // selected grade-level ids
+  const [levels, setLevels]   = useState([]);          // grade-level options for the picker
   const [levelsLoading, setLevelsLoading] = useState(true);
   const [showPw, setShowPw]   = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [saving, setSaving]   = useState(false);
   const [error, setError]     = useState("");
 
-  const set = (key, val) => setForm((f) => ({ ...f, [key]: val }));
+  const set = (key, val) => setForm((f) => ({ ...f, [key]: val })); // update one form field
 
+  // load the grade-level options for the assignment picker
   useEffect(() => {
     const loadLevels = async () => {
       try {
@@ -109,6 +120,7 @@ function AddSupervisorModal({ onClose, onSuccess }) {
     loadLevels();
   }, []);
 
+  // validate then create the supervisor account (role fixed to "teacher")
   const handleSubmit = async () => {
     if (!form.first_name || !form.last_name || !form.email || !form.username || !form.password) {
       setError("Please fill in all required fields.");
@@ -121,18 +133,18 @@ function AddSupervisorModal({ onClose, onSuccess }) {
     setSaving(true);
     setError("");
     try {
-      await addSupervisor({
+      await addSupervisor({                            // POST new supervisor + grade assignments
         first_name:     form.first_name,
         last_name:      form.last_name,
         contact_number: form.contact_number,
         email:          form.email,
         username:       form.username,
         password:       form.password,
-        role:           "teacher",
+        role:           "teacher",                     // supervisors are teacher-role accounts
         is_active:      form.account_status === "active",
         grade_level_ids: gradeIds,
       });
-      onSuccess();
+      onSuccess();                                     // parent reloads the list
       onClose();
     } catch (err) {
       setError(err.message);
@@ -268,6 +280,7 @@ function AddSupervisorModal({ onClose, onSuccess }) {
           <button onClick={onClose} className="px-6 py-2.5 rounded-xl border border-outline-variant/40 text-sm font-bold text-on-surface hover:bg-surface-container-low transition-colors">
             Cancel
           </button>
+          {/* Create Supervisor -> handleSubmit() validates + addSupervisor(), then onSuccess/onClose */}
           <button
             onClick={handleSubmit}
             disabled={saving}
@@ -285,6 +298,7 @@ function AddSupervisorModal({ onClose, onSuccess }) {
 }
 
 // ─── View Details Modal ───────────────────────────────────────────────────────
+// label : value row used throughout the details modal
 function InfoRow({ label, children }) {
   return (
     <div className="flex items-start text-sm">
@@ -295,9 +309,11 @@ function InfoRow({ label, children }) {
   );
 }
 
+// Read-only supervisor profile: info, assigned grade levels / PACE modules, and a
+// per-grade student count table.
 function ViewDetailsModal({ supervisor: sup, year, onClose, onEdit }) {
   const gradeDetails = sup.gradeLevelDetails ?? [];
-  const totalStudents = sup.totalStudents
+  const totalStudents = sup.totalStudents             // use the API total, else sum the per-grade counts
     ?? gradeDetails.reduce((sum, d) => sum + (d.studentCount ?? 0), 0);
 
   return (
@@ -416,6 +432,7 @@ function ViewDetailsModal({ supervisor: sup, year, onClose, onEdit }) {
           >
             Close
           </button>
+          {/* Edit Supervisor -> onEdit(sup) callback (edit flow handled by the parent) */}
           <button
             onClick={() => onEdit?.(sup)}
             className="px-6 py-2.5 rounded-xl bg-primary text-white text-sm font-bold flex items-center gap-2 hover:opacity-90 transition-opacity"
@@ -431,22 +448,23 @@ function ViewDetailsModal({ supervisor: sup, year, onClose, onEdit }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function Employees() {
-  const [supervisors, setSupervisors] = useState([]);
-  const [stats,       setStats]       = useState(null);
+  const [supervisors, setSupervisors] = useState([]);  // supervisor list from the API
+  const [stats,       setStats]       = useState(null); // total/active/inactive counts
   const [loading,     setLoading]     = useState(true);
   const [error,       setError]       = useState("");
-  const [search,      setSearch]      = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [search,      setSearch]      = useState("");   // name/ID search
+  const [statusFilter, setStatusFilter] = useState("all"); // all/active/inactive
   const [page,        setPage]        = useState(1);
-  const [showModal,   setShowModal]   = useState(false);
-  const [viewSup,     setViewSup]     = useState(null);
-  const [reloadKey,   setReloadKey]   = useState(0);
+  const [showModal,   setShowModal]   = useState(false); // Add Supervisor modal open?
+  const [viewSup,     setViewSup]     = useState(null);  // supervisor open in View Details
+  const [reloadKey,   setReloadKey]   = useState(0);     // bump to refetch after adding
   const perPage = 8;
   const schoolYearLabel = useSchoolYear();
 
   // "2025-2026" → "2025"; fall back to the current year
   const year = (schoolYearLabel?.match(/\d{4}/)?.[0]) ?? String(new Date().getFullYear());
 
+  // load supervisors + stats together (re-runs when reloadKey changes)
   useEffect(() => {
     const load = async () => {
       try {
@@ -465,6 +483,7 @@ export default function Employees() {
     load();
   }, [reloadKey]);
 
+  // client-side search (name or ID) + status filter
   const filtered = useMemo(() => supervisors.filter((sup) => {
     const fullName = `${sup.first_name} ${sup.last_name}`.toLowerCase();
     const supId    = formatSupervisorId(sup.teacher_id, year).toLowerCase();
@@ -479,6 +498,7 @@ export default function Employees() {
   const totalPages = Math.ceil(filtered.length / perPage);
   const paginated  = filtered.slice((page - 1) * perPage, page * perPage);
 
+  // export the filtered supervisor list to a CSV download
   const handleExport = () => {
     const headers = ["Supervisor ID", "Name", "Contact Number", "Assigned Grade Levels", "PACE Modules Supervised", "Status"];
     const rows = filtered.map((s) => [
@@ -500,6 +520,7 @@ export default function Employees() {
     URL.revokeObjectURL(url);
   };
 
+  // the three summary cards across the top (values come from the stats endpoint)
   const statCards = [
     { label: "Total Supervisors",    value: stats?.total,    icon: "groups",     iconBg: "bg-primary-fixed",   iconColor: "text-primary"   },
     { label: "Active Supervisors",   value: stats?.active,   icon: "check_circle", iconBg: "bg-green-100",      iconColor: "text-green-600" },
@@ -527,6 +548,7 @@ export default function Employees() {
             <p className="text-on-surface-variant text-sm mt-1">View and manage information of all teaching supervisors in the school.</p>
           </div>
           <div className="flex items-center gap-3">
+            {/* Export -> handleExport() downloads the filtered list as CSV */}
             <button
               onClick={handleExport}
               className="flex items-center gap-2 px-5 py-3 rounded-xl border border-outline-variant/40 text-sm font-bold text-on-surface hover:bg-surface-container-low transition-colors"
@@ -534,6 +556,7 @@ export default function Employees() {
               <span className="material-symbols-outlined text-lg">file_upload</span>
               Export
             </button>
+            {/* Add Supervisor -> setShowModal(true) opens <AddSupervisorModal> */}
             <button
               onClick={() => setShowModal(true)}
               className="flex items-center gap-2 px-5 py-3 rounded-xl bg-primary text-white text-sm font-bold hover:opacity-90 transition-opacity"
@@ -572,9 +595,10 @@ export default function Employees() {
         {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-4 mb-6">
           <div className="flex-1 relative min-w-[280px]">
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant">
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1 text-base text-on-surface-variant pointer-events-none">
               <span className="material-symbols-outlined text-lg">search</span>
             </span>
+            {/* search -> setSearch + page 1 (filters client-side via useMemo) */}
             <input
               type="text"
               value={search}
@@ -583,15 +607,22 @@ export default function Employees() {
               className="w-full pl-12 pr-4 py-3 bg-surface-container-lowest border border-outline-variant/20 rounded-xl focus:ring-2 focus:ring-primary/20 focus:outline-none text-sm font-body"
             />
           </div>
-          <select
-            value={statusFilter}
-            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-            className="bg-surface-container-lowest border border-outline-variant/20 rounded-xl py-3 px-4 text-sm font-semibold text-on-surface focus:outline-none cursor-pointer"
-          >
-            <option value="all">All Status</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
+          {/* status filter -> setStatusFilter + page 1 */}
+        <select
+          value={statusFilter}
+          onChange={(e) => {
+            setStatusFilter(e.target.value);
+            setPage(1);
+          }}
+          className="appearance-none h-11 bg-surface-container-lowest border border-outline-variant/20 rounded-xl pl-4 pr-10 text-sm font-semibold text-on-surface cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20">
+          <option value="all">All Status</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+
+        <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-lg leading-none text-on-surface-variant pointer-events-none">
+          expand_more
+        </span>
         </div>
 
         {/* Table */}
@@ -625,6 +656,7 @@ export default function Employees() {
                     </td>
                   </tr>
                 ) : (
+                  // one row per supervisor; "View Details" opens the read-only modal
                   paginated.map((sup) => (
                     <tr key={sup.id} className="border-b border-surface-container/50 hover:bg-surface-container/30 transition-colors align-top">
                       <td className="px-6 py-5">
@@ -650,6 +682,7 @@ export default function Employees() {
                         )}
                       </td>
                       <td className="px-6 py-5 text-right">
+                        {/* View Details -> setViewSup(sup) opens <ViewDetailsModal> */}
                         <button
                           onClick={() => setViewSup(sup)}
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-outline-variant/40 text-[11px] font-bold text-on-surface hover:bg-surface-container-low transition-colors"
@@ -670,6 +703,7 @@ export default function Employees() {
             <p className="text-sm text-on-surface-variant font-medium">
               Showing <span className="font-bold text-on-surface">{filtered.length === 0 ? 0 : (page - 1) * perPage + 1} to {Math.min(page * perPage, filtered.length)}</span> of <span className="font-bold text-on-surface">{filtered.length}</span> entries
             </p>
+            {/* pager -> setPage (client-side slice of the filtered list) */}
             <div className="flex items-center gap-2">
               <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="w-8 h-8 flex items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container disabled:opacity-30">
                 <span className="material-symbols-outlined text-lg">chevron_left</span>

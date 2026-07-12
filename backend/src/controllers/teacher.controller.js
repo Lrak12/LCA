@@ -75,9 +75,13 @@ export const updatePaceCell = asyncHandler(async (req, res) => {
   sendSuccess(res, data);
 });
 
+// getDashboard - handles GET /teacher/dashboard for the supervisor's
+// home page. Thin layer: passes the logged-in user's id to the service and returns
+// its result as JSON. NEXT > TeacherService.getTeacherDashboard (teacher.service.js).
+// UI: pages/teacher/TeacherDashboard.jsx.
 export const getDashboard = asyncHandler(async (req, res) => {
-  const data = await TeacherService.getTeacherDashboard(req.user.user_id);
-  sendSuccess(res, data);
+  const data = await TeacherService.getTeacherDashboard(req.user.user_id); // user_id from auth middleware
+  sendSuccess(res, data);                                                  // { teacher, stats, attendance, recentActivity }
 });
 
 // ── Schedule PACE Test ────────────────────────────────────────────────────────
@@ -194,6 +198,9 @@ export const markReadyForNext = asyncHandler(async (req, res) => {
   sendSuccess(res, data, "Marked ready for next PACE");
 });
 
+// getStudentAssessments - GET /teacher/record-assessments?student_id=.
+//   Validates the id, then returns that student's per-PACE assessments.
+//   NEXT > service.getStudentAssessments. UI: teacher/Assessments.jsx.
 export const getStudentAssessments = asyncHandler(async (req, res) => {
   const { student_id } = req.query;
   if (!student_id) return res.status(400).json({ message: "student_id is required" });
@@ -201,6 +208,7 @@ export const getStudentAssessments = asyncHandler(async (req, res) => {
   sendSuccess(res, data);
 });
 
+// recordSelfTest - POST { sp_id, score, date_taken }. NEXT > service.recordSelfTest.
 export const recordSelfTest = asyncHandler(async (req, res) => {
   const { sp_id, score, date_taken } = req.body;
   if (!sp_id || score == null) return res.status(400).json({ message: "sp_id and score are required" });
@@ -208,6 +216,8 @@ export const recordSelfTest = asyncHandler(async (req, res) => {
   sendCreated(res, data, "Self-test recorded");
 });
 
+// recordPaceTest - POST { sp_id, score, date_taken }. NEXT > service.recordPaceTest
+//   (which also completes the PACE + awards points on a passing score).
 export const recordPaceTest = asyncHandler(async (req, res) => {
   const { sp_id, score, date_taken } = req.body;
   if (!sp_id || score == null) return res.status(400).json({ message: "sp_id and score are required" });
@@ -220,15 +230,19 @@ export const getAssessments = asyncHandler(async (req, res) => {
   sendSuccess(res, data);
 });
 
+// getAttendance - GET /teacher/attendance?date=. Defaults to today when
+//   no date is passed. NEXT > service.getAttendance. UI: teacher/Attendance.jsx.
 export const getAttendance = asyncHandler(async (req, res) => {
   const { date } = req.query;
   const data = await TeacherService.getAttendance(
     req.user.user_id,
-    date ?? new Date().toISOString().split("T")[0]
+    date ?? new Date().toISOString().split("T")[0]        // fallback: today's date
   );
   sendSuccess(res, data);
 });
 
+// submitAttendance - POST /teacher/attendance { date, records }. Saves the
+//   day's marks. NEXT > service.submitAttendance.
 export const submitAttendance = asyncHandler(async (req, res) => {
   const { date, records } = req.body;
   const data = await TeacherService.submitAttendance(req.user.user_id, date, records);

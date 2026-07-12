@@ -1,16 +1,7 @@
-// ============================================================================
-// FEATURE MAP - Student Monitoring   (BACKEND · LAYER 3 of 4: SERVICE)
-// ----------------------------------------------------------------------------
-// This is the backend for the Student Monitoring feature - the BUSINESS-LOGIC
-// layer. This is where the real work happens: it asks the MODEL for raw rows
-// from the database, then computes everything the UI shows (PACE counts,
-// completion %, status, recommendations, rankings, the per-subject grade grid).
-//   Comes from:  studentMonitoring.controller.js
-//   Gets data via > studentMonitoring.model.js  (raw Supabase queries)
-//   Returns to >   the controller, which sends it as JSON to the frontend
-// The four exported functions below (getStudentMonitoring / getPaceAnalytics /
-// getStudentSummary / getStudentProfile) are the entry points the controller calls.
-// ============================================================================
+// Business logic for Student Monitoring: pulls rows via studentMonitoring.model and
+// computes what the page shows (PACE counts, completion %, status, recommendations,
+// rankings, the grade grid). Four public functions: getStudentMonitoring /
+// getPaceAnalytics / getStudentSummary / getStudentProfile.
 import * as StudentMonitoringModel from "../models/studentMonitoring.model.js";
 import { findActive as findActiveSchoolYear } from "../models/schoolYear.model.js";
 import { getCurrentQuarter } from "./settings.service.js";
@@ -170,13 +161,9 @@ const getSectionLabel = (student) => {
   return sectionFallbacks[Number(student.student_id) % sectionFallbacks.length];
 };
 
-// ── FEATURE ENTRY POINT ───────────────────────────────────────────────────────
-// getStudentMonitoring - powers the Student Records / Progress / Recommendations
-// tabs. WHAT IT DOES: pulls every student, their student_pace rows, diagnostics
-// and latest PACE-test scores from the MODEL, then builds a per-student row
-// (counts, status, recommendation) plus overall stats.
-// WHERE IT GOES NEXT: returned to controller.getOverview > JSON > the frontend
-// page pages/principal/StudentMonitoring.jsx.
+// Records / Progress / Recommendations tabs. Pulls every student + their paces,
+// diagnostics and latest test scores, then builds a per-student row (counts, status,
+// recommendation) plus overall stats.
 export const getStudentMonitoring = async () => {
   const [
     { data: students, error: studentsError },
@@ -304,12 +291,9 @@ function scoreFinishedPace(pace) {
   return pace.points_earned ?? 0;
 }
 
-// ── FEATURE ENTRY POINT ───────────────────────────────────────────────────────
-// getPaceAnalytics - powers the "PACE Analytics & Rankings" tab. WHAT IT DOES:
-// finds the active quarter, sums each student's performance points on PACEs
-// finished this quarter, ranks them, builds the Top-10 completion list and the
-// month-over-month completion trend. WHERE IT GOES NEXT: returned to
-// controller.getPaceAnalytics > JSON > PaceAnalyticsTab in the frontend page.
+// PACE Analytics & Rankings tab. Finds the active quarter, sums each student's
+// points on PACEs finished this quarter, ranks them, and builds the Top-10 list +
+// the month-over-month completion trend.
 export const getPaceAnalytics = async () => {
   const { data: sy } = await findActiveSchoolYear();
   if (!sy?.start_date) {
@@ -462,12 +446,9 @@ export const getPaceAnalytics = async () => {
 // Compact view: identity + PACE progress + projected recommendation + ranking.
 // Reuses buildRecommendation and getPaceAnalytics so it stays consistent with the
 // Recommendations and PACE Analytics tabs.
-// ── FEATURE ENTRY POINT ───────────────────────────────────────────────────────
-// getStudentSummary - powers the "View Student Details" modal. WHAT IT DOES:
-// for ONE student, gathers identity + parent, PACE progress (completed / on-time /
-// late / not-passed / completion rate), the projected PACE plan, the current-
-// quarter ranking, and the recommendation. WHERE IT GOES NEXT: returned to
-// controller.getStudentSummary > JSON > components/StudentSummaryModal.jsx.
+// View Student Details modal: for one student, gathers identity + parent, PACE
+// progress (completed / on-time / late / not-passed / completion rate), the
+// projected plan, the current-quarter ranking, and the recommendation.
 export const getStudentSummary = async (student_id) => {
   const id = Number(student_id);
   const { data: activeSY } = await findActiveSchoolYear();
@@ -662,13 +643,9 @@ function buildSubjectPaces(projRows, studentPaces, scoreBySpId) {
   return result;
 }
 
-// ── FEATURE ENTRY POINT ───────────────────────────────────────────────────────
-// getStudentProfile - powers the "View Full Plan" modal (per-subject PACE grid).
-// WHAT IT DOES: for ONE student, builds the full academic record: PACE status
-// counts, average score, the subject × quarter grade grid (driven by the
-// quarterly projection + latest test scores), attendance, PACEs brought home and
-// 100s achieved. WHERE IT GOES NEXT: returned to controller.getStudentProfile >
-// JSON > components/StudentProfileModal.jsx.
+// View Full Plan modal (per-subject PACE grid): builds one student's full record -
+// status counts, average score, the subject x quarter grade grid (from the quarterly
+// projection + latest test scores), attendance, PACEs brought home, and 100s.
 export const getStudentProfile = async (student_id) => {
   // 1. Active school year (maybeSingle — no crash if none is set)
   const { data: schoolYear } = await findActiveSchoolYear();

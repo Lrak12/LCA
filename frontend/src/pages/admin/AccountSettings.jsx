@@ -1,3 +1,8 @@
+// Admin account settings: profile, email, password.
+// Backend chain (frontend api/admin.js -> routes/admin.routes.js):
+//   read:     GET  /admin/account          -> controllers/account.controller.js > getAccount (~line 7)     -> services/account.service.js > getAccount (~line 15)
+//   save:     PUT  /admin/account          -> controllers/account.controller.js > updateAccount (~line 12)  -> services/account.service.js > updateAccount (~line 39)
+//   password: POST /admin/account/password -> controllers/account.controller.js > changePassword (~line 23) -> services/account.service.js > changePassword (~line 67)
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import AdminLayout from "../../components/AdminLayout.jsx";
@@ -8,16 +13,19 @@ import { useSchoolYear } from "../../hooks/useSchoolYear.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
+// two tabs: the profile/password form, and the reused password-resets page
 const TABS = [
   { key: "profile", label: "Profile Settings"    },
   { key: "resets",  label: "User Password Resets" },
 ];
 
+// role value -> display label (teacher shows as "Supervisor")
 const ROLE_LABEL = {
   administrator: "Administrator", principal: "Principal",
   teacher: "Supervisor", student: "Student",
 };
 
+// live password-strength checklist for the new password field
 const PW_RULES = [
   { key: "len",   label: "At least 8 characters",     test: (p) => p.length >= 8 },
   { key: "lower", label: "Contains lowercase letter", test: (p) => /[a-z]/.test(p) },
@@ -45,7 +53,7 @@ const PwField = ({ label, value, onChange, show, onToggle }) => (
         className={`${INPUT_CLS} pr-10`}
       />
       <button type="button" onClick={onToggle}
-        className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-primary">
+        className="absolute right-3 top-1/2 -translate-y-1 flex items-center justify-center text-on-surface-variant hover:text-on-surface">
         <span className="material-symbols-outlined text-lg">{show ? "visibility_off" : "visibility"}</span>
       </button>
     </div>
@@ -57,50 +65,52 @@ export default function AccountSettings() {
   const { logout, updateUser } = useAuth();
   const navigate = useNavigate();
 
-  const [tab, setTab]       = useState("profile");
+  const [tab, setTab]       = useState("profile"); // active tab
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState("");
-  const [banner, setBanner]   = useState("");
+  const [banner, setBanner]   = useState("");      // success toast text
 
-  const [account, setAccount] = useState(null);
-  const [profile, setProfile] = useState({ full_name: "", email: "", contact_number: "" });
+  const [account, setAccount] = useState(null);    // raw account record from the API
+  const [profile, setProfile] = useState({ full_name: "", email: "", contact_number: "" }); // editable profile form
   const [savingProfile, setSavingProfile] = useState(false);
 
-  const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
-  const [showPw, setShowPw] = useState({ current: false, next: false, confirm: false });
+  const [pw, setPw] = useState({ current: "", next: "", confirm: "" });               // password form
+  const [showPw, setShowPw] = useState({ current: false, next: false, confirm: false }); // per-field reveal toggles
   const [savingPw, setSavingPw] = useState(false);
 
+  // load the admin's own account once and seed the profile form
   useEffect(() => {
-    fetchAccount()
+    fetchAccount()                                  // GET /admin/account
       .then((res) => {
         const a = res.data;
         setAccount(a);
         setProfile({
-          full_name: `${a.first_name ?? ""} ${a.last_name ?? ""}`.trim(),
+          full_name: `${a.first_name ?? ""} ${a.last_name ?? ""}`.trim(), // join first/last into one field
           email: a.email ?? "",
-          contact_number: "",
+          contact_number: "",                        // not persisted yet (no column)
         });
       })
       .catch((err) => setError(err.message ?? "Failed to load account."))
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => {
+  useEffect(() => {                                  // auto-dismiss the success banner
     if (!banner) return;
     const t = setTimeout(() => setBanner(""), 4000);
     return () => clearTimeout(t);
   }, [banner]);
 
+  // save profile: split the single name field back into first/last, PUT, then sync auth context
   const saveProfile = async () => {
     setSavingProfile(true);
     setError("");
     try {
       const parts = profile.full_name.trim().split(/\s+/);
-      const last_name  = parts.length > 1 ? parts.pop() : "";
-      const first_name = parts.join(" ");
-      const res = await updateAccount({ first_name, last_name, email: profile.email.trim() });
+      const last_name  = parts.length > 1 ? parts.pop() : ""; // last token is the surname
+      const first_name = parts.join(" ");                     // everything before it
+      const res = await updateAccount({ first_name, last_name, email: profile.email.trim() }); // PUT /admin/account
       setAccount(res.data);
-      updateUser({ first_name: res.data.first_name, last_name: res.data.last_name, email: res.data.email });
+      updateUser({ first_name: res.data.first_name, last_name: res.data.last_name, email: res.data.email }); // refresh header/sidebar
       setBanner("Profile updated.");
     } catch (err) {
       setError(err.message ?? "Failed to update profile.");
@@ -109,16 +119,17 @@ export default function AccountSettings() {
     }
   };
 
-  const pwChecks = PW_RULES.map((r) => ({ ...r, ok: r.test(pw.next) }));
-  const pwValid  = pwChecks.every((c) => c.ok) && pw.next === pw.confirm && pw.current.length > 0;
+  const pwChecks = PW_RULES.map((r) => ({ ...r, ok: r.test(pw.next) })); // each rule + whether the new pw passes it
+  const pwValid  = pwChecks.every((c) => c.ok) && pw.next === pw.confirm && pw.current.length > 0; // gate the submit button
 
+  // change password: verified server-side against the current password
   const updatePassword = async () => {
     setError("");
     if (pw.next !== pw.confirm) return setError("New passwords do not match.");
     setSavingPw(true);
     try {
-      await changeAccountPassword({ current_password: pw.current, new_password: pw.next });
-      setPw({ current: "", next: "", confirm: "" });
+      await changeAccountPassword({ current_password: pw.current, new_password: pw.next }); // POST /admin/account/password
+      setPw({ current: "", next: "", confirm: "" });  // clear the form on success
       setBanner("Password updated.");
     } catch (err) {
       setError(err.message ?? "Failed to update password.");
@@ -129,8 +140,8 @@ export default function AccountSettings() {
 
   const onLogout = async () => { await logout(); navigate("/login"); };
 
-  const initials = (profile.full_name || "A").split(/\s+/).map((s) => s[0]).slice(0, 2).join("").toUpperCase();
-  const toggleShow = (id) => () => setShowPw((s) => ({ ...s, [id]: !s[id] }));
+  const initials = (profile.full_name || "A").split(/\s+/).map((s) => s[0]).slice(0, 2).join("").toUpperCase(); // avatar initials
+  const toggleShow = (id) => () => setShowPw((s) => ({ ...s, [id]: !s[id] })); // curried show/hide per password field
 
   return (
     <AdminLayout schoolYearLabel={schoolYearLabel}>
@@ -152,7 +163,7 @@ export default function AccountSettings() {
           </div>
         )}
 
-        {/* Tabs */}
+        {/* Tabs -> setTab(key) switches between Profile Settings and the reused User Password Resets page */}
         <div className="border-b border-outline-variant/30 mb-6">
           <div className="flex gap-6">
             {TABS.map((t) => (
@@ -190,6 +201,7 @@ export default function AccountSettings() {
                       </span>
                     </div>
 
+                    {/* profile inputs -> setProfile(field); Save -> saveProfile() (updateAccount) */}
                     <div className="space-y-4">
                       <div>
                         <label className="block text-[13px] font-semibold text-on-surface mb-1.5">Full Name</label>
@@ -205,6 +217,7 @@ export default function AccountSettings() {
                         </label>
                         <input value={profile.contact_number} onChange={(e) => setProfile((p) => ({ ...p, contact_number: e.target.value }))} className={INPUT_CLS} placeholder="0917 123 4567" />
                       </div>
+                      {/* Save Changes -> saveProfile() */}
                       <button onClick={saveProfile} disabled={savingProfile}
                         className="w-full py-3 bg-primary text-white font-bold rounded-lg shadow-sm hover:shadow-lg transition-all disabled:opacity-60">
                         {savingProfile ? "Saving…" : "Save Changes"}
@@ -226,6 +239,7 @@ export default function AccountSettings() {
                   </div>
                 </div>
 
+                {/* password fields -> setPw(field); toggleShow flips visibility; pwChecks/pwValid gate the button */}
                 <div className="space-y-4">
                   <PwField label="Current Password" value={pw.current} show={showPw.current} onToggle={toggleShow("current")} onChange={(e) => setPw((p) => ({ ...p, current: e.target.value }))} />
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -250,6 +264,7 @@ export default function AccountSettings() {
                     </div>
                   </div>
 
+                  {/* Update Password -> updatePassword() (changeAccountPassword); disabled until pwValid */}
                   <div className="flex justify-end">
                     <button onClick={updatePassword} disabled={!pwValid || savingPw}
                       className="px-6 py-3 bg-primary text-white font-bold rounded-lg shadow-sm hover:shadow-lg transition-all disabled:opacity-60 disabled:cursor-not-allowed">
@@ -260,6 +275,7 @@ export default function AccountSettings() {
               </div>
             </div>
 
+            {/* Log Out -> onLogout() (logout() then navigate to /login) */}
             <div className="flex justify-end mt-6">
               <button onClick={onLogout}
                 className="flex items-center gap-2 px-5 py-3 bg-white border border-outline-variant/30 text-red-600 font-bold rounded-xl shadow-sm hover:bg-red-50 transition-all">
@@ -270,7 +286,8 @@ export default function AccountSettings() {
           </>
         )}
 
-        {tab === "resets" && <UserPasswordResets />}
+        {/* resets tab reuses the UserPasswordResets page content (embedded = no nested AdminLayout) */}
+        {tab === "resets" && <UserPasswordResets embedded />}
       </main>
     </AdminLayout>
   );

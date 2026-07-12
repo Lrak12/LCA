@@ -48,12 +48,9 @@ const AccessRow = ({ icon, iconBg, title, desc, children }) => (
   </div>
 );
 
-const selectCls =
-  "appearance-none text-sm font-bold text-on-surface bg-white border border-outline-variant/30 rounded-xl pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer min-w-[130px]";
-const inputCls =
-  "w-full px-3 py-2.5 text-sm text-on-surface border border-outline-variant/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30 shadow-sm";
-const labelCls =
-  "text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-1.5 block";
+const selectCls ="appearance-none h-10 text-sm font-bold text-on-surface bg-white border border-outline-variant/30 rounded-xl pl-3 pr-10 focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer min-w-[130px]";
+const inputCls = "w-full px-3 py-2.5 text-sm text-on-surface border border-outline-variant/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30 shadow-sm";
+const labelCls = "text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-1.5 block";
 
 // ─── Password field with show/hide ────────────────────────────────────────────
 const PasswordField = ({ label, value, onChange, placeholder }) => {
@@ -72,7 +69,7 @@ const PasswordField = ({ label, value, onChange, placeholder }) => {
         <button
           type="button"
           onClick={() => setShow((s) => !s)}
-          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface"
+          className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1 text-on-surface-variant text-base pointer-events-none"
           tabIndex={-1}
         >
           <span className="material-symbols-outlined text-lg">{show ? "visibility_off" : "visibility"}</span>
@@ -475,7 +472,7 @@ export default function Settings() {
                     <select value={colorMode} onChange={(e) => setColorMode(e.target.value)} className={selectCls}>
                       {["Default", "Dark", "High Contrast", "Color Blind"].map((o) => <option key={o}>{o}</option>)}
                     </select>
-                    <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none" style={{ fontSize: 18 }}>expand_more</span>
+                    <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1 pointer-events-none text-lg leading-none text-on-surface-variant" style={{ fontSize: 18 }}>expand_more</span>
                   </div>
                 </AccessRow>
 
@@ -484,7 +481,7 @@ export default function Settings() {
                     <select value={fontStyle} onChange={(e) => setFontStyle(e.target.value)} className={selectCls}>
                       {["Default", "Serif", "Monospace", "Dyslexic-Friendly"].map((o) => <option key={o}>{o}</option>)}
                     </select>
-                    <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none" style={{ fontSize: 18 }}>expand_more</span>
+                    <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1 pointer-events-none text-lg leading-none text-on-surface-variant" style={{ fontSize: 18 }}>expand_more</span>
                   </div>
                 </AccessRow>
 
@@ -538,7 +535,7 @@ export default function Settings() {
                           <option value="" disabled>Select a reason</option>
                           {CONTACT_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
                         </select>
-                        <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none" style={{ fontSize: 18 }}>expand_more</span>
+                        <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1 pointer-events-none text-lg leading-none text-on-surface-variant" style={{ fontSize: 18 }}>expand_more</span>
                       </div>
                     </div>
                     <div>

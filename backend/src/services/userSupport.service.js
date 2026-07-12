@@ -18,26 +18,30 @@ const preview  = (text, n = 48) => {
   return t.length > n ? `${t.slice(0, n)}…` : t;
 };
 
-// sender_user_id -> { name, first_name, last_name, role, email, school_id }
+// Build sender_user_id -> { name, first_name, last_name, role, email, school_id }
+// so a request row can show who sent it.
 const buildUserMap = async () => {
+  // users (role/email) + all four role tables (names + school IDs) in parallel
   const [{ data: users }, ...roleResults] = await Promise.all([
     supabaseAdmin.from("users").select("user_id, username, role, email"),
     ...ROLE_TABLES.map(({ table, pk }) => supabaseAdmin.from(table).select(`user_id, first_name, last_name, ${pk}`)),
   ]);
 
+  // index profile info by user_id across the role tables
   const infoByUserId = new Map();
   roleResults.forEach(({ data }, idx) => {
-    const { pk } = ROLE_TABLES[idx];
+    const { pk } = ROLE_TABLES[idx];                 // results line up with ROLE_TABLES order
     (data ?? []).forEach((row) => {
-      if (row.user_id == null) return;
+      if (row.user_id == null) return;               // skip rows not linked to a user
       infoByUserId.set(row.user_id, {
         first_name: row.first_name ?? "",
         last_name:  row.last_name ?? "",
-        school_id:  row[pk] ?? null,
+        school_id:  row[pk] ?? null,                 // role-table PK = login "school ID"
       });
     });
   });
 
+  // merge each users row with its profile info
   const map = new Map();
   (users ?? []).forEach((u) => {
     const info = infoByUserId.get(u.user_id) ?? {};
@@ -74,6 +78,7 @@ const mapRow = (userMap) => (r) => {
   };
 };
 
+// support requests for the admin User Support page (+ stats + filters)
 export const listSupportRequests = async ({
   search = "",
   category = "all",
@@ -81,13 +86,15 @@ export const listSupportRequests = async ({
   page = 1,
   pageSize = 8,
 } = {}) => {
+  // all requests (newest first) + the user lookup map, in parallel
   const [{ data: rows }, userMap] = await Promise.all([
     supabaseAdmin.from(TABLE).select("*").order("sent_date", { ascending: false }),
     buildUserMap(),
   ]);
 
-  let reqs = (rows ?? []).map(mapRow(userMap));
+  let reqs = (rows ?? []).map(mapRow(userMap));       // shape each row for the UI
 
+  // stat-card counts, over the FULL (unfiltered) set
   const stats = {
     total:         reqs.length,
     passwordReset: reqs.filter((r) => r.password_reset).length,
@@ -96,14 +103,17 @@ export const listSupportRequests = async ({
     resolved:      reqs.filter((r) => r.status === "Resolved").length,
   };
 
+  // dropdown options derived from the data so they always match real values
   const filters = {
     categories: [...new Set(reqs.map((r) => r.category).filter(Boolean))].sort(),
     statuses:   [...new Set(reqs.map((r) => r.status).filter(Boolean))].sort(),
   };
 
+  // apply category + status filters
   if (category !== "all") reqs = reqs.filter((r) => r.category === category);
   if (status !== "all")   reqs = reqs.filter((r) => r.status === status);
 
+  // free-text search across name / role / subject / category / ticket ID
   const q = String(search).trim().toLowerCase();
   if (q) {
     reqs = reqs.filter((r) =>
@@ -115,6 +125,7 @@ export const listSupportRequests = async ({
     );
   }
 
+  // paginate the filtered set (clamped page)
   const total      = reqs.length;
   const size       = Math.max(1, parseInt(pageSize, 10) || 8);
   const totalPages = Math.max(1, Math.ceil(total / size));
@@ -334,6 +345,7 @@ export const sendPasswordResetLink = async (sr_id) => {
 // Admin updates a request's status and/or writes a response. When a written
 // response is provided, the requesting user is notified with it (response can be
 // null — a status-only change does not notify).
+// save an admin response + status on a support request
 export const respondToRequest = async (sr_id, { response, status } = {}) => {
   const { data: reqRow, error: findErr } = await supabaseAdmin
     .from(TABLE).select("sr_id, sender_user_id").eq("sr_id", sr_id).single();
@@ -371,16 +383,19 @@ const requestId = (id, iso) => {
   return `PR-${year}-${String(id ?? 0).padStart(5, "0")}`;
 };
 
+// pending forgot-password requests (admin User Password Resets page)
 export const listPasswordResetRequests = async ({ search = "", status = "all", page = 1, pageSize = 8 } = {}) => {
+  // only password_reset rows (newest first) + the user lookup map, in parallel
   const [{ data: rows }, userMap] = await Promise.all([
     supabaseAdmin.from(TABLE).select("*").eq("password_reset", true).order("sent_date", { ascending: false }),
     buildUserMap(),
   ]);
 
+  // shape each row; name shown "Last, First" (falls back to the joined display name)
   let reqs = (rows ?? []).map((r) => {
     const u = userMap.get(r.sender_user_id) ?? {};
     const display = (u.last_name || u.first_name)
-      ? `${u.last_name ?? ""}, ${u.first_name ?? ""}`.replace(/(^, )|(, $)/g, "").trim()
+      ? `${u.last_name ?? ""}, ${u.first_name ?? ""}`.replace(/(^, )|(, $)/g, "").trim() // trim stray comma if a name part is missing
       : (u.name ?? "Unknown");
     return {
       sr_id:         r.sr_id,
@@ -397,10 +412,12 @@ export const listPasswordResetRequests = async ({ search = "", status = "all", p
     };
   });
 
-  const statuses = [...new Set(reqs.map((r) => r.status).filter(Boolean))].sort();
+  const statuses = [...new Set(reqs.map((r) => r.status).filter(Boolean))].sort(); // status filter options from the data
 
+  // apply status filter (case-insensitive)
   if (status !== "all") reqs = reqs.filter((r) => (r.status ?? "").toLowerCase() === String(status).toLowerCase());
 
+  // free-text search across name / email / school ID / request ID
   const q = String(search).trim().toLowerCase();
   if (q) {
     reqs = reqs.filter((r) =>
@@ -411,6 +428,7 @@ export const listPasswordResetRequests = async ({ search = "", status = "all", p
     );
   }
 
+  // paginate the filtered set (clamped page)
   const total      = reqs.length;
   const size       = Math.max(1, parseInt(pageSize, 10) || 8);
   const totalPages = Math.max(1, Math.ceil(total / size));
@@ -444,6 +462,7 @@ const markResolved = async (sr_id, responseText) => {
 };
 
 // action: "temp" | "link" | "resolve"
+// approve/decline a password-reset request (approve sends the reset link)
 export const processPasswordReset = async (sr_id, action, note = "") => {
   const trimmed = String(note ?? "").trim();
 

@@ -1,3 +1,9 @@
+// Attendance Report (principal): monthly present/absent/tardy grid per student, plus
+// demerits + homework PACEs. Exports AttendanceReportContent (embedded in
+// SupervisorReportModal) + a standalone modal.
+// Backend chain (frontend api/reports.js fetchAttendanceReport -> routes/reports.routes.js):
+//   GET /reports/teacher/:id/attendance -> controllers/reports.controller.js > getTeacherAttendanceReport (~line 23)
+//                                        -> services/reports.service.js > getTeacherAttendanceReport (~line 384)
 import { useState, useEffect } from "react";
 import { fetchAttendanceReport } from "../../api/reports.js";
 
@@ -27,14 +33,16 @@ const SkeletonRow = ({ cols }) => (
   </tr>
 );
 
+// Embeddable report body (used standalone below and inside SupervisorReportModal)
 export function AttendanceReportContent({ teacher, quarter }) {
   const [report,  setReport]  = useState(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState("");
-  const [search,  setSearch]  = useState("");
+  const [search,  setSearch]  = useState("");           // student name filter
 
   const teacherName = teacher ? `${teacher.firstName} ${teacher.lastName}` : "—";
 
+  // fetch this teacher's attendance report for the quarter
   useEffect(() => {
     if (!teacher?.teacher_id) return;
     setLoading(true);
@@ -44,11 +52,11 @@ export function AttendanceReportContent({ teacher, quarter }) {
       .finally(() => setLoading(false));
   }, [teacher?.teacher_id, quarter]);
 
-  const students = (report?.students ?? []).filter((s) =>
+  const students = (report?.students ?? []).filter((s) => // rows filtered by the search box
     s.name.toLowerCase().includes(search.toLowerCase())
   );
-  const months = report?.months ?? [];
-  const totalCols = 3 + months.length * 3;
+  const months = report?.months ?? [];                  // month column headers (P/A/T each)
+  const totalCols = 3 + months.length * 3;              // name + demerits + hw, plus 3 cols per month
 
   return (
     <>
@@ -69,6 +77,7 @@ export function AttendanceReportContent({ teacher, quarter }) {
         ) : <div />}
         <div className="relative shrink-0">
           <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant" style={{ fontSize: 15 }}>search</span>
+          {/* search -> setSearch filters the `students` rows client-side */}
           <input
             type="text"
             placeholder="Search student..."
@@ -128,6 +137,7 @@ export function AttendanceReportContent({ teacher, quarter }) {
   );
 }
 
+// Standalone modal wrapper around the content body
 export default function AttendanceReportViewModal({ teacher, quarter, onClose }) {
   const teacherName = teacher ? `${teacher.firstName} ${teacher.lastName}` : "—";
   return (

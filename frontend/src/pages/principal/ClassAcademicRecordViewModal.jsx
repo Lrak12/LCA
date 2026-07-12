@@ -1,3 +1,9 @@
+// Class Academic Record report (principal): the class-wide quarterly academic summary
+// table (PACEs, 100's, attendance, scriptures). Exports ClassAcademicRecordContent (the
+// body, embedded in SupervisorReportModal) + a standalone modal wrapper.
+// Backend chain (frontend api/reports.js fetchAcademicReport -> routes/reports.routes.js):
+//   GET /reports/teacher/:id/academic -> controllers/reports.controller.js > getTeacherAcademicReport (~line 16)
+//                                      -> services/reports.service.js > getTeacherAcademicReport (~line 295)
 import { useState, useEffect } from "react";
 import { fetchAcademicReport } from "../../api/reports.js";
 
@@ -37,6 +43,7 @@ export function ClassAcademicRecordContent({ teacher, quarter }) {
 
   const teacherName = teacher ? `${teacher.firstName} ${teacher.lastName}` : "—";
 
+  // fetch this teacher's academic report for the quarter (re-runs if either changes)
   useEffect(() => {
     if (!teacher?.teacher_id) return;
     setLoading(true);
@@ -46,7 +53,7 @@ export function ClassAcademicRecordContent({ teacher, quarter }) {
       .finally(() => setLoading(false));
   }, [teacher?.teacher_id, quarter]);
 
-  const students = report?.students ?? [];
+  const students = report?.students ?? [];             // one row per student
 
   return (
     <>
@@ -153,6 +160,7 @@ export function ClassAcademicRecordContent({ teacher, quarter }) {
   );
 }
 
+// Standalone modal wrapper around the content body (used when opened on its own)
 export default function ClassAcademicRecordViewModal({ teacher, quarter, onClose }) {
   const teacherName = teacher ? `${teacher.firstName} ${teacher.lastName}` : "—";
   return (

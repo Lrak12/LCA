@@ -1,3 +1,6 @@
+// Attendance page. Two modes: "today" (mark P/A/T/E + submit) and "history"
+// (read-only past day). Load/save via fetchTeacherAttendance / submitTeacherAttendance
+// (teacher.service.getAttendance / submitAttendance).
 import { useState, useEffect } from "react";
 import TeacherLayout from "../../components/TeacherLayout.jsx";
 import { fetchTeacherAttendance, submitTeacherAttendance } from "../../api/teacher.js";
@@ -6,12 +9,15 @@ import { useSchoolYear } from "../../hooks/useSchoolYear.js";
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
 // ─── Status config ────────────────────────────────────────────────────────────
+// STATUS_CFG - the 4 attendance buttons. Button key (P/A/T/E) maps to { db: the
+//   exact value written to the DB, activeClass: the button's selected style }.
 const STATUS_CFG = {
   P: { db: "Present", activeClass: "bg-green-500 text-white ring-2 ring-green-200"  },
   A: { db: "Absent",  activeClass: "bg-red-500   text-white ring-2 ring-red-200"   },
   T: { db: "Late",    activeClass: "bg-amber-400 text-white ring-2 ring-amber-200" },
   E: { db: "Excused", activeClass: "bg-blue-500  text-white ring-2 ring-blue-200"  },
 };
+// Reverse map: DB status (lowercase) > button key, used to preselect saved status.
 const DB_TO_KEY   = { present: "P", absent: "A", late: "T", excused: "E" };
 const INACTIVE_BTN = "border border-outline-variant/30 text-on-surface-variant hover:bg-surface-container-low";
 
@@ -23,9 +29,13 @@ const CAL_DOT = {
 };
 
 const today      = new Date();
+// toDateStr - local YYYY-MM-DD (built from local parts, NOT toISOString, to avoid
+//   the UTC off-by-one that would shift the date in a +8 timezone).
 const toDateStr  = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-const formatFull = (d) => d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
-const formatShort= (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+const formatFull = (d) => d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }); // "Monday, July 10, 2026"
+const formatShort= (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });                 // "Jul 10, 2026"
+// fmtTime - the "Last Updated" cell: clock time if updated today, "Yesterday",
+//   else a short date.
 const fmtTime    = (val) => {
   if (!val) return "—";
   if (typeof val === "string" && !val.includes("T")) return val;
@@ -39,6 +49,8 @@ const fmtTime    = (val) => {
 
 
 // ─── History status pills ─────────────────────────────────────────────────────
+// HIST_STATUS - how each recorded status renders in the read-only History table
+//   (label shown, icon, dot colour, and text colours). Note "late" displays as "Tardy".
 const HIST_STATUS = {
   present: { label: "Present", icon: "check",    dot: "bg-green-500", text: "text-green-600", remark: "text-on-surface-variant" },
   absent:  { label: "Absent",  icon: "close",    dot: "bg-red-500",   text: "text-red-600",   remark: "text-red-500" },
@@ -54,14 +66,18 @@ const HIST_PAGE_SIZE = 10;
 
 // ─── Mini Calendar ────────────────────────────────────────────────────────────
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-const DOW    = ["M","T","W","T","F","S","S"];
+const DOW    = ["M","T","W","T","F","S","S"]; // day-of-week headers (Monday-first)
 
+// Sidebar month calendar. Days are coloured by that day's status (from `history`);
+// onSelect(date) reloads that day. `view` tracks the shown month.
 function MiniCalendar({ selectedDate, onSelect, history }) {
-  const [view, setView] = useState(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1));
+  const [view, setView] = useState(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1)); // 1st of shown month
 
   const year   = view.getFullYear();
   const month  = view.getMonth();
-  const days   = new Date(year, month + 1, 0).getDate();
+  const days   = new Date(year, month + 1, 0).getDate();  // number of days in this month
+  // offset = how many blank cells before day 1, so the 1st lands on the right weekday
+  //   (JS getDay() is Sunday=0; this converts to a Monday-first grid).
   const offset = (() => { const d = new Date(year, month, 1).getDay(); return d === 0 ? 6 : d - 1; })();
 
   const todayStr = toDateStr(today);
@@ -120,39 +136,43 @@ function MiniCalendar({ selectedDate, onSelect, history }) {
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
+// loadAttendance() fetches a day; handleSubmit() saves the Today marks.
 export default function Attendance() {
-  const schoolYearLabel = useSchoolYear();
-  const [viewMode,     setViewMode]     = useState("today");
-  const [selectedDate, setSelectedDate] = useState(today);
-  const [students,     setStudents]     = useState([]);
-  const [log,          setLog]          = useState({});
-  const [search,      setSearch]      = useState("");
-  const [calHistory,  setCalHistory]  = useState({});
-  const [gradeLevels, setGradeLevels] = useState([]);
-  const [gradeFilter, setGradeFilter] = useState("all");
-  const [summary,     setSummary]     = useState({ total: 0, present: 0, absent: 0, tardy: 0, excused: 0 });
-  const [histPage,    setHistPage]    = useState(1);
-  const [loading,     setLoading]     = useState(false);
-  const [submitting,  setSubmitting]  = useState(false);
-  const [submitDone,  setSubmitDone]  = useState(false);
-  const [submitError, setSubmitError] = useState("");
+  const schoolYearLabel = useSchoolYear();                                    // active SY label for the layout
+  const [viewMode,     setViewMode]     = useState("today");                  // "today" (edit) | "history" (read-only)
+  const [selectedDate, setSelectedDate] = useState(today);                    // which day is being viewed/edited
+  const [students,     setStudents]     = useState([]);                       // students in this teacher's class
+  const [log,          setLog]          = useState({});                       // per-student edits { id: {status,notes,time} }
+  const [search,      setSearch]      = useState("");                         // name/ID search box text
+  const [calHistory,  setCalHistory]  = useState({});                         // date > status map that colours the calendar
+  const [gradeLevels, setGradeLevels] = useState([]);                         // grade-level names for the History filter
+  const [gradeFilter, setGradeFilter] = useState("all");                      // selected grade filter (History)
+  const [summary,     setSummary]     = useState({ total: 0, present: 0, absent: 0, tardy: 0, excused: 0 }); // recorded tallies
+  const [histPage,    setHistPage]    = useState(1);                          // History table page number
+  const [loading,     setLoading]     = useState(false);                      // true while a day is loading
+  const [submitting,  setSubmitting]  = useState(false);                      // true while a submit is in flight
+  const [submitDone,  setSubmitDone]  = useState(false);                      // shows the green success banner
+  const [submitError, setSubmitError] = useState("");                         // shows the red error banner
 
+  // loadAttendance - fetch one day's attendance and hydrate the page from it.
+  //   keepDone=true keeps the success banner visible after a submit+reload.
   const loadAttendance = (date, keepDone = false) => {
     setLoading(true);
-    if (!keepDone) setSubmitDone(false);
-    fetchTeacherAttendance({ date: toDateStr(date) })
+    if (!keepDone) setSubmitDone(false);                 // clear old success banner unless we just submitted
+    fetchTeacherAttendance({ date: toDateStr(date) })    // GET /teacher/attendance?date=...
       .then((res) => {
         const d = res.data;
-        setStudents(d.students ?? []);
-        setGradeLevels(d.gradeLevels ?? []);
+        setStudents(d.students ?? []);                   // class roster (+ any saved status)
+        setGradeLevels(d.gradeLevels ?? []);             // grade names for the History filter
         setSummary(d.summary ?? { total: 0, present: 0, absent: 0, tardy: 0, excused: 0 });
+        // Seed the editable `log` from saved statuses (DB value > button key).
         const newLog = {};
         (d.students ?? []).forEach((s) => {
           newLog[s.student_id] = { status: DB_TO_KEY[s.status] ?? null, notes: s.notes ?? "", time: null };
         });
         setLog(newLog);
       })
-      .catch(() => {
+      .catch(() => {                                      // on error, reset to an empty day
         setStudents([]);
         setLog({});
         setSummary({ total: 0, present: 0, absent: 0, tardy: 0, excused: 0 });
@@ -160,34 +180,40 @@ export default function Attendance() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadAttendance(today); }, []);
-  useEffect(() => { setHistPage(1); }, [search, gradeFilter]);
+  useEffect(() => { loadAttendance(today); }, []);                 // load today's attendance once on mount
+  useEffect(() => { setHistPage(1); }, [search, gradeFilter]);     // reset History paging when filters change
 
+  // handleDaySelect - user picked a day (calendar / date input): remember it + reload.
   const handleDaySelect = (date) => {
     setSelectedDate(date);
     setHistPage(1);
     loadAttendance(date);
   };
 
+  // onDateInput - the <input type=date> value ("YYYY-MM-DD") > a local Date, then reload.
   const onDateInput = (value) => {
     if (!value) return;
-    handleDaySelect(new Date(`${value}T00:00:00`));
+    handleDaySelect(new Date(`${value}T00:00:00`));      // T00:00:00 forces LOCAL midnight (not UTC)
   };
 
+  // gradeLabel - subtitle text: the chosen grade, or all grades joined, or a dash.
   const gradeLabel = gradeFilter !== "all" ? gradeFilter : (gradeLevels.length ? gradeLevels.join(", ") : "—");
+  // pctOf - format a count as a % of today's total (guards divide-by-zero).
   const pctOf = (n) => (summary.total ? `${((n / summary.total) * 100).toFixed(1)}%` : "0%");
 
-  // History view: filtered + paginated recorded rows
+  // History view: the recorded rows narrowed by search + grade, then paginated.
   const histFiltered = students.filter((s) => {
     const matchSearch = s.name.toLowerCase().includes(search.toLowerCase()) || String(s.student_id).includes(search);
     const matchGrade  = gradeFilter === "all" || s.grade === gradeFilter;
     return matchSearch && matchGrade;
   });
-  const histTotalPages = Math.max(1, Math.ceil(histFiltered.length / HIST_PAGE_SIZE));
-  const histPageRows   = histFiltered.slice((histPage - 1) * HIST_PAGE_SIZE, histPage * HIST_PAGE_SIZE);
+  const histTotalPages = Math.max(1, Math.ceil(histFiltered.length / HIST_PAGE_SIZE));              // at least 1 page
+  const histPageRows   = histFiltered.slice((histPage - 1) * HIST_PAGE_SIZE, histPage * HIST_PAGE_SIZE); // this page's rows
 
-  const printReport = () => window.print();
+  const printReport = () => window.print(); // Print button > browser print dialog
 
+  // exportExcel - build an HTML <table> of the filtered History rows and download
+  //   it as a .xls file (Excel opens HTML tables). No server call - pure client-side.
   const exportExcel = () => {
     const head = ["Student ID", "Student Name", "Grade", "Status", "Remarks", "Time Recorded"];
     const body = histFiltered.map((s) => [
@@ -212,6 +238,7 @@ export default function Attendance() {
     URL.revokeObjectURL(url);
   };
 
+  // markAllPresent - set every student's button to P in one click (local only).
   const markAllPresent = () => {
     const next = {};
     students.forEach((s) => { next[s.student_id] = { ...log[s.student_id], status: "P" }; });
@@ -219,34 +246,39 @@ export default function Attendance() {
     setSubmitDone(false);
   };
 
+  // setStatus - one student's P/A/T/E button was clicked; update just their entry.
   const setStatus = (id, key) => {
     setLog((prev) => ({ ...prev, [id]: { ...prev[id], status: key } }));
-    setSubmitDone(false);
+    setSubmitDone(false);                                 // edits invalidate the "submitted" banner
   };
 
+  // setNote - one student's note field changed; update just their entry.
   const setNote = (id, notes) => {
     setLog((prev) => ({ ...prev, [id]: { ...prev[id], notes } }));
   };
 
+  // handleSubmit - save the day's attendance to the backend.
   const handleSubmit = async () => {
     setSubmitting(true);
     setSubmitError("");
+    // Build the payload from ONLY the students who have a status set (skip unmarked),
+    //   mapping the button key back to the DB value via STATUS_CFG.
     const records = students
       .filter((s) => log[s.student_id]?.status != null)
       .map((s) => ({
         student_id: s.student_id,
-        status:     STATUS_CFG[log[s.student_id].status].db,
+        status:     STATUS_CFG[log[s.student_id].status].db,   // "P" > "Present", etc.
         notes:      log[s.student_id].notes ?? "",
       }));
-    if (!records.length) {
+    if (!records.length) {                                 // nothing marked > show a hint, don't call the API
       setSubmitError("No students have been marked yet.");
       setSubmitting(false);
       return;
     }
     try {
-      await submitTeacherAttendance({ date: toDateStr(selectedDate), records });
-      setSubmitDone(true);
-      loadAttendance(selectedDate, true);
+      await submitTeacherAttendance({ date: toDateStr(selectedDate), records }); // POST /teacher/attendance
+      setSubmitDone(true);                                 // green success banner
+      loadAttendance(selectedDate, true);                  // reload to show saved values (keep banner)
     } catch {
       setSubmitError("Failed to submit. Please try again.");
     } finally {
@@ -254,15 +286,16 @@ export default function Attendance() {
     }
   };
 
-  // Stats
+  // Stats - the 4 Today stat cards, computed live from the editable `log`.
   const total      = students.length;
-  const present    = Object.values(log).filter((r) => r.status === "P" || r.status === "E").length;
+  const present    = Object.values(log).filter((r) => r.status === "P" || r.status === "E").length; // Present counts Excused too
   const absent     = Object.values(log).filter((r) => r.status === "A").length;
   const tardy      = Object.values(log).filter((r) => r.status === "T").length;
   const presentPct = total ? ((present / total) * 100).toFixed(1) : "0";
   const absentPct  = total ? ((absent  / total) * 100).toFixed(1) : "0";
   const tardyPct   = total ? ((tardy   / total) * 100).toFixed(1) : "0";
 
+  // filtered - the Today table rows narrowed by the search box (name or ID).
   const filtered = students.filter((s) =>
     s.name.toLowerCase().includes(search.toLowerCase()) ||
     String(s.student_id).includes(search)
@@ -313,6 +346,9 @@ export default function Attendance() {
           </div>
         </div>
 
+        {/* TODAY MODE - editable attendance: 4 live stat cards (from `log`), the
+            attendance log table (P/A/T/E buttons + notes + Submit), and the mini
+            calendar sidebar. */}
         {viewMode === "today" && (
         <>
         {/* ── Stat Cards ──────────────────────────────────────────────── */}
@@ -361,7 +397,7 @@ export default function Attendance() {
             <div className="flex items-center gap-3 px-5 py-4 border-b border-outline-variant/10 flex-wrap">
               <span className="text-sm font-extrabold text-on-surface whitespace-nowrap">Attendance Log</span>
               <div className="relative flex-1 min-w-[140px]">
-                <span className="material-symbols-outlined absolute left-3 inset-y-0 flex items-center text-on-surface-variant text-base">search</span>// Note to self fix icon alignment 
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1 text-base text-on-surface-variant pointer-events-none">search</span>
                 <input
                   type="text"
                   placeholder="Search students..."
@@ -543,6 +579,9 @@ export default function Attendance() {
         )}
 
         {/* ════════════════════════ HISTORY VIEW ════════════════════════ */}
+        {/* HISTORY MODE - read-only: recorded stat cards (from `summary`), a
+            date + grade filter bar with Print/Export, and the recorded records
+            table (status pills + remarks + time) with pagination. */}
         {viewMode === "history" && (
         <>
           {/* Stat cards (recorded summary) */}

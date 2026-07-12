@@ -1,4 +1,11 @@
-﻿import { useState, useEffect, useCallback } from "react";
+﻿// School Grade Levels / Sections (principal): grid of grade-level cards; per card you
+// can enroll students, assign a supervisor, or view details.
+// Backend chain (frontend api/sections.js -> routes/section.routes.js, mounted at /grade-levels):
+//   list:   GET  /grade-levels           -> controllers/section.controller.js > getAll (~line 5)          -> services/section.service.js > getAllGradeLevels (~line 13)
+//   enroll: POST /grade-levels/:id/students -> controllers/section.controller.js > enrollStudents (~line 10) -> services/section.service.js > enrollStudents (~line 55)
+//   assign: POST /grade-levels/:id/teacher  -> controllers/section.controller.js > assignTeacher (~line 16)  -> services/section.service.js > assignTeacher (~line 72)
+//   modals also read api/student.js fetchAllStudents + api/teacher.js fetchAllTeachers.
+import { useState, useEffect, useCallback } from "react";
 import PrincipalLayout from "../../components/PrincipalLayout.jsx";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
 import { fetchAllSections, enrollStudentsInLevel, assignTeacherToSection } from "../../api/sections.js";
@@ -16,13 +23,16 @@ const AVATAR_PALETTE = [
   "bg-violet-600   text-white",
   "bg-sky-600      text-white",
 ];
+// deterministic avatar colour from a string (same name -> same colour)
 const avatarBg = (str = "") => {
   const code = [...str].reduce((a, c) => a + c.charCodeAt(0), 0);
   return AVATAR_PALETTE[code % AVATAR_PALETTE.length];
 };
+// first two initials from a name, uppercased
 const initials = (name = "") =>
   name.split(" ").map((n) => n[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
 
+// "Month D, YYYY" date, or em dash if missing/invalid
 const formatDate = (d) => {
   if (!d) return "—";
   const dt = new Date(d);
@@ -49,10 +59,11 @@ function CardAction({ icon, label, primary, onClick }) {
   );
 }
 
+// One grade-level tile: label, student count, assigned supervisor, and 3 actions.
 function GradeLevelCard({ level, onManageStudents, onAssignSupervisor, onView }) {
   const supervisors = level.faculty ?? [];
-  const headline    = supervisors[0]?.name ?? null;
-  const extra       = supervisors.length - 1;
+  const headline    = supervisors[0]?.name ?? null; // primary supervisor shown on the card
+  const extra       = supervisors.length - 1;        // "+N more" count
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 flex flex-col overflow-hidden">
@@ -89,7 +100,7 @@ function GradeLevelCard({ level, onManageStudents, onAssignSupervisor, onView })
         </div>
       </div>
 
-      {/* Action footer */}
+      {/* Action footer: Manage -> onManageStudents (Enroll modal); Assign -> onAssignSupervisor; View -> onView (all set page-level state) */}
       <div className="grid grid-cols-3 border-t border-outline-variant/15 divide-x divide-outline-variant/15">
         <CardAction icon="group"      label="Manage" onClick={() => onManageStudents(level)} />
         <CardAction icon="group_add"  label="Assign" primary onClick={() => onAssignSupervisor(level)} />
@@ -100,15 +111,17 @@ function GradeLevelCard({ level, onManageStudents, onAssignSupervisor, onView })
 }
 
 // ─── Enroll Students Modal ────────────────────────────────────────────────────
+// Pick students (searchable + filterable, multi-select) to enroll into this level.
 function EnrollStudentsModal({ level, onClose, onConfirm }) {
   const [search,      setSearch]      = useState("");
-  const [gradeFilter, setGradeFilter] = useState("all");
+  const [gradeFilter, setGradeFilter] = useState("all"); // filter by current grade / unassigned
   const [students,    setStudents]    = useState([]);
-  const [selected,    setSelected]    = useState(new Set());
+  const [selected,    setSelected]    = useState(new Set()); // chosen student_ids
   const [loading,     setLoading]     = useState(true);
   const [saving,      setSaving]      = useState(false);
   const [error,       setError]       = useState(null);
 
+  // load all students to choose from
   useEffect(() => {
     fetchAllStudents()
       .then((res) => setStudents(res.data?.data ?? res.data ?? []))
@@ -131,6 +144,7 @@ function EnrollStudentsModal({ level, onClose, onConfirm }) {
       .map(([gl_id, level_name]) => ({ value: String(gl_id), label: level_name })),
   ];
 
+  // apply search + grade filter to the student list
   const filtered = students.filter((s) => {
     const name = `${s.first_name} ${s.last_name}`.toLowerCase();
     const matchesSearch = name.includes(search.toLowerCase()) || String(s.student_id).includes(search);
@@ -138,11 +152,12 @@ function EnrollStudentsModal({ level, onClose, onConfirm }) {
       gradeFilter === "all"
         ? true
         : gradeFilter === "unassigned"
-        ? !s.gl_id
+        ? !s.gl_id                                   // students not yet in any grade
         : String(s.gl_id) === gradeFilter;
     return matchesSearch && matchesGrade;
   });
 
+  // add/remove one student from the selection
   const toggle = (id) =>
     setSelected((prev) => {
       const next = new Set(prev);
@@ -150,6 +165,7 @@ function EnrollStudentsModal({ level, onClose, onConfirm }) {
       return next;
     });
 
+  // select-all / clear-all across the currently filtered rows
   const toggleAll = () =>
     setSelected(
       filtered.every((s) => selected.has(s.student_id))
@@ -157,6 +173,7 @@ function EnrollStudentsModal({ level, onClose, onConfirm }) {
         : new Set(filtered.map((s) => s.student_id))
     );
 
+  // enroll the selected students into this level
   const handleConfirm = async () => {
     setSaving(true);
     try { await onConfirm(level.id, [...selected]); }
@@ -284,6 +301,7 @@ function EnrollStudentsModal({ level, onClose, onConfirm }) {
           <button onClick={onClose} className="px-5 py-2.5 text-sm font-bold text-on-surface border border-outline-variant/30 rounded-xl hover:bg-surface-container-low transition-colors">
             Cancel
           </button>
+          {/* Enroll -> handleConfirm() -> onConfirm(level.id, [...selected]) = page's handleEnroll() */}
           <button
             disabled={selected.size === 0 || saving}
             onClick={handleConfirm}
@@ -299,14 +317,16 @@ function EnrollStudentsModal({ level, onClose, onConfirm }) {
 }
 
 // ─── Assign Teacher Modal ─────────────────────────────────────────────────────
+// Pick one available supervisor (teacher) to assign to this grade level.
 function AssignTeacherModal({ level, onClose, onConfirm }) {
   const [search,   setSearch]   = useState("");
-  const [teachers, setTeachers] = useState([]);
-  const [selected, setSelected] = useState(null);
+  const [teachers, setTeachers] = useState([]);       // teachers not already on this level
+  const [selected, setSelected] = useState(null);      // chosen teacher_id
   const [loading,  setLoading]  = useState(true);
   const [saving,   setSaving]   = useState(false);
   const [error,    setError]    = useState(null);
 
+  // load teachers, excluding ones already assigned to this level
   useEffect(() => {
     fetchAllTeachers()
       .then((res) => {
@@ -318,10 +338,11 @@ function AssignTeacherModal({ level, onClose, onConfirm }) {
       .finally(() => setLoading(false));
   }, [level]);
 
-  const filtered = teachers.filter((t) =>
+  const filtered = teachers.filter((t) =>                // name search
     `${t.first_name} ${t.last_name}`.toLowerCase().includes(search.toLowerCase())
   );
 
+  // assign the selected teacher to this level
   const handleConfirm = async () => {
     if (!selected) return;
     setSaving(true);
@@ -414,6 +435,7 @@ function AssignTeacherModal({ level, onClose, onConfirm }) {
           <button onClick={onClose} className="px-5 py-2.5 text-sm font-bold text-on-surface border border-outline-variant/30 rounded-xl hover:bg-surface-container-low transition-colors">
             Cancel
           </button>
+          {/* Assign Supervisor -> handleConfirm() -> onConfirm(level.id, selected) = page's handleAssignTeacher() */}
           <button
             disabled={!selected || saving}
             onClick={handleConfirm}
@@ -452,6 +474,7 @@ function SummaryStat({ value, label, icon, iconBg, iconColor, valueColor = "text
   );
 }
 
+// Read-only grade-level details: info, gender/status summary, recent enrollments.
 function ViewGradeModal({ level, onClose }) {
   const [students, setStudents] = useState([]);
   const [loading,  setLoading]  = useState(true);
@@ -459,6 +482,7 @@ function ViewGradeModal({ level, onClose }) {
 
   const supervisorName = level.faculty?.[0]?.name ?? "No supervisor assigned";
 
+  // load only the students in this grade level
   useEffect(() => {
     fetchAllStudents()
       .then((res) => {
@@ -471,12 +495,14 @@ function ViewGradeModal({ level, onClose }) {
       .finally(() => setLoading(false));
   }, [level]);
 
+  // derive the summary counts from the loaded students
   const total    = students.length;
   const male     = students.filter((s) => (s.gender ?? "").toLowerCase().startsWith("m")).length;
   const female   = students.filter((s) => (s.gender ?? "").toLowerCase().startsWith("f")).length;
   const inactive = students.filter((s) => s.users?.is_active === false).length;
   const dash     = loading ? "…" : 0;
 
+  // 5 most recently enrolled students
   const recent = [...students]
     .sort((a, b) => new Date(b.enrollment_date ?? 0) - new Date(a.enrollment_date ?? 0))
     .slice(0, 5);
@@ -580,13 +606,14 @@ function ViewGradeModal({ level, onClose }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function SchoolSections() {
   const schoolYearLabel = useSchoolYear();
-  const [levels,        setLevels]        = useState([]);
+  const [levels,        setLevels]        = useState([]);   // grade-level cards from the API
   const [loading,       setLoading]       = useState(true);
   const [error,         setError]         = useState(null);
-  const [enrollTarget,  setEnrollTarget]  = useState(null);
-  const [assignTarget,  setAssignTarget]  = useState(null);
-  const [viewTarget,    setViewTarget]    = useState(null);
+  const [enrollTarget,  setEnrollTarget]  = useState(null);  // level whose Enroll modal is open
+  const [assignTarget,  setAssignTarget]  = useState(null);  // level whose Assign modal is open
+  const [viewTarget,    setViewTarget]    = useState(null);  // level whose View modal is open
 
+  // load all grade levels for the active school year
   const loadLevels = useCallback(() => {
     setLoading(true);
     setError(null);
@@ -598,18 +625,21 @@ export default function SchoolSections() {
 
   useEffect(() => { loadLevels(); }, [loadLevels]);
 
+  // enroll students into a level, then close the modal + refresh
   const handleEnroll = async (levelId, studentIds) => {
     await enrollStudentsInLevel(levelId, studentIds);
     setEnrollTarget(null);
     loadLevels();
   };
 
+  // assign a supervisor to a level, then close the modal + refresh
   const handleAssignTeacher = async (levelId, teacherId) => {
     await assignTeacherToSection(levelId, teacherId);
     setAssignTarget(null);
     loadLevels();
   };
 
+  // totals shown in the stat cards
   const totalStudents = levels.reduce((a, l) => a + l.students, 0);
   const totalTeachers = levels.reduce((a, l) => a + l.faculty.length, 0);
 
@@ -668,6 +698,7 @@ export default function SchoolSections() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+            {/* one card per grade level; card actions set enrollTarget / assignTarget / viewTarget -> render the matching modal below */}
             {levels.map((l) => (
               <GradeLevelCard
                 key={l.id}

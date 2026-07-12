@@ -1,3 +1,7 @@
+// Assign/Manage modal (opened from PaceMonitoring's footer). Per-PACE execution
+// manager: current PACE per subject with status, dates, extensions, completion +
+// points; a form assigns/edits one PACE. Backend: teacher.service
+// getStudentPaceManage / saveStudentPace (/teacher/student-pace-manage).
 import { useState, useEffect, useCallback } from "react";
 import { fetchStudentPaceManage, saveStudentPace } from "../../api/teacher.js";
 
@@ -22,6 +26,7 @@ const fmtDate = (iso) => {
 const STATUS_BADGE = {
   "Completed":       "bg-green-100 text-green-700",
   "Ongoing":         "bg-orange-100 text-orange-700",
+  "Overdue":         "bg-red-100 text-red-700",
   "Assigned":        "bg-blue-100 text-blue-700",
   "Not Yet Started": "bg-blue-100 text-blue-700",
 };
@@ -33,12 +38,13 @@ const COMPLETION_BADGE = {
 
 const LEGEND = [
   { label: "Completed/On-Time",      color: "bg-green-500"  },
-  { label: "Not Passed/Incomplete",  color: "bg-red-500"    },
+  { label: "Overdue/Incomplete",     color: "bg-red-500"    },
   { label: "Extended",               color: "bg-purple-500" },
   { label: "Ongoing/Late",           color: "bg-orange-500" },
   { label: "Not Yet Started",        color: "bg-blue-500"   },
 ];
 
+// one of the 4 summary cards (Completed/Ongoing/Remaining/Points)
 const StatCard = ({ icon, iconColor, label, value, valueColor }) => (
   <div className="flex-1 min-w-[150px] border border-outline-variant/20 rounded-xl px-4 py-3 flex items-center gap-3">
     <span className={`material-symbols-outlined ${iconColor}`} style={fillStyle}>{icon}</span>
@@ -54,14 +60,16 @@ const blankForm = {
   status: "Assigned", assigned_date: "", start_date: "", end_date: "", extension_count: 0,
 };
 
+// Loads via fetchStudentPaceManage(studentId); saveStudentPace() saves, then
+// reload + onSaved so the parent refreshes.
 export default function AssignManagePaceModal({ studentId, onClose, onSaved }) {
-  const [data,    setData]    = useState(null);
+  const [data,    setData]    = useState(null);     // API payload { student, stats, rows, moduleOptions }
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState("");
-  const [form,    setForm]    = useState(null);     // null = no form open
+  const [form,    setForm]    = useState(null);     // null = no form open; else the PACE being edited
   const [saving,  setSaving]  = useState(false);
   const [formErr, setFormErr] = useState("");
-  const [selPace, setSelPace] = useState({});       // subject -> selected pace number
+  const [selPace, setSelPace] = useState({});       // subject -> selected pace number (dropdown state)
 
   const load = useCallback(() => {
     if (!studentId) return;
@@ -114,6 +122,8 @@ export default function AssignManagePaceModal({ studentId, onClose, onSaved }) {
     setForm((f) => ({ ...f, pace_number: val, pace_title: match ? match.title : f.pace_title }));
   };
 
+  // handleSave - POST the form as one student_pace upsert; the backend auto-computes
+  //   completion_status + points when the status is Completed. Then reload + notify parent.
   const handleSave = async () => {
     if (!form.subject || !form.pace_number) { setFormErr("Subject and PACE number are required."); return; }
     setSaving(true);
@@ -139,9 +149,10 @@ export default function AssignManagePaceModal({ studentId, onClose, onSaved }) {
     }
   };
 
+  // Derived from the payload for the render below.
   const student = data?.student;
   const stats   = data?.stats ?? { completed: 0, ongoing: 0, remaining: 0, performancePoints: 0 };
-  const rows    = data?.rows ?? [];
+  const rows    = data?.rows ?? [];   // one row per subject (each with its list of PACEs)
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 backdrop-blur-sm overflow-y-auto py-8">

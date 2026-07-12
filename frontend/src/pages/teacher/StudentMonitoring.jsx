@@ -40,6 +40,11 @@ const TopStat = ({ label, value, sub, subColor, icon, iconBg, iconColor }) => (
   </div>
 );
 
+// Supervisor Student Monitoring page. 4 tabs: Records / Progress / PACE Analytics /
+// Ranking. Records + Progress share one call (GET /teacher/student-monitoring-overview,
+// teacher.service.getStudentMonitoringOverview); Analytics + Ranking are their own
+// components (PaceAnalyticsTab / RankingTab) that fetch on their own. "View" opens
+// StudentAcademicRecordModal.
 export default function StudentMonitoring() {
   const schoolYearLabel = useSchoolYear();
 
@@ -55,6 +60,8 @@ export default function StudentMonitoring() {
   const [page,         setPage]         = useState(1);
   const [selected,     setSelected]     = useState(null);
 
+  // one endpoint backs both Records and Progress; assessStatus is only sent on
+  // Records and subject only on Progress, so the stat cards stay overall.
   const load = useCallback(() => {
     setLoading(true);
     setError("");
@@ -70,7 +77,7 @@ export default function StudentMonitoring() {
   }, [tab, grade, search, paceStatus, assessStatus, subject, page]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setPage(1); }, [tab, grade, search, paceStatus, assessStatus, subject]);
+  useEffect(() => { setPage(1); }, [tab, grade, search, paceStatus, assessStatus, subject]); // back to page 1 on filter change
 
   const stats       = data?.stats ?? {};
   const rows        = data?.students ?? [];
@@ -119,7 +126,7 @@ export default function StudentMonitoring() {
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-on-surface-variant">Grade Level</span>
               <select value={grade} onChange={(e) => setGrade(e.target.value)}
-                className="text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
+                className="text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl pl-3 pr-8 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
                 <option value="all">All Grades</option>
                 {gradeLevels.map((g) => <option key={g} value={g}>{g}</option>)}
               </select>
@@ -193,7 +200,7 @@ export default function StudentMonitoring() {
               {/* Filters */}
               <div className="flex items-center gap-3 mb-5 flex-wrap">
                 <div className="relative flex-1 min-w-[220px]">
-                  <span className="material-symbols-outlined absolute left-3 inset-y-0 flex items-center text-on-surface-variant text-base">search</span>
+                  <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1 text-base text-on-surface-variant pointer-events-none">search</span>
                   <input type="text" placeholder="Search students by name or ID..." value={search} onChange={(e) => setSearch(e.target.value)}
                     className="w-full pl-9 pr-4 py-2.5 text-sm bg-white border border-outline-variant/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30" />
                 </div>
@@ -204,7 +211,7 @@ export default function StudentMonitoring() {
                   <option value="not-assessed">Not Assessed</option>
                 </select>
                 <select value={paceStatus} onChange={(e) => setPaceStatus(e.target.value)}
-                  className="text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl px-4 py-2.5 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
+                  className="text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl pl-4 pr-8 py-2.5 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
                   <option value="all">All PACE Status</option>
                   <option value="On Track">On Track</option>
                   <option value="Needs Attention">Needs Attention</option>
@@ -259,18 +266,18 @@ export default function StudentMonitoring() {
               {/* Filters */}
               <div className="flex items-center gap-3 mb-5 flex-wrap">
                 <div className="relative flex-1 min-w-[220px]">
-                  <span className="material-symbols-outlined absolute left-3 inset-y-0 flex items-center text-on-surface-variant text-base">search</span>
+                  <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1 text-base text-on-surface-variant pointer-events-none">search</span>
                   <input type="text" placeholder="Search students by name or ID..." value={search} onChange={(e) => setSearch(e.target.value)}
                     className="w-full pl-9 pr-4 py-2.5 text-sm bg-white border border-outline-variant/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30" />
                 </div>
                 <select value={paceStatus} onChange={(e) => setPaceStatus(e.target.value)}
-                  className="text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl px-4 py-2.5 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
+                  className="text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl pl-4 pr-8 py-2.5 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
                   <option value="all">All PACE Status</option>
                   <option value="On Track">On Track</option>
                   <option value="Needs Attention">Needs Attention</option>
                 </select>
                 <select value={subject} onChange={(e) => setSubject(e.target.value)}
-                  className="text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl px-4 py-2.5 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
+                  className="text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl pl-4 pr-8 py-2.5 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
                   <option value="all">All Subjects/PACE</option>
                   {subjects.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
@@ -311,6 +318,7 @@ export default function StudentMonitoring() {
               <Pagination />
             </div>
           ) : tab === "PACE Analytics" ? (
+            // these two tabs load their own data (getPaceAnalyticsOverview / getStudentRankings)
             <PaceAnalyticsTab grade={grade} />
           ) : (
             <RankingTab grade={grade} />

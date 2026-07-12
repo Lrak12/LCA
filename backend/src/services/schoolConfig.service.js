@@ -23,17 +23,19 @@ const writeSettings = async (obj) => {
   await writeFile(FILE, JSON.stringify(obj, null, 2), "utf8");
 };
 
+// read the school-settings JSON file (System Configuration)
 export const getSchoolConfig = async () => {
+  // JSON file settings + school-year rows (from the DB) in parallel
   const [setting, { data: years }] = await Promise.all([
     readSettings(),
     supabaseAdmin
       .from("school_year")
       .select("sy_id, year_label, is_active, start_date, end_date")
-      .order("start_date", { ascending: false }),
+      .order("start_date", { ascending: false }),   // newest first
   ]);
 
   const schoolYears = years ?? [];
-  const activeYear  = schoolYears.find((y) => y.is_active) ?? null;
+  const activeYear  = schoolYears.find((y) => y.is_active) ?? null; // the one active year
 
   return {
     setting,
@@ -43,6 +45,7 @@ export const getSchoolConfig = async () => {
   };
 };
 
+// write the school-settings JSON file
 export const updateSchoolConfig = async ({
   school_name,
   address,
@@ -53,8 +56,9 @@ export const updateSchoolConfig = async ({
   current_sy_id,
   preferences,
 }) => {
-  const current = await readSettings();
+  const current = await readSettings();              // start from what's already on disk
 
+  // overwrite the school-info fields, keeping everything else in the file
   const updated = {
     ...current,
     school_name:    school_name ?? null,
@@ -68,14 +72,14 @@ export const updateSchoolConfig = async ({
   if (logo_url !== undefined) updated.logo_url = logo_url;
   if (preferences !== undefined && preferences !== null) updated.preferences = preferences;
 
-  await writeSettings(updated);
+  await writeSettings(updated);                       // persist back to the JSON file
 
   // Switching the active school year still lives in the DB.
   if (current_sy_id) {
     const syId = parseInt(current_sy_id, 10);
     if (!Number.isNaN(syId)) {
-      await supabaseAdmin.from("school_year").update({ is_active: false }).neq("sy_id", syId);
-      await supabaseAdmin.from("school_year").update({ is_active: true }).eq("sy_id", syId);
+      await supabaseAdmin.from("school_year").update({ is_active: false }).neq("sy_id", syId); // clear the others
+      await supabaseAdmin.from("school_year").update({ is_active: true }).eq("sy_id", syId);   // then set this one active
     }
   }
 

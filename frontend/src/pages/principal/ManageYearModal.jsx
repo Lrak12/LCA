@@ -1,9 +1,15 @@
+// Manage Academic Year modal (principal): edit the active school year's label + start/end
+// dates and lay out its quarters. Opened from AcademicConfiguration's "Manage Year".
+// Backend chain (frontend api/settings.js updateSchoolYear -> routes/settings.routes.js):
+//   PUT /settings/academic/school-year -> controllers/settings.controller.js > updateSchoolYear (~line 10)
+//                                      -> services/settings.service.js > updateSchoolYear (~line 100)
 import { useState } from "react";
 import { updateSchoolYear } from "../../api/settings.js";
 
 const inputClass = "w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium text-on-surface focus:ring-2 focus:ring-primary/20 outline-none border-none";
 const labelClass = "block text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-2";
 
+// starting quarter rows (editable in the modal)
 const defaultQuarters = [
   { id: 1, label: "1st Quarter", start: "", end: "" },
   { id: 2, label: "2nd Quarter", start: "", end: "" },
@@ -12,22 +18,25 @@ const defaultQuarters = [
 ];
 
 export default function ManageYearModal({ schoolYear, onClose, onSuccess }) {
-  const [yearLabel,  setYearLabel]  = useState(schoolYear?.year_label  ?? "");
+  const [yearLabel,  setYearLabel]  = useState(schoolYear?.year_label  ?? ""); // seeded from the active year
   const [startDate,  setStartDate]  = useState(schoolYear?.start_date  ?? "");
   const [endDate,    setEndDate]    = useState(schoolYear?.end_date    ?? "");
   const [quarters,   setQuarters]   = useState(defaultQuarters);
-  const [editingIdx, setEditingIdx] = useState(null);
+  const [editingIdx, setEditingIdx] = useState(null);  // which quarter row is being edited
   const [saving,     setSaving]     = useState(false);
   const [error,      setError]      = useState("");
 
+  // edit one field of one quarter row
   const updateQuarter = (idx, key, val) => {
     setQuarters((prev) => prev.map((q, i) => i === idx ? { ...q, [key]: val } : q));
   };
 
+  // remove a quarter row
   const deleteQuarter = (idx) => {
     setQuarters((prev) => prev.filter((_, i) => i !== idx));
   };
 
+  // append a new quarter row (auto-labelled) and open it for editing
   const addQuarter = () => {
     const next = quarters.length + 1;
     setQuarters((prev) => [
@@ -37,6 +46,7 @@ export default function ManageYearModal({ schoolYear, onClose, onSuccess }) {
     setEditingIdx(quarters.length);
   };
 
+  // validate + save the school-year label and dates
   const handleSave = async () => {
     if (!yearLabel.trim()) { setError("School year label is required."); return; }
     if (!startDate)        { setError("Start date is required."); return; }
@@ -219,7 +229,7 @@ export default function ManageYearModal({ schoolYear, onClose, onSuccess }) {
               ))}
             </div>
 
-            {/* Add another term button */}
+            {/* Add another term -> addQuarter() appends a quarter row */}
             <button
               onClick={addQuarter}
               className="mt-3 w-full border-2 border-dashed border-outline-variant/40 rounded-xl py-3 text-sm font-bold text-on-surface-variant hover:border-primary hover:text-primary transition-all flex items-center justify-center gap-2"
@@ -239,6 +249,7 @@ export default function ManageYearModal({ schoolYear, onClose, onSuccess }) {
           >
             Cancel
           </button>
+          {/* Save -> handleSave() (updateSchoolYear, then onSuccess/onClose) */}
           <button
             onClick={handleSave}
             disabled={saving}

@@ -1,4 +1,12 @@
-﻿import { useState, useEffect } from "react";
+﻿// Diagnostic Assessment Management (principal): enroll a new student for placement
+// testing (auto-generates login credentials), list diagnostic-flow students, and jump to
+// Record Diagnostic. "Record" navigates to RecordDiagnostic.jsx.
+// Backend chain:
+//   list diagnostics: GET  /assessments/diagnostic (api/diagnosticAssessments.js fetchDiagnostics)
+//        -> controllers/assessment.controller.js > getDiagnostics (~line 43) -> services/assessment.service.js > getAllDiagnostics (~line 14)
+//   create student:   POST /students (api/student.js createStudent)
+//        -> controllers/student.controller.js > create (~line 15) -> services/student.service.js > createStudent (~line 113)
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import PrincipalLayout from "../../components/PrincipalLayout.jsx";
 import { fetchDiagnostics } from "../../api/diagnosticAssessments.js";
@@ -25,17 +33,20 @@ const BASIS_OPTIONS = Object.keys(BASIS_STYLES);
 const DEFAULT_BASIS = "Diagnostic Assessment";
 
 // ─── New Student Modal ────────────────────────────────────────────────────────
+// Enroll a brand-new student for diagnostic testing; on success shows an auto-generated
+// login-credentials card, then routes into the diagnostic recording flow.
 function NewStudentModal({ onClose, onCreated }) {
   const [form, setForm] = useState({
     first_name: "", last_name: "", date_of_birth: "",
     gender: "", gl_id: "", contact_number: "", address: "",
   });
-  const [gradeLevels,  setGradeLevels]  = useState([]);
+  const [gradeLevels,  setGradeLevels]  = useState([]);   // grade-level options
   const [saving,       setSaving]       = useState(false);
   const [error,        setError]        = useState("");
-  const [credentials,  setCredentials]  = useState(null); // { email, username, password, student }
-  const [copiedField,  setCopiedField]  = useState("");
+  const [credentials,  setCredentials]  = useState(null); // generated login shown after create
+  const [copiedField,  setCopiedField]  = useState("");   // which credential was just copied
 
+  // load grade levels for the dropdown
   useEffect(() => {
     fetchAllSections()
       .then((res) => setGradeLevels(res.data ?? []))
@@ -44,6 +55,7 @@ function NewStudentModal({ onClose, onCreated }) {
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
+  // validate + create the student account, then surface its login credentials
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.first_name.trim() || !form.last_name.trim() || !form.gl_id) {
@@ -87,6 +99,7 @@ function NewStudentModal({ onClose, onCreated }) {
     }
   };
 
+  // copy a credential value and briefly show a "copied" check on that field
   const copyToClipboard = (text, field) => {
     navigator.clipboard.writeText(text).then(() => {
       setCopiedField(field);
@@ -149,6 +162,7 @@ function NewStudentModal({ onClose, onCreated }) {
               >
                 Close
               </button>
+              {/* Start Diagnostic -> onCreated(student) = page's handleStudentCreated() (navigates to RecordDiagnostic) */}
               <button
                 onClick={() => onCreated(credentials.student)}
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold bg-primary text-white hover:bg-primary/90 transition-colors"
@@ -289,6 +303,7 @@ function NewStudentModal({ onClose, onCreated }) {
               className="px-6 py-2.5 rounded-xl text-sm font-semibold text-on-surface-variant hover:bg-surface-container-low transition-colors">
               Cancel
             </button>
+            {/* Create & Generate Account -> handleSubmit() (createStudent, then shows credentials card) */}
             <button type="submit" disabled={saving}
               className="px-6 py-2.5 rounded-xl text-sm font-bold bg-primary text-white hover:bg-primary/90 transition-colors disabled:opacity-60 flex items-center gap-2">
               {saving && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
@@ -303,6 +318,7 @@ function NewStudentModal({ onClose, onCreated }) {
 
 const PAGE_SIZE = 5;
 
+// windowed page numbers with ellipsis
 function buildPages(current, total) {
   if (total <= 5) return Array.from({ length: total }, (_, i) => i + 1);
   if (current <= 3) return [1, 2, 3, "…", total];
@@ -310,6 +326,7 @@ function buildPages(current, total) {
   return [1, "…", current, "…", total];
 }
 
+// one summary stat card at the top of the page
 const StatCard = ({ label, value, sub, icon, tint }) => (
   <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-5">
     <div className="flex items-start justify-between gap-2">
@@ -336,9 +353,10 @@ export default function DiagnosticAssessments() {
   const [basisFilter, setBasisFilter] = useState("");
   const [page,        setPage]        = useState(1);
   const [openMenu,    setOpenMenu]    = useState(null); // student_id of open kebab
-  const [showModal,   setShowModal]   = useState(false);
+  const [showModal,   setShowModal]   = useState(false); // New Student modal open?
   const [viewTarget,  setViewTarget]  = useState(null); // student row for the detail modal
 
+  // load students + their diagnostic rows together
   const load = async () => {
     setLoading(true);
     setError("");
@@ -350,7 +368,7 @@ export default function DiagnosticAssessments() {
       // Only show students created via the diagnostic flow
       setStudents((stuRes.data ?? []).filter((s) => s.source === "diagnostic"));
       const map = {};
-      (diagRes.data ?? []).forEach((d) => { map[d.student_id] = d; });
+      (diagRes.data ?? []).forEach((d) => { map[d.student_id] = d; }); // index diagnostics by student
       setDiagMap(map);
     } catch (err) {
       setError(err.message);
@@ -361,6 +379,7 @@ export default function DiagnosticAssessments() {
 
   useEffect(() => { load(); }, []);
 
+  // after creating a student, jump straight into recording their diagnostic
   const handleStudentCreated = (student) => {
     setShowModal(false);
     navigate(`/admin/diagnostic/record/${student.student_id}`);
@@ -371,10 +390,12 @@ export default function DiagnosticAssessments() {
   // Placement Basis is a placeholder until a stored field exists.
   const basisOf = () => DEFAULT_BASIS;
 
+  // unique grade-level options for the filter dropdown (natural-sorted)
   const gradeOptions = [...new Set(
     diagnosticStudents.map((s) => s.grade_level?.level_name).filter(Boolean)
   )].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
+  // apply search + grade + basis filters
   const filtered = diagnosticStudents.filter((s) => {
     const name  = `${s.first_name ?? ""} ${s.last_name ?? ""}`.toLowerCase();
     const matchSearch = name.includes(search.toLowerCase()) || String(s.student_id).includes(search);
@@ -383,6 +404,7 @@ export default function DiagnosticAssessments() {
     return matchSearch && matchGrade && matchBasis;
   });
 
+  // paginate the filtered rows
   const totalPages   = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage  = Math.min(page, totalPages);
   const startIndex   = (currentPage - 1) * PAGE_SIZE;
@@ -390,7 +412,7 @@ export default function DiagnosticAssessments() {
 
   // Stats (computable; "Accepted" is a placeholder until an acceptance workflow exists)
   const totalRecords  = diagnosticStudents.length;
-  const generated     = diagnosticStudents.filter((s) => diagMap[s.student_id]?.start_pace != null).length;
+  const generated     = diagnosticStudents.filter((s) => diagMap[s.student_id]?.start_pace != null).length; // have a generated start PACE
   const accepted      = "—";
   const assessedYear  = diagnosticStudents.length;
 
@@ -430,6 +452,7 @@ export default function DiagnosticAssessments() {
               Manage student diagnostic assessment records and review generated PACE recommendations.
             </p>
           </div>
+          {/* Create New Student Assessment -> setShowModal(true) opens <NewStudentModal> */}
           <button
             onClick={() => setShowModal(true)}
             className="shrink-0 flex items-center gap-2 px-6 py-3 bg-primary text-white font-bold text-sm rounded-xl hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
@@ -456,7 +479,8 @@ export default function DiagnosticAssessments() {
         {/* Filter bar */}
         <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-4 mb-6 flex items-end gap-4 flex-wrap">
           <div className="relative flex-1 min-w-[220px]">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-base">search</span>
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1 text-on-surface-variant text-base">search</span>
+            {/* search -> setSearch + page 1 (client-side filter) */}
             <input
               type="text"
               placeholder="Search student name or ID…"
@@ -465,6 +489,7 @@ export default function DiagnosticAssessments() {
               className="w-full pl-10 pr-4 py-2.5 rounded-xl border-2 border-outline-variant/30 text-sm focus:outline-none focus:border-primary"
             />
           </div>
+          {/* grade filter -> setGradeFilter + page 1 */}
           <div>
             <label className="block text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1.5">Grade Level</label>
             <select
@@ -487,6 +512,7 @@ export default function DiagnosticAssessments() {
               {BASIS_OPTIONS.map((b) => <option key={b} value={b}>{b}</option>)}
             </select>
           </div>
+          {/* Reset Filters -> resetFilters() clears search/grade/basis + page 1 */}
           <button
             onClick={resetFilters}
             className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border-2 border-outline-variant/30 text-sm font-bold text-on-surface hover:bg-surface-container-low transition-colors"
@@ -557,6 +583,7 @@ export default function DiagnosticAssessments() {
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center justify-end gap-1">
+                              {/* View Details -> setViewTarget(s) opens <StudentDiagnosticDetailModal> */}
                               <button
                                 onClick={() => setViewTarget(s)}
                                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-outline-variant/40 text-xs font-bold text-on-surface hover:bg-surface-container-low transition-colors"
@@ -564,6 +591,7 @@ export default function DiagnosticAssessments() {
                                 <span className="material-symbols-outlined text-sm">visibility</span>
                                 View Details
                               </button>
+                              {/* Record -> navigate() to RecordDiagnostic.jsx for this student */}
                               <button
                                 onClick={() => navigate(`/admin/diagnostic/record/${s.student_id}`)}
                                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-primary text-white text-xs font-bold hover:bg-primary/90 transition-colors shadow-sm shadow-primary/20"
@@ -571,6 +599,7 @@ export default function DiagnosticAssessments() {
                                 <span className="material-symbols-outlined text-sm">edit_note</span>
                                 Record
                               </button>
+                              {/* kebab -> setOpenMenu toggles this row's dropdown */}
                               <div className="relative">
                                 <button
                                   onClick={() => setOpenMenu(openMenu === s.student_id ? null : s.student_id)}

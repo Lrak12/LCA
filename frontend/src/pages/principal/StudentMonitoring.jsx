@@ -1,18 +1,10 @@
-// ============================================================================
-// FEATURE MAP - Principal > Student Monitoring   (UI / FRONTEND)
-// ----------------------------------------------------------------------------
-// This file is the UI for the Student Monitoring feature (principal dashboard):
-// the Student Records / Student Progress / Recommendations / PACE Analytics tabs
-// plus the "View Student Details" modal and the Add/Import Student actions.
-//
-// It talks to the backend through:  frontend/src/api/studentMonitoring.js
-// The backend for this feature lives in these files (a request travels through
-// them IN ORDER):
-//   1. route      > backend/src/routes/studentMonitoring.routes.js
-//   2. controller > backend/src/controllers/studentMonitoring.controller.js
-//   3. service    > backend/src/services/studentMonitoring.service.js   (business logic)
-//   4. model      > backend/src/models/studentMonitoring.model.js       (database queries)
-// ============================================================================
+// Principal Student Monitoring page. Tabs: Records / Progress / Recommendations /
+// PACE Analytics. "View Details" opens StudentSummaryModal.
+// Backend chain (frontend api/studentMonitoring.js -> routes/studentMonitoring.routes.js, mounted at /student-monitoring):
+//   list+tabs: GET /student-monitoring               -> controllers/studentMonitoring.controller.js > getOverview (~line 7)        -> services/studentMonitoring.service.js > getStudentMonitoring (~line 167)
+//   analytics: GET /student-monitoring/pace-analytics -> controllers/studentMonitoring.controller.js > getPaceAnalytics (~line 20)   -> services/studentMonitoring.service.js > getPaceAnalytics (~line 297)
+//   summary:   GET /student-monitoring/:id/summary    -> controllers/studentMonitoring.controller.js > getStudentSummary (~line 26)  -> services/studentMonitoring.service.js > getStudentSummary (~line 452)
+//   full plan: GET /student-monitoring/:id/profile    -> controllers/studentMonitoring.controller.js > getStudentProfile (~line 13)  -> services/studentMonitoring.service.js > getStudentProfile (~line 649)
 import { useState, useEffect, useMemo, useRef } from "react";
 import PrincipalLayout from "../../components/PrincipalLayout.jsx";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
@@ -118,14 +110,8 @@ const exportCSV = (students) => {
 };
 
 // ─── Import Modal (copied from the Students page) ─────────────────────────────
-// MODAL - Import Students via CSV.
-// SHOWS: a 4-step flow (Upload > Preview > Import > Result), drag/drop or browse
-//   a .csv, preview the parsed rows in a table, then a success/failed summary.
-// CALLS: downloadTemplate() (builds the sample CSV), parseCSV()/parseCSVLine()
-//   (client-side parse + required-column validation), handleFile()/handleDrop()
-//   (read the chosen file), and confirmImport() > importStudentsCSV() from
-//   api/student.js (POST to the backend). On success it calls the onSuccess prop
-//   (refreshes the page list) and onClose closes the modal.
+// CSV import: upload > preview > import > result. Parses client-side, then POSTs
+// via importStudentsCSV (api/student.js).
 function ImportModal({ onClose, onSuccess }) {
   const [step,       setStep]       = useState("upload"); // upload | preview | importing | result
   const [rows,       setRows]       = useState([]);
@@ -435,34 +421,26 @@ function ImportModal({ onClose, onSuccess }) {
 }
 
 // ─── Student Progress tab ─────────────────────────────────────────────────────
-// PAGE SIZE - how many student rows show per page in this tab's table.
 const PROGRESS_PAGE_SIZE = 7;
 
-// HELPER completionPct(student) - the student's PACE completion as a 0-100 number.
-//   It READS s.completedPaces and s.totalPaces; those are NOT computed here, they
-//   are built by the backend in studentMonitoring.service.js > getStudentMonitoring
-//   (row builder ~line 223; the completed/total counts come from getPaceCounts
-//   ~line 26). Guards divide-by-zero: a student with no PACEs returns 0%.
+// completion % from the backend-provided counts (guards divide-by-zero)
 const completionPct = (s) => (s.totalPaces ? (s.completedPaces / s.totalPaces) * 100 : 0);
 
-// HELPER progressStatusOf(student) - converts that % into the status label shown
-//   in the table and used by the Status filter.
+// turn that % into the status label used by the table + Status filter
 const progressStatusOf = (s) => {
-  if (!s.totalPaces) return "Needs Intervention";   // no PACEs assigned yet
-  const p = completionPct(s);                        // reuse the % helper above
-  if (p >= 80) return "Completed";                   // 80%+  complete
-  if (p >= 40) return "In Progress";                 // 40-79% complete
-  return "Needs Intervention";                       // under 40%
+  if (!s.totalPaces) return "Needs Intervention";
+  const p = completionPct(s);
+  if (p >= 80) return "Completed";
+  if (p >= 40) return "In Progress";
+  return "Needs Intervention";
 };
 
-// COMPONENT ProgressStatusBadge - renders the coloured status pill in each row.
-//   `status` is the string returned by progressStatusOf(); the map picks the
-//   colour, and any unknown value falls back to the "Needs Intervention" style.
+// coloured status pill
 const ProgressStatusBadge = ({ status }) => {
   const styles = {
-    "Completed":         "bg-green-100 text-green-700",   // green pill
-    "In Progress":       "bg-amber-100 text-amber-700",   // amber pill
-    "Needs Intervention": "bg-rose-100 text-rose-700",    // red pill
+    "Completed":         "bg-green-100 text-green-700",
+    "In Progress":       "bg-amber-100 text-amber-700",
+    "Needs Intervention": "bg-rose-100 text-rose-700",
   };
   return (
     <span className={`text-[11px] font-bold px-3 py-1 rounded-full whitespace-nowrap ${styles[status] ?? styles["Needs Intervention"]}`}>
@@ -471,26 +449,12 @@ const ProgressStatusBadge = ({ status }) => {
   );
 };
 
-// TAB - "Student Progress".
-// SHOWS: a table of each student's completed vs total PACEs, completion %, and a
-//   progress status badge, with Grade Level + Status filters and pagination.
-// CALLS: no API of its own, it receives the already-loaded `students` array as a
-//   prop and derives everything locally via completionPct()/progressStatusOf().
-// WHERE `students` / `loading` COME FROM (the data trail, backwards):
-//   this component is rendered by the parent page pages/principal/
-//   StudentMonitoring.jsx (~line 1403, <StudentProgressTab students=... />). The
-//   parent fetches the list ONCE via fetchStudentMonitoring() (~line 1271) and
-//   stores it in its `students` state (~line 1272). That request goes:
-//   api/studentMonitoring.js > fetchStudentMonitoring  >  GET /student-monitoring
-//   (studentMonitoring.routes.js)  >  controller.getOverview  >
-//   studentMonitoring.service.js > getStudentMonitoring (~line 180). The row
-//   builder there (~line 223) sets each student's full_name (~line 248),
-//   grade_level (~line 253), completedPaces (~line 256) and totalPaces (~line 259).
-//   > This tab only READS/displays that data; it never talks to the backend itself.
+// Student Progress tab. Uses the `students` prop already loaded by the parent
+// (fetchStudentMonitoring) and derives everything locally - no API call of its own.
 function StudentProgressTab({ students, loading }) {
-  const [gradeLevel, setGradeLevel] = useState("");  // selected Grade Level filter ("" = All)
-  const [status,     setStatus]     = useState("");  // selected Status filter ("" = All)
-  const [page,       setPage]       = useState(1);   // current table page number (1-based)
+  const [gradeLevel, setGradeLevel] = useState("");
+  const [status,     setStatus]     = useState("");
+  const [page,       setPage]       = useState(1);
 
   // gradeLevels - the distinct grade levels present in `students`, sorted by grade
   //   number, used to fill the Grade Level dropdown. Recomputed only when `students`
@@ -544,7 +508,7 @@ function StudentProgressTab({ students, loading }) {
               <option value="">All</option>
               {gradeLevels.map((gl) => <option key={gl} value={gl}>{gl}</option>)}
             </select>
-            <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant text-base pointer-events-none">expand_more</span>
+            <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1 text-on-surface-variant text-base pointer-events-none">expand_more</span>
           </div>
         </div>
 
@@ -561,7 +525,7 @@ function StudentProgressTab({ students, loading }) {
               <option value="In Progress">In Progress</option>
               <option value="Needs Intervention">Needs Intervention</option>
             </select>
-            <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant text-base pointer-events-none">expand_more</span>
+            <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1 text-on-surface-variant text-base pointer-events-none">expand_more</span>
           </div>
         </div>
       </div>
@@ -586,10 +550,7 @@ function StudentProgressTab({ students, loading }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/10">
-              {/* tbody has 3 render states: (1) loading > skeleton rows,
-                  (2) no rows > empty message, (3) otherwise > the real data rows. */}
               {loading ? (
-                // (1) LOADING: render PROGRESS_PAGE_SIZE grey placeholder rows (7 cells each).
                 Array.from({ length: PROGRESS_PAGE_SIZE }).map((_, i) => (
                   <tr key={i}>
                     {Array.from({ length: 7 }).map((__, j) => (
@@ -598,23 +559,17 @@ function StudentProgressTab({ students, loading }) {
                   </tr>
                 ))
               ) : pageRows.length === 0 ? (
-                // (2) EMPTY: distinguish "no students at all" from "filters hid them all".
                 <tr>
                   <td colSpan={7} className="px-5 py-12 text-center text-sm text-on-surface-variant">
                     {students.length === 0 ? "No students found." : "No students match the current filters."}
                   </td>
                 </tr>
               ) : (
-                // (3) DATA ROWS: one <tr> per student on this page. Column > field:
-                //   # = running number, Student ID = s.student_id, Name = s.full_name,
-                //   Completed PACE = s.completedPaces, Total Assigned = s.totalPaces,
-                //   PACE Completion % = pct, Status = progressStatusOf(s).
-                //   Every s.* field is built by the backend (see the trail at the top).
                 pageRows.map((s, idx) => {
-                  const pct = completionPct(s);   // 0-100 completion, drives the % text + bar width
+                  const pct = completionPct(s);
                   return (
                     <tr key={s.student_id} className="hover:bg-surface-container-lowest transition-colors">
-                      <td className="px-5 py-5 text-sm font-bold text-on-surface-variant">{startIndex + idx + 1}</td>{/* running # across pages */}
+                      <td className="px-5 py-5 text-sm font-bold text-on-surface-variant">{startIndex + idx + 1}</td>
                       <td className="px-5 py-5 text-sm font-medium text-on-surface-variant whitespace-nowrap">ID {s.student_id}</td>
                       <td className="px-5 py-5 text-sm font-bold text-on-surface">{s.full_name ?? `${s.first_name} ${s.last_name}`}</td>
                       <td className="px-5 py-5 text-sm text-on-surface">{s.completedPaces}</td>
@@ -696,13 +651,8 @@ const RecStatusBadge = ({ status }) => {
   );
 };
 
-// TAB - "Recommendations".
-// SHOWS: only students who have a PACE placement/advancement recommendation
-//   (current level > projected recommendation, basis, status) plus 3 stat cards
-//   (With Recommendations / On Track / Needs Support) and pagination.
-// CALLS: no API of its own, reads the `students` prop (each row's `recommendation`
-//   object is built by the backend service), and calls the onView(student) prop to
-//   open the "View Student Details" modal.
+// Recommendations tab. Shows only students that have a recommendation (built by
+// the backend); reads the `students` prop, no API of its own. onView opens the modal.
 function RecommendationsTab({ students, loading, onView }) {
   const [page, setPage] = useState(1);
 
@@ -798,6 +748,7 @@ function RecommendationsTab({ students, loading, onView }) {
                     <td className="px-5 py-5 text-sm text-on-surface min-w-[180px]">{s.recommendation.projectedPaceLabel}</td>
                     <td className="px-5 py-5 text-sm text-on-surface-variant">{s.recommendation.basis}</td>
                     <td className="px-5 py-5 text-center"><RecStatusBadge status={s.recommendation.status} /></td>
+                    {/* View -> onView(s) = page's setSelectedStudent (opens the summary modal) */}
                     <td className="px-5 py-5 text-center">
                       <button
                         onClick={() => onView(s)}
@@ -911,12 +862,8 @@ const CompletionTrendChart = ({ trend }) => {
   );
 };
 
-// TAB - "PACE Analytics & Rankings".
-// SHOWS: a Top-10 students-by-PACE-completion list (bar = % completed, points
-//   badge) and a this-month-vs-last-month completion trend line chart.
-// CALLS: fetchPaceAnalytics() from api/studentMonitoring.js on mount (> backend
-//   route /student-monitoring/pace-analytics > getPaceAnalytics) to load its data;
-//   renders the trend via the <CompletionTrendChart> helper above.
+// PACE Analytics & Rankings tab. Loads its own data via fetchPaceAnalytics
+// (getPaceAnalytics): the Top-10 completion list + this-vs-last-month trend chart.
 function PaceAnalyticsTab() {
   const [data,    setData]    = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1051,13 +998,8 @@ const Field = ({ label, required, hint, span = 1, children }) => (
   </div>
 );
 
-// MODAL - Add Student.
-// SHOWS: a form with Student Information + Parent/Guardian Information sections and
-//   an "is active" toggle in the footer.
-// CALLS: fetchAllSections() from api/sections.js (fills the Grade Level dropdown),
-//   and on save createStudent() from api/student.js (POST, auto-generates the
-//   login email/username/password from the student's name + birth date). On success
-//   it calls the onSuccess prop (refreshes the list) then onClose.
+// Add Student form (student + parent/guardian). fetchAllSections fills the grade
+// dropdown; createStudent (api/student.js) saves with auto-generated login creds.
 function AddStudentModal({ onClose, onSuccess }) {
   const todayISO = new Date().toISOString().slice(0, 10);
   const [form, setForm] = useState({
@@ -1267,6 +1209,7 @@ function AddStudentModal({ onClose, onSuccess }) {
               <span className="material-symbols-outlined text-base">close</span>
               Cancel
             </button>
+            {/* Add Student -> handleSubmit() (createStudent, then onCreated) */}
             <button
               onClick={handleSubmit}
               disabled={saving}
@@ -1285,10 +1228,8 @@ function AddStudentModal({ onClose, onSuccess }) {
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
-// UI COMPONENT - the Student Monitoring page itself (tabs, tables, stat cards,
-// filters, pagination). On mount it loads data via fetchStudentMonitoring() and
-// fetchPaceAnalytics() from api/studentMonitoring.js, see the FEATURE MAP at the
-// top of this file for the full backend chain.
+// The page itself: tabs, tables, stat cards, filters, pagination. Loads the list
+// via fetchStudentMonitoring() on mount (the Analytics tab fetches separately).
 export default function StudentMonitoring() {
   const schoolYearLabel = useSchoolYear();
 
@@ -1386,6 +1327,7 @@ export default function StudentMonitoring() {
               View, track, and monitor student progress and PACE completion.
             </p>
           </div>
+          {/* header actions: Export -> exportCSV(students); Import -> setShowImport (ImportModal); Add -> setShowAdd (AddStudentModal) */}
           <div className="flex items-center gap-3 shrink-0">
             <button
               onClick={() => exportCSV(students)}
@@ -1421,6 +1363,7 @@ export default function StudentMonitoring() {
         )}
 
         {/* ── Tabs ───────────────────────────────────────────────────── */}
+        {/* tabs -> setActiveTab(id) switches Records / Progress / Recommendations / PACE Analytics */}
         <div className="border-b border-outline-variant/20 mb-6">
           <div className="flex items-center gap-6 overflow-x-auto">
             {TABS.map((tab) => {
@@ -1455,7 +1398,7 @@ export default function StudentMonitoring() {
             {/* Search + Filter Row */}
             <div className="flex items-center gap-3 mb-4 flex-wrap">
               <div className="relative flex-1 min-w-[220px]">
-                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-base">search</span>
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1 text-on-surface-variant text-base">search</span>
                 <input
                   type="text"
                   placeholder="Search by name or ID..."
@@ -1479,7 +1422,7 @@ export default function StudentMonitoring() {
                       <option key={gl} value={gl}>{gl}</option>
                     ))}
                   </select>
-                  <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant text-base pointer-events-none">expand_more</span>
+                  <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1 text-on-surface-variant text-base pointer-events-none">expand_more</span>
                 </div>
               </div>
 
@@ -1497,11 +1440,11 @@ export default function StudentMonitoring() {
                     <option value="In Progress">In Progress</option>
                     <option value="Not Started">Not Started</option>
                   </select>
-                  <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant text-base pointer-events-none">expand_more</span>
+                  <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1 text-on-surface-variant text-base pointer-events-none">expand_more</span>
                 </div>
               </div>
 
-              {/* Reset */}
+              {/* Reset -> resetFilters() clears the search/grade/status filters */}
               <button
                 onClick={resetFilters}
                 className="flex items-center gap-1.5 text-sm font-bold text-on-surface-variant bg-white border border-outline-variant/20 rounded-xl px-4 py-2.5 shadow-sm hover:bg-surface-container-low transition-colors shrink-0"
@@ -1546,6 +1489,7 @@ export default function StudentMonitoring() {
                           <td className="px-5 py-5 text-sm font-bold text-on-surface">{s.full_name ?? `${s.first_name} ${s.last_name}`}</td>
                           <td className="px-5 py-5 text-sm text-on-surface whitespace-nowrap">{s.grade_level ?? "—"}</td>
                           <td className="px-5 py-5 text-center"><PaceStatusBadge status={paceStatusOf(s)} /></td>
+                          {/* View Details -> setSelectedStudent(s) opens <StudentSummaryModal> */}
                           <td className="px-5 py-5 text-center">
                             <button
                               onClick={() => setSelectedStudent(s)}

@@ -100,7 +100,7 @@ export default function AttendanceReportModal({ onClose }) {
         {/* ── Filters ──────────────────────────────────────────────────── */}
         <div className="flex items-center gap-3 px-6 py-3 border-b border-outline-variant/10 flex-wrap">
           <div className="relative">
-            <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant" style={{ fontSize: 16 }}>search</span>
+            <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1 text-on-surface-variant" style={{ fontSize: 16 }}>search</span>
             <input
               type="text"
               placeholder="Search student..."

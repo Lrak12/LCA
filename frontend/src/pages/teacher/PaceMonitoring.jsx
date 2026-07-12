@@ -1,3 +1,9 @@
+// PACE Monitoring: view/edit each student's projected PACE plan (7 subjects x 4
+// quarters x 3 PACEs). "individual" = one student's editable grid + profile card;
+// "class" = per-student quarter readiness. Backend (teacher.service):
+// getPaceMonitoring (load), updatePaceProjectionCell (re-base a quarter),
+// updatePaceProjectionStatus (set a cell), assignStudentPace (initial assign).
+// The footer opens AssignManagePaceModal for per-PACE execution management.
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import TeacherLayout from "../../components/TeacherLayout.jsx";
@@ -48,7 +54,9 @@ const QUARTER_KEYS   = ["Q1", "Q2", "Q3", "Q4"];
 const QUARTER_LABELS = { Q1: "1st Quarter", Q2: "2nd Quarter", Q3: "3rd Quarter", Q4: "4th Quarter" };
 const DEFAULT_COUNT  = 6;
 
-// Auto-project Q2–Q4 from Q1 per-subject data
+// buildAutoProjectPaces - given Q1 { start, count } per subject, project Q2-Q4 by
+//   advancing `count` PACEs each quarter (Q1 start=N > Q2 start=N+count, ...). This
+//   is the payload shape the assign endpoint expects.
 function buildAutoProjectPaces(q1Data) {
   const paces = {};
   SUBJECT_LABELS.forEach((label) => {
@@ -75,6 +83,7 @@ const STATUS_OPTIONS = [
 ];
 
 // ─── Status Indicator ─────────────────────────────────────────────────────────
+// the clickable status icon in a cell; onClick opens the status picker
 const StatusIndicator = ({ status, onClick }) => {
   const cfg = STATUS_OPTIONS.find((o) => o.value === status) ?? STATUS_OPTIONS[2];
   return (
@@ -96,6 +105,7 @@ const StatusIndicator = ({ status, onClick }) => {
 // ─── PACE Cell ────────────────────────────────────────────────────────────────
 // `editable` (Individual View only) turns the PACE number into an inline input
 // on click; committing calls onCommit(newNumber).
+// one grid cell: status icon + PACE number (an inline input when editable)
 const PaceCell = ({ pace, compact = false, editable = false, onCommit, onStatusClick }) => {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState("");
@@ -145,6 +155,7 @@ const PaceCell = ({ pace, compact = false, editable = false, onCommit, onStatusC
 };
 
 // ─── Legend ───────────────────────────────────────────────────────────────────
+// icon/colour key for the 5 statuses
 const Legend = () => (
   <div className="flex items-center gap-4 flex-wrap text-[11px] text-on-surface-variant">
     {STATUS_OPTIONS.map((opt) => (
@@ -162,6 +173,7 @@ const Legend = () => (
 );
 
 // ─── Readiness Badge ──────────────────────────────────────────────────────────
+// Ready / In Progress / Not Ready pill
 const ReadinessBadge = ({ value }) => {
   const styles = {
     Ready:         "bg-green-100 text-green-700",
@@ -195,6 +207,7 @@ const EmptyState = () => (
 );
 
 // ─── Status Picker Modal ──────────────────────────────────────────────────────
+// popup to change one cell's status; onSelect(status) saves, onClose dismisses
 function StatusPickerModal({ cell, currentStatus, onSelect, onClose, saving, error }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
@@ -252,6 +265,8 @@ function StatusPickerModal({ cell, currentStatus, onSelect, onClose, saving, err
 }
 
 // ─── Assign Initial Modal (Q1 per subject → auto-project Q2–Q4) ──────────────
+// first-time assign: Q1 start+count per subject; onSave(paces) gets the auto-
+// projected 4-quarter plan (buildAutoProjectPaces).
 function AssignInitialModal({ studentName, onSave, onClose, saving, error }) {
   const [q1Data, setQ1Data] = useState(() =>
     Object.fromEntries(SUBJECT_LABELS.map((l) => [l, { start: "", count: String(DEFAULT_COUNT) }]))
@@ -356,6 +371,9 @@ function AssignInitialModal({ studentName, onSave, onClose, saving, error }) {
 }
 
 // ─── Individual View ──────────────────────────────────────────────────────────
+// one student's plan: profile card + the editable grid. All actions come in as
+// props (onPaceEdit / onStatusClick / onAssignClick / onManageClick /
+// onScheduleTest / onViewScheduled).
 function IndividualView({ student, quarters, onPaceEdit, onStatusClick, onAssignClick, onManageClick, onScheduleTest, onViewScheduled }) {
   // onStatusClick(subjectLabel, quarterNum, rowIndex, currentStatus)
   // onPaceEdit(subjectLabel, quarterNum, rowIndex, newNum, count)
@@ -553,6 +571,7 @@ function IndividualView({ student, quarters, onPaceEdit, onStatusClick, onAssign
 }
 
 // ─── Class View ───────────────────────────────────────────────────────────────
+// whole class for the selected quarter, read-only from the `students` (classView) prop
 function ClassView({ students, quarter }) {
   const [showAll, setShowAll] = useState(false);
   const visible = showAll ? students : students.slice(0, 4);
@@ -634,18 +653,20 @@ function ClassView({ students, quarter }) {
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
+// page shell: owns the data + actions. loadData = fetchTeacherPaceMonitoring; the
+// handlers call updatePaceCellStatus / updatePaceCell / assignStudentPace.
 export default function PaceMonitoring() {
   const schoolYearLabel = useSchoolYear();
   const navigate = useNavigate();
 
-  const [view,              setView]              = useState("individual");
-  const [quarter,           setQuarter]           = useState("Q1");
-  const [search,            setSearch]            = useState("");
+  const [view,              setView]              = useState("individual"); // "individual" | "class"
+  const [quarter,           setQuarter]           = useState("Q1");         // selected quarter (grid + class view)
+  const [search,            setSearch]            = useState("");           // Class View name search
   const [loading,           setLoading]           = useState(true);
   const [error,             setError]             = useState("");
-  const [paceData,          setPaceData]          = useState(null);
-  const [selectedStudentId, setSelectedStudentId] = useState(null);
-  const [refreshKey,        setRefreshKey]        = useState(0);
+  const [paceData,          setPaceData]          = useState(null);         // API payload { students, individual, classView }
+  const [selectedStudentId, setSelectedStudentId] = useState(null);         // whose grid the Individual View shows
+  const [refreshKey,        setRefreshKey]        = useState(0);            // bump to force a reload after a save
 
   // Status picker modal
   const [statusCell,   setStatusCell]   = useState(null); // { subjectLabel, quarterNum, currentStatus }
@@ -661,15 +682,17 @@ export default function PaceMonitoring() {
   const [manageOpen,   setManageOpen]   = useState(false);
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
+  // loadData - load pace data (optionally for one student). On the first load with
+  //   no student, auto-select the first student for the Individual View.
   const loadData = useCallback((studentId) => {
     setLoading(true);
     setError("");
     const params = studentId ? { student_id: studentId } : {};
-    fetchTeacherPaceMonitoring(params)
+    fetchTeacherPaceMonitoring(params)                   // GET /teacher/pace-monitoring
       .then((res) => {
         const d = res.data ?? {};
         setPaceData(d);
-        if (!studentId && d.students?.length) {
+        if (!studentId && d.students?.length) {          // first load: default to first student
           setSelectedStudentId(d.students[0].student_id);
         }
       })
@@ -677,31 +700,34 @@ export default function PaceMonitoring() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Reload when the selected student changes OR refreshKey is bumped (after a save).
   useEffect(() => {
     loadData(selectedStudentId);
   }, [selectedStudentId, refreshKey, loadData]);
 
   // ── Open status picker ────────────────────────────────────────────────────
+  // A cell's status icon was clicked: remember which cell so the modal can open.
   const handleStatusClick = (subjectLabel, quarterNum, rowIndex, currentStatus) => {
     setStatusCell({ subjectLabel, quarterNum, rowIndex, currentStatus });
     setStatusError("");
   };
 
   // ── Save status ───────────────────────────────────────────────────────────
+  // A status was chosen in the picker: PATCH that one cell, then reload the grid.
   const handleSaveStatus = async (newStatus) => {
-    if (!statusCell || !selectedStudentId) return;
+    if (!statusCell || !selectedStudentId) return;      // nothing selected > no-op
     setStatusSaving(true);
     setStatusError("");
     try {
-      await updatePaceCellStatus({
+      await updatePaceCellStatus({                       // PATCH the cell's status
         student_id: selectedStudentId,
         subject:    statusCell.subjectLabel,
         quarter:    statusCell.quarterNum,
-        row_index:  statusCell.rowIndex,
+        row_index:  statusCell.rowIndex,                 // which of the 3 PACEs in the quarter
         status:     newStatus,
       });
-      setStatusCell(null);
-      setRefreshKey((k) => k + 1);
+      setStatusCell(null);                               // close the picker
+      setRefreshKey((k) => k + 1);                       // force a reload to show the new status
     } catch (err) {
       setStatusError(err.response?.data?.message ?? err.message ?? "Failed to save status.");
     } finally {
@@ -714,37 +740,38 @@ export default function PaceMonitoring() {
   // in row `rowIndex` re-bases the quarter so that cell shows the typed number.
   const handlePaceEdit = async (subjectLabel, quarterNum, rowIndex, newNum, count) => {
     if (!selectedStudentId) return;
-    const newStart = newNum - rowIndex;
-    if (newStart <= 0) {
+    const newStart = newNum - rowIndex;                  // re-base: cell N in row i means the quarter starts at N-i
+    if (newStart <= 0) {                                 // typed number too low for this row
       setError("That PACE number is too low for this row.");
       return;
     }
     setError("");
     try {
-      await updatePaceCell({
+      await updatePaceCell({                             // PATCH the quarter's pace_start (grid stays consecutive)
         student_id: selectedStudentId,
         subject:    subjectLabel,
         quarter:    quarterNum,
         pace_start: newStart,
         pace_count: count || DEFAULT_COUNT,
       });
-      setRefreshKey((k) => k + 1);
+      setRefreshKey((k) => k + 1);                       // reload to show the re-based numbers
     } catch (err) {
       setError(err.response?.data?.message ?? err.message ?? "Failed to update PACE number.");
     }
   };
 
   // ── Save initial assignment (Q1 → auto Q2–Q4) ─────────────────────────────
+  // First-time assign: send the auto-projected 4-quarter plan for the student.
   const handleAssignInitial = async (paces) => {
     if (!selectedStudentId) return;
-    if (!Object.keys(paces).length) {
+    if (!Object.keys(paces).length) {                    // guard: at least one subject needed
       setAssignError("Enter at least one subject's Q1 start PACE.");
       return;
     }
     setAssignSaving(true);
     setAssignError("");
     try {
-      await assignStudentPace(selectedStudentId, paces);
+      await assignStudentPace(selectedStudentId, paces); // POST /teacher/assign-pace
       setAssignOpen(false);
       setRefreshKey((k) => k + 1);
     } catch (err) {
@@ -754,10 +781,11 @@ export default function PaceMonitoring() {
     }
   };
 
+  // classStudents - Class View rows narrowed by the search box.
   const classStudents = (paceData?.classView ?? []).filter((s) =>
     s.name.toLowerCase().includes(search.toLowerCase())
   );
-  const studentList = paceData?.students ?? [];
+  const studentList = paceData?.students ?? [];          // options for the Individual View student selector
 
   return (
     <TeacherLayout schoolYearLabel={schoolYearLabel}>
@@ -803,7 +831,7 @@ export default function PaceMonitoring() {
 
           {view === "individual" && (
             <div className="relative shrink-0 min-w-[220px]">
-              <span className="material-symbols-outlined absolute left-3 inset-y-0 flex items-center text-on-surface-variant text-base"style={fillStyle}>person</span>
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1 text-base text-on-surface-variant pointer-events-none"style={fillStyle}>person</span>
               <select value={selectedStudentId ?? ""} onChange={(e) => setSelectedStudentId(e.target.value ? parseInt(e.target.value, 10) : null)} disabled={loading || !studentList.length} 
                 className="w-full pl-9 pr-10 py-2.5 text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30 appearance-none cursor-pointer shadow-sm disabled:opacity-60"
                 style={{ WebkitAppearance: "none", MozAppearance: "none", appearance: "none"}}
@@ -822,7 +850,7 @@ export default function PaceMonitoring() {
 
           {view === "class" && (
             <div className="relative flex-1 min-w-[200px]">
-              <span className="material-symbols-outlined absolute left-3 inset-y-0 flex items-center text-on-surface-variant text-base">search</span>{/* fix for icon alignment*/}
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1 text-base text-on-surface-variant pointer-events-none">search</span>{/* fix for icon alignment*/}
               <input
                 type="text"
                 placeholder="Search student name..."

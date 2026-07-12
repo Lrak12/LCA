@@ -607,7 +607,11 @@ export const getSubmissionStatuses = async (quarter, report_type) => {
 // ── Assign PACE (teacher) ─────────────────────────────────────────────────────
 // Takes a teacher_id, student_id and subject→startPace map.
 // Generates 4 quarterly rows in pace_quarterly_projection (6 PACEs/quarter default).
-
+// generatePaceProjection - upserts a student's projected PACE plan into
+//   pace_quarterly_projection. Accepts either the old flat { subject: startPace }
+//   or the full { subject: { "1": {start,count}, ... } } grid. SHARED save target
+//   for: AssignPace, PACE Monitoring (assign), Returning Student Placement, and the
+//   diagnostic flow. Reached via POST /teacher/assign-pace > ReportsController.assignPace.
 export const generatePaceProjection = async (teacher_id, student_id, paces) => {
   const { data: sy } = await ReportsModel.findActiveSchoolYear();
   if (!sy) throw new Error("No active school year found");

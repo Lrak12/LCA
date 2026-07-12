@@ -1,3 +1,9 @@
+// User Management (sysadmin): list/filter users with stats, add a user, toggle active, edit.
+// Backend chain (frontend api/admin.js -> routes/admin.routes.js, mounted at /admin):
+//   list:   GET   /admin/users             -> controllers/adminUsers.controller.js > getUsers (~line 6)          -> services/adminUsers.service.js > listUsers (~line 88)
+//   create: POST  /admin/users             -> controllers/adminUsers.controller.js > createUser (~line 26)       -> services/adminUsers.service.js > createUser (~line 265)
+//   edit:   PUT   /admin/users/:id         -> controllers/adminUsers.controller.js > updateUser (~line 38)       -> services/adminUsers.service.js > updateUser (~line 197)
+//   toggle: PATCH /admin/users/:id/status  -> controllers/adminUsers.controller.js > updateUserStatus (~line 12) -> services/adminUsers.service.js > setUserActive (~line 181)
 import { useState, useEffect, useCallback, useRef } from "react";
 import AdminLayout from "../../components/AdminLayout.jsx";
 import { fetchUsers, setUserActive, createUser, updateUser } from "../../api/admin.js";
@@ -41,6 +47,7 @@ const Skeleton = ({ className }) => (
   <div className={`animate-pulse bg-surface-container-high rounded-xl ${className}`} />
 );
 
+// last-login timestamp for the table, or "Never" if none/invalid
 const formatLastLogin = (iso) => {
   if (!iso) return "Never";
   const d = new Date(iso);
@@ -66,6 +73,7 @@ const buildPageList = (current, totalPages) => {
   return out;
 };
 
+// coloured role pill (falls back to a neutral style for unknown roles)
 const RoleBadge = ({ role }) => {
   const b = ROLE_BADGE[role] ?? { label: role, cls: "bg-slate-100 text-slate-600" };
   return (
@@ -75,6 +83,7 @@ const RoleBadge = ({ role }) => {
   );
 };
 
+// green Active / grey Inactive pill
 const StatusBadge = ({ active }) => (
   <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${
     active ? "bg-green-100 text-green-700" : "bg-slate-200 text-slate-600"
@@ -109,29 +118,32 @@ const LabeledInput = ({ label, required, icon, trailing, children }) => (
   </div>
 );
 
+// Add New User modal. Validates the form then createUser()s; onCreated hands the
+// new user back to the parent (which prepends it to the list).
 function AddUserModal({ onClose, onCreated }) {
-  const [form, setForm] = useState({
+  const [form, setForm] = useState({                 // all the form fields in one object
     first_name: "", last_name: "", email: "",
     role: "", department: "", password: "", confirm: "",
     status: "active",
   });
-  const [showPw, setShowPw]           = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
+  const [showPw, setShowPw]           = useState(false); // password field visible?
+  const [showConfirm, setShowConfirm] = useState(false); // confirm field visible?
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState("");
 
-  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value })); // curried onChange per field
 
   const submit = async (e) => {
     e.preventDefault();
     setError("");
+    // client-side validation before hitting the API
     if (!form.role)                       return setError("Please select a role.");
     if (form.password.length < 6)         return setError("Password must be at least 6 characters.");
     if (form.password !== form.confirm)   return setError("Passwords do not match.");
 
     setSaving(true);
     try {
-      const res = await createUser({
+      const res = await createUser({                  // POST /admin/users
         role:           form.role,
         first_name:     form.first_name.trim(),
         last_name:      form.last_name.trim(),
@@ -140,7 +152,7 @@ function AddUserModal({ onClose, onCreated }) {
         is_active:      form.status === "active",
         contact_number: null,
       });
-      onCreated(res.data);
+      onCreated(res.data);                            // parent adds it to the table
     } catch (err) {
       setError(err.message ?? "Failed to create user.");
       setSaving(false);
@@ -243,6 +255,7 @@ function AddUserModal({ onClose, onCreated }) {
           <button type="button" onClick={onClose} className="px-5 py-2.5 rounded-lg text-sm font-bold text-on-surface-variant hover:bg-surface-container">
             Cancel
           </button>
+          {/* Create User -> submit() validates + createUser(); onCreated() hands the new row to the parent */}
           <button onClick={submit} disabled={saving} className="px-5 py-2.5 rounded-lg text-sm font-bold bg-primary text-white shadow-sm hover:shadow-lg disabled:opacity-60">
             {saving ? "Creating…" : "Create User"}
           </button>
@@ -253,13 +266,15 @@ function AddUserModal({ onClose, onCreated }) {
 }
 
 // ── Edit User modal ───────────────────────────────────────────────────────────
+// Edit User modal. Prefills from the row, optionally resets the password, then
+// updateUser()s. Role isn't editable (shown read-only).
 function EditUserModal({ user, onClose, onSaved }) {
-  const [form, setForm] = useState({
+  const [form, setForm] = useState({                 // editable fields, seeded from the user row
     full_name: `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || user.name || "",
     email:     user.email ?? "",
     status:    user.is_active ? "active" : "inactive",
   });
-  const [resetPw, setResetPw]         = useState(false);
+  const [resetPw, setResetPw]         = useState(false); // "also reset password?" toggle
   const [password, setPassword]       = useState("");
   const [confirm, setConfirm]         = useState("");
   const [showPw, setShowPw]           = useState(false);
@@ -268,14 +283,14 @@ function EditUserModal({ user, onClose, onSaved }) {
   const [error, setError]   = useState("");
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
-  const roleLabel = ROLE_BADGE[user.role]?.label ?? user.role ?? "—";
+  const roleLabel = ROLE_BADGE[user.role]?.label ?? user.role ?? "—"; // read-only role label
 
   const submit = async (e) => {
     e.preventDefault();
     setError("");
     if (!form.full_name.trim()) return setError("Full name is required.");
     if (!form.email.trim())     return setError("Email address is required.");
-    if (resetPw) {
+    if (resetPw) {                                    // only validate the password if resetting it
       if (password.length < 6)     return setError("Password must be at least 6 characters.");
       if (password !== confirm)    return setError("Passwords do not match.");
     }
@@ -287,8 +302,8 @@ function EditUserModal({ user, onClose, onSaved }) {
         email:     form.email.trim(),
         is_active: form.status === "active",
       };
-      if (resetPw) payload.password = password;
-      await updateUser(user.user_id, payload);
+      if (resetPw) payload.password = password;        // only send a password when resetting
+      await updateUser(user.user_id, payload);         // PATCH /admin/users/:id
       onSaved(form.full_name.trim());
     } catch (err) {
       setError(err.response?.data?.message ?? err.message ?? "Failed to update user.");
@@ -414,6 +429,7 @@ function EditUserModal({ user, onClose, onSaved }) {
           <button type="button" onClick={onClose} className="px-5 py-2.5 rounded-lg text-sm font-bold text-on-surface-variant border border-outline-variant/40 hover:bg-surface-container">
             Cancel
           </button>
+          {/* Save Changes -> submit() validates + updateUser(); onSaved() reloads the list */}
           <button onClick={submit} disabled={saving} className="px-5 py-2.5 rounded-lg text-sm font-bold bg-primary text-white shadow-sm hover:shadow-lg disabled:opacity-60 flex items-center gap-2">
             <span className="material-symbols-outlined text-base">save</span>
             {saving ? "Saving…" : "Save Changes"}
@@ -428,13 +444,13 @@ function EditUserModal({ user, onClose, onSaved }) {
 export default function UserManagement() {
   const schoolYearLabel = useSchoolYear();
 
-  const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch]   = useState("");
-  const [role, setRole]       = useState("all");
-  const [status, setStatus]   = useState("all");
+  const [searchInput, setSearchInput] = useState("");   // raw search box text (debounced into `search`)
+  const [search, setSearch]   = useState("");            // debounced search term sent to the API
+  const [role, setRole]       = useState("all");         // role filter
+  const [status, setStatus]   = useState("all");         // active/inactive filter
   const [page, setPage]       = useState(1);
 
-  const [data, setData]       = useState(null);
+  const [data, setData]       = useState(null);          // API response { users, stats, total, totalPages }
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState("");
 
@@ -452,10 +468,11 @@ export default function UserManagement() {
     return () => clearTimeout(debounceRef.current);
   }, [searchInput]);
 
+  // fetch the current page of users; re-runs whenever a filter or the page changes
   const load = useCallback(() => {
     setLoading(true);
     setError("");
-    fetchUsers({ search, role, status, page, pageSize: PAGE_SIZE })
+    fetchUsers({ search, role, status, page, pageSize: PAGE_SIZE })   // GET /admin/users
       .then((res) => setData(res.data))
       .catch((err) => setError(err.message ?? "Failed to load users."))
       .finally(() => setLoading(false));
@@ -463,16 +480,17 @@ export default function UserManagement() {
 
   useEffect(() => { load(); }, [load]);
 
-  const stats = data?.stats ?? {};
-  const users = data?.users ?? [];
+  const stats = data?.stats ?? {};                        // the top stat cards
+  const users = data?.users ?? [];                        // this page's rows
   const totalPages = data?.totalPages ?? 1;
   const total = data?.total ?? 0;
-  const rangeStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const rangeStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1; // "Showing X to Y" numbers
   const rangeEnd   = Math.min(page * PAGE_SIZE, total);
 
+  // flip one user's active flag, show a toast, then reload
   const toggleActive = async (u) => {
     setMenuOpen(null);
-    setBusyId(u.user_id);
+    setBusyId(u.user_id);                                 // disables that row while in flight
     try {
       await setUserActive(u.user_id, !u.is_active);
       setBanner(`${u.name} ${u.is_active ? "deactivated" : "activated"}.`);
@@ -484,6 +502,7 @@ export default function UserManagement() {
     }
   };
 
+  // after AddUserModal creates a user: toast the generated login ID + reload page 1
   const onCreated = (created) => {
     setShowAdd(false);
     setBanner(`User created — login ID ${created.school_id ?? "—"}.`);
@@ -509,6 +528,7 @@ export default function UserManagement() {
             <h2 className="font-headline text-3xl font-extrabold tracking-tight text-on-surface">User Management</h2>
             <p className="text-on-surface-variant mt-1">Manage all user accounts, roles, and access permissions.</p>
           </div>
+          {/* Add New User -> setShowAdd(true) opens <AddUserModal> (rendered at the bottom) */}
           <button
             onClick={() => setShowAdd(true)}
             className="flex items-center gap-2 px-5 py-3 bg-primary text-white font-bold rounded-xl shadow-sm hover:shadow-lg transition-all shrink-0"
@@ -546,8 +566,9 @@ export default function UserManagement() {
 
         {/* Filter bar */}
         <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-4 mb-4 flex flex-col md:flex-row gap-3">
+          {/* search box -> setSearchInput (debounced into `search` -> load()) */}
           <div className="relative flex-1">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-xl">search</span>
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1 text-base text-on-surface-variant pointer-events-none">search</span>
             <input
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
@@ -555,17 +576,19 @@ export default function UserManagement() {
               className="w-full pl-11 pr-4 py-2.5 bg-surface-container-high border-none rounded-lg focus:ring-2 focus:ring-primary/20 focus:outline-none text-sm text-on-surface placeholder:text-outline"
             />
           </div>
+          {/* role filter -> setRole + setPage(1) -> load() */}
           <div className="relative">
             <select value={role} onChange={(e) => { setRole(e.target.value); setPage(1); }} className={selectCls}>
               {ROLE_FILTERS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
-            <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-outline text-lg pointer-events-none">expand_more</span>
+            <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1 pointer-events-none text-lg leading-none text-on-surface-variant">expand_more</span>
           </div>
+          {/* status filter -> setStatus + setPage(1) -> load() */}
           <div className="relative">
             <select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} className={selectCls}>
               {STATUS_FILTERS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
-            <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-outline text-lg pointer-events-none">expand_more</span>
+            <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1 pointer-events-none text-lg leading-none text-on-surface-variant">expand_more</span>
           </div>
         </div>
 
@@ -592,6 +615,7 @@ export default function UserManagement() {
               ) : users.length === 0 ? (
                 <tr><td colSpan={6} className="px-6 py-16 text-center text-sm text-on-surface-variant">No users match your filters.</td></tr>
               ) : (
+                // `users` (this page's rows) -> one row each
                 users.map((u) => (
                   <tr key={u.user_id} className="border-b border-outline-variant/10 hover:bg-surface-container-lowest/50 transition-colors">
                     <td className="px-6 py-4">
@@ -611,6 +635,7 @@ export default function UserManagement() {
                     <td className="px-6 py-4 text-sm text-on-surface-variant whitespace-nowrap">{formatLastLogin(u.last_login)}</td>
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-end gap-1 relative">
+                        {/* Edit (pencil) -> setEditUser(u) opens <EditUserModal> */}
                         <button
                           onClick={(e) => { e.stopPropagation(); setMenuOpen(null); setEditUser(u); }}
                           disabled={busyId === u.user_id}
@@ -619,6 +644,7 @@ export default function UserManagement() {
                         >
                           <span className="material-symbols-outlined text-lg">edit</span>
                         </button>
+                        {/* More (kebab) -> setMenuOpen toggles this row's dropdown */}
                         <button
                           onClick={(e) => { e.stopPropagation(); setMenuOpen(menuOpen === u.user_id ? null : u.user_id); }}
                           disabled={busyId === u.user_id}
@@ -633,6 +659,7 @@ export default function UserManagement() {
                             onClick={(e) => e.stopPropagation()}
                             className="absolute right-0 top-9 z-20 w-44 bg-white rounded-xl border border-outline-variant/20 shadow-xl py-1"
                           >
+                            {/* Deactivate/Activate -> toggleActive(u) (PATCH status, then reload) */}
                             <button
                               onClick={() => toggleActive(u)}
                               className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium hover:bg-surface-container-lowest text-left text-on-surface"
@@ -650,7 +677,7 @@ export default function UserManagement() {
             </tbody>
           </table>
 
-          {/* Pagination */}
+          {/* Pagination -> setPage(prev/exact/next); page change re-runs load() */}
           <div className="flex items-center justify-between px-6 py-4 border-t border-outline-variant/20">
             <p className="text-sm text-on-surface-variant">
               {total === 0 ? "No users" : `Showing ${rangeStart} to ${rangeEnd} of ${total} users`}
@@ -690,6 +717,7 @@ export default function UserManagement() {
         </div>
       </main>
 
+      {/* modals: `showAdd` -> AddUserModal (onCreated adds the user); `editUser` -> EditUserModal (onSaved reloads) */}
       {showAdd && <AddUserModal onClose={() => setShowAdd(false)} onCreated={onCreated} />}
       {editUser && (
         <EditUserModal

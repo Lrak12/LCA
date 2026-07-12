@@ -1,6 +1,13 @@
+// English Diagnostic scoring modal (principal): click the PACEs where the student fell
+// short ("learning gaps") on the 1001-1096 chart, then enter the PACE they're ready to
+// advance from. Opened from RecordDiagnostic.jsx.
+// Backend chain (frontend api/diagnosticAssessments.js -> routes/assessment.routes.js):
+//   create: POST /assessments/diagnostic     -> controllers/assessment.controller.js > createDiagnostic (~line 50) -> services/assessment.service.js > createDiagnostic (~line 26)
+//   update: PUT  /assessments/diagnostic/:id  -> controllers/assessment.controller.js > updateDiagnostic (~line 55) -> services/assessment.service.js > updateDiagnostic (~line 43)
 import { useState } from "react";
 import { createDiagnostic, updateDiagnostic } from "../../api/diagnosticAssessments.js";
 
+// "1,5,9" (stored) -> Set of numbers for the clickable grid
 const parseGaps = (raw) =>
   raw ? new Set(String(raw).split(",").map((n) => Number(n.trim())).filter((n) => n > 0)) : new Set();
 
@@ -8,12 +15,14 @@ const parseGaps = (raw) =>
 const ENGLISH_PACES = Array.from({ length: 96 }, (_, i) => 1001 + i);
 const PACE_ROWS     = Array.from({ length: 8  }, (_, i) => ENGLISH_PACES.slice(i * 12, i * 12 + 12));
 
+// age in whole years from a date of birth
 const calcAge = (dob) => {
   if (!dob) return "";
   const diff = Date.now() - new Date(dob).getTime();
   return Math.floor(diff / (365.25 * 24 * 60 * 60 * 1000));
 };
 
+// mm/dd/yyyy display of the birth date
 const formatDOB = (dob) => {
   if (!dob) return "";
   const d = new Date(dob);
@@ -21,21 +30,24 @@ const formatDOB = (dob) => {
 };
 
 export default function EnglishDiagnosticModal({ student, existing, onClose, onSaved }) {
-  const [gaps,      setGaps]      = useState(() => parseGaps(existing?.learning_gaps));
-  const [startPace, setStartPace] = useState(existing?.start_pace != null ? String(existing.start_pace) : "");
+  const [gaps,      setGaps]      = useState(() => parseGaps(existing?.learning_gaps)); // selected gap PACEs
+  const [startPace, setStartPace] = useState(existing?.start_pace != null ? String(existing.start_pace) : ""); // ready-to-advance PACE
   const [saving,    setSaving]    = useState(false);
   const [error,     setError]     = useState("");
 
+  // add/remove a PACE from the learning-gaps set when its grid cell is clicked
   const toggleGap = (pace) => {
     const next = new Set(gaps);
     next.has(pace) ? next.delete(pace) : next.add(pace);
     setGaps(next);
   };
 
+  // gaps shown in the read-only textarea, sorted ascending
   const gapsDisplay = gaps.size > 0
     ? [...gaps].sort((a, b) => a - b).join(", ")
     : "";
 
+  // create or update this student's English diagnostic row
   const handleSave = async () => {
     if (!startPace.trim()) { setError("Please enter the PACE number the student is ready to advance from."); return; }
     setSaving(true);
@@ -46,10 +58,10 @@ export default function EnglishDiagnosticModal({ student, existing, onClose, onS
         test_date:     new Date().toISOString().split("T")[0],
         start_pace:    startPace,
         subject:       "English",
-        learning_gaps: gaps.size > 0 ? [...gaps].sort((a, b) => a - b).join(",") : null,
+        learning_gaps: gaps.size > 0 ? [...gaps].sort((a, b) => a - b).join(",") : null, // Set -> "1,5,9"
       };
-      if (existing?.diag_id) await updateDiagnostic(existing.diag_id, payload);
-      else                   await createDiagnostic(payload);
+      if (existing?.diag_id) await updateDiagnostic(existing.diag_id, payload); // edit existing
+      else                   await createDiagnostic(payload);                   // or create new
       onSaved();
     } catch (err) {
       setError(err.message);
@@ -123,7 +135,7 @@ export default function EnglishDiagnosticModal({ student, existing, onClose, onS
               </p>
             </div>
 
-            {/* PACE Grid */}
+            {/* PACE Grid: each cell -> toggleGap(pace) adds/removes it from the learning-gaps set */}
             <div className="border border-outline-variant rounded-lg overflow-hidden">
               {PACE_ROWS.map((row, ri) => (
                 <div key={ri} className={`grid grid-cols-12 ${ri < PACE_ROWS.length - 1 ? "border-b border-outline-variant" : ""}`}>
@@ -187,8 +199,9 @@ export default function EnglishDiagnosticModal({ student, existing, onClose, onS
             className="text-sm font-bold text-on-surface-variant hover:text-primary uppercase tracking-widest transition-colors">
             Cancel
           </button>
+          {/* Save Record -> handleSave() (create/update diagnostic, then onSaved) */}
           <div className="flex items-center gap-3">
-            
+
             <button onClick={handleSave} disabled={saving}
               className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-primary text-white text-sm font-bold hover:bg-primary/90 transition-colors disabled:opacity-60">
               {saving && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}

@@ -1,3 +1,7 @@
+// Set a returning/transfer student's projected PACE plan. Search a student >
+// auto-load their info + last-completed PACE per subject (the "basis") + any saved
+// projection > edit the 4-quarter table > Save. Projection load:
+// getStudentPaceProjection; save: reports.service.generatePaceProjection (/assign-pace).
 import { useState, useEffect, useRef } from "react";
 import TeacherLayout from "../../components/TeacherLayout.jsx";
 import { fetchTeacherStudents, fetchStudentPaceProjection, fetchLastCompletedPaces } from "../../api/teacher.js";
@@ -42,7 +46,9 @@ const prevSyLabel = (sy) => {
 };
 const emptyBasis  = () => Object.fromEntries(SUBJECTS.map((s) => [s.label, ""]));
 
-// Build a fresh auto-projected 4-quarter plan from a basis map
+// autoProject - from { subject: lastCompletedPace }, build a full plan:
+//   Q1 starts at last+1, each quarter advances DEFAULT_PPQ (3) PACEs.
+//   Shape: proj[subject][q] = { start, count }.
 function autoProject(basis) {
   const proj = {};
   SUBJECTS.forEach(({ label }) => {
@@ -92,12 +98,14 @@ const QLabel = ({ q }) => {
 };
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
+// One big component: student search, demographic card, basis inputs, and the
+// editable 4-quarter projection table + Save.
 export default function AssignPace() {
   const schoolYearLabel = useSchoolYear();
 
-  const [allStudents,  setAllStudents]  = useState([]);
-  const [student,      setStudent]      = useState(null);
-  const [loadingInfo,  setLoadingInfo]  = useState(false);
+  const [allStudents,  setAllStudents]  = useState([]);   // all of the teacher's students (search pool)
+  const [student,      setStudent]      = useState(null);  // the selected student record
+  const [loadingInfo,  setLoadingInfo]  = useState(false); // true while a student's data loads
   const [infoError,    setInfoError]    = useState("");
 
   // Student info edit
@@ -143,6 +151,7 @@ export default function AssignPace() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  // filtered - search-dropdown matches (name or ID); empty search shows nothing.
   const filtered = allStudents.filter((s) => {
     if (!search.trim()) return false;
     const name = `${s.first_name ?? ""} ${s.last_name ?? ""}`.toLowerCase();
@@ -150,6 +159,9 @@ export default function AssignPace() {
   });
 
   // ── Select a student ─────────────────────────────────────────────────────
+  // selectStudent - reset state for the new student, then load 3 things in parallel:
+  //   the student record, last-completed PACEs (the basis), and any saved projection.
+  //   If a projection exists, show it; otherwise the basis seeds "Generate".
   const selectStudent = async (s) => {
     setSearch("");
     setShowDrop(false);
@@ -270,6 +282,8 @@ export default function AssignPace() {
   };
 
   // ── Save full projection to backend ──────────────────────────────────────
+  // handleSaveProjection - build the { subject: { quarter: {start,count} } } payload
+  //   (skipping locked quarters), POST it to /assign-pace, and show a success note.
   const handleSaveProjection = async () => {
     if (!student || !projection) return;
     setSaving(true);

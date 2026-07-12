@@ -128,7 +128,7 @@ export default function Grades() {
               <select
                 value={quarter}
                 onChange={(e) => setQuarter(Number(e.target.value))}
-                className="text-sm font-bold text-on-surface bg-white border border-outline-variant/30 rounded-xl px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl pl-4 pr-8 py-2.5 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
               >
                 {QUARTER_LABELS.map((label, i) => (
                   <option key={label} value={i + 1}>{label}</option>

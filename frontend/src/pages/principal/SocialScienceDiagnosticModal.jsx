@@ -1,6 +1,14 @@
+// Social Studies / Science Diagnostic scoring modal (principal): enter a score per PACE
+// page-range (each with a passing minimum), which sum to a total; then set the ready-to-
+// advance PACE. Reused for both "Social Studies" and "Science" (via the `subject` prop).
+// Opened from RecordDiagnostic.jsx.
+// Backend chain (frontend api/diagnosticAssessments.js -> routes/assessment.routes.js):
+//   create: POST /assessments/diagnostic     -> controllers/assessment.controller.js > createDiagnostic (~line 50) -> services/assessment.service.js > createDiagnostic (~line 26)
+//   update: PUT  /assessments/diagnostic/:id  -> controllers/assessment.controller.js > updateDiagnostic (~line 55) -> services/assessment.service.js > updateDiagnostic (~line 43)
 import { useState } from "react";
 import { createDiagnostic, updateDiagnostic } from "../../api/diagnosticAssessments.js";
 
+// the score sheet rows: each PACE page-range and its minimum passing score
 const PACE_ROWS = [
   { page: 1,  range: "1001 – 1012", min: 5  },
   { page: 2,  range: "1013 – 1024", min: 5  },
@@ -12,12 +20,14 @@ const PACE_ROWS = [
   { page: 10, range: "1085 – 1096", min: 18 },
 ];
 
+// age in whole years from a date of birth
 const calcAge = (dob) => {
   if (!dob) return "";
   const diff = Date.now() - new Date(dob).getTime();
   return Math.floor(diff / (365.25 * 24 * 60 * 60 * 1000));
 };
 
+// mm/dd/yyyy display of the birth date
 const formatDOB = (dob) => {
   if (!dob) return "";
   const d = new Date(dob);
@@ -25,15 +35,16 @@ const formatDOB = (dob) => {
 };
 
 export default function SocialScienceDiagnosticModal({ subject, student, existing, onClose, onSaved }) {
-  const [scores,    setScores]    = useState(() => Object.fromEntries(PACE_ROWS.map((r) => [r.page, ""])));
-  const [startPace, setStartPace] = useState(existing?.start_pace != null ? String(existing.start_pace) : "");
+  const [scores,    setScores]    = useState(() => Object.fromEntries(PACE_ROWS.map((r) => [r.page, ""]))); // page -> score
+  const [startPace, setStartPace] = useState(existing?.start_pace != null ? String(existing.start_pace) : ""); // ready-to-advance PACE
   const [saving,    setSaving]    = useState(false);
   const [error,     setError]     = useState("");
 
-  const setScore = (page, val) => setScores((prev) => ({ ...prev, [page]: val }));
+  const setScore = (page, val) => setScores((prev) => ({ ...prev, [page]: val })); // update one page's score
 
-  const totalScore = Object.values(scores).reduce((sum, v) => sum + (Number(v) || 0), 0);
+  const totalScore = Object.values(scores).reduce((sum, v) => sum + (Number(v) || 0), 0); // sum of all page scores
 
+  // create or update this student's diagnostic row for the given subject
   const handleSave = async () => {
     if (!startPace.trim()) {
       setError("Please enter the PACE number the student is ready to advance from.");
@@ -47,10 +58,10 @@ export default function SocialScienceDiagnosticModal({ subject, student, existin
         test_date:  new Date().toISOString().split("T")[0],
         start_pace: startPace,
         score:      totalScore,
-        subject,
+        subject,                                       // "Social Studies" or "Science"
       };
-      if (existing?.diag_id) await updateDiagnostic(existing.diag_id, payload);
-      else                   await createDiagnostic(payload);
+      if (existing?.diag_id) await updateDiagnostic(existing.diag_id, payload); // edit existing
+      else                   await createDiagnostic(payload);                   // or create new
       onSaved();
     } catch (err) {
       setError(err.message);
@@ -151,6 +162,7 @@ export default function SocialScienceDiagnosticModal({ subject, student, existin
                       <th className="px-3 py-2 text-center text-xs font-bold text-on-surface-variant border-b border-outline-variant w-24">Minimum Score</th>
                     </tr>
                   </thead>
+                  {/* one row per PACE page; the score input -> setScore(page, value) (summed into totalScore) */}
                   <tbody>
                     {PACE_ROWS.map((row, i) => (
                       <tr key={row.page} className={i < PACE_ROWS.length - 1 ? "border-b border-outline-variant" : ""}>
@@ -207,6 +219,7 @@ export default function SocialScienceDiagnosticModal({ subject, student, existin
           >
             Cancel
           </button>
+          {/* Save Record -> handleSave() (create/update diagnostic with totalScore, then onSaved) */}
           <button
             onClick={handleSave}
             disabled={saving}

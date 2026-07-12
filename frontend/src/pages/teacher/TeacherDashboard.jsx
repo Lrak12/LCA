@@ -1,3 +1,6 @@
+// Supervisor home dashboard: greeting, 4 class stat cards, today's attendance,
+// quick actions, recent activity. Data from GET /teacher/dashboard
+// (teacher.service.getTeacherDashboard).
 import { useState, useEffect } from "react";
 import TeacherLayout from "../../components/TeacherLayout.jsx";
 import { fetchTeacherDashboard } from "../../api/teacher.js";
@@ -6,21 +9,26 @@ import { useSchoolYear } from "../../hooks/useSchoolYear.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
+// grey pulsing placeholder shown while data loads
 const Skeleton = ({ className }) => (
   <div className={`animate-pulse bg-surface-container-high rounded-xl ${className}`} />
 );
 
+// greeting based on the local hour
 const getGreeting = () => {
-  const hour = new Date().getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  return "Good evening";
+  const hour = new Date().getHours();                 // 0-23 local hour
+  if (hour < 12) return "Good morning";               // before noon
+  if (hour < 17) return "Good afternoon";             // noon to 5pm
+  return "Good evening";                              // after 5pm
 };
 
+// e.g. "July 10, 2026" for the date badge
 const formatDate = (date = new Date()) =>
   date.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
+// reusable metric card. NB: the dashboard below inlines its own card markup, so
+// this + the next 3 helpers aren't actually rendered right now.
 const StatCard = ({ icon, iconBg, iconColor, label, value, badge, badgeColor }) => (
   <div className="bg-white rounded-2xl p-6 flex flex-col gap-3 shadow-sm border border-outline-variant/20">
     <div className="flex items-center justify-between">
@@ -41,6 +49,7 @@ const StatCard = ({ icon, iconBg, iconColor, label, value, badge, badgeColor }) 
 );
 
 // ─── Progress Bar ─────────────────────────────────────────────────────────────
+// 0-100 filled bar with a % label
 const ProgressBar = ({ value, color = "bg-green-500" }) => (
   <div className="flex items-center gap-3">
     <div className="flex-1 h-2 bg-surface-container-high rounded-full overflow-hidden">
@@ -51,6 +60,7 @@ const ProgressBar = ({ value, color = "bg-green-500" }) => (
 );
 
 // ─── Status Badge ─────────────────────────────────────────────────────────────
+// green "On Track" vs amber pill otherwise
 const StatusBadge = ({ status }) => (
   <span className={`text-[10px] font-extrabold tracking-widest uppercase px-2.5 py-1 rounded-full ${
     status === "On Track" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
@@ -60,6 +70,7 @@ const StatusBadge = ({ status }) => (
 );
 
 // ─── Quick Action ─────────────────────────────────────────────────────────────
+// icon + title + subtitle shortcut row
 const QuickAction = ({ icon, iconBg, iconColor, title, sub }) => (
   <button className="w-full flex items-center gap-4 px-4 py-3 rounded-xl hover:bg-surface-container-low transition-colors text-left">
     <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${iconBg}`}>
@@ -73,22 +84,28 @@ const QuickAction = ({ icon, iconBg, iconColor, title, sub }) => (
 );
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
+// Loads once on mount via fetchTeacherDashboard(); `data` = { teacher, stats,
+// attendance, recentActivity }.
 export default function TeacherDashboard() {
-  const { user }              = useAuth();
-  const schoolYearLabel       = useSchoolYear();
-  const [data, setData]       = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState("");
+  const { user }              = useAuth();               // logged-in user (for the greeting name)
+  const schoolYearLabel       = useSchoolYear();         // active school-year label for the layout header
+  const [data, setData]       = useState(null);          // the API response ({stats, attendance, ...}) or null
+  const [loading, setLoading] = useState(true);          // true until the first fetch resolves (drives skeletons)
+  const [error, setError]     = useState("");            // API error message shown in the red banner
 
+  // Load the dashboard data ONCE on mount. On success store it; on failure store
+  // the message; either way stop the loading state.
   useEffect(() => {
-    fetchTeacherDashboard()
-      .then((res) => setData(res.data))
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, []);
+    fetchTeacherDashboard()                              // GET /teacher/dashboard (see banner)
+      .then((res) => setData(res.data))                  // res.data = { teacher, stats, attendance, recentActivity }
+      .catch((err) => setError(err.message))             // network / server error > red banner
+      .finally(() => setLoading(false));                 // hide skeletons whether it succeeded or failed
+  }, []);                                                 // [] = run once, never re-fetch
 
-  const firstName = user?.first_name ?? user?.username ?? "Supervisor";
+  const firstName = user?.first_name ?? user?.username ?? "Supervisor"; // greeting name, with fallbacks
 
+  // stats / attendance / recentActivity: read from `data`, but fall back to safe
+  // zero-values so the first render (before the fetch resolves) never crashes.
   const stats = data?.stats ?? {
     totalStudents: 0,
     onTrack: 0, onTrackPct: 0,
@@ -96,8 +113,8 @@ export default function TeacherDashboard() {
     ahead: 0,   aheadPct: 0,
   };
 
-  const attendance    = data?.attendance    ?? { late: 0, absent: 0, present: 0 };
-  const recentActivity = data?.recentActivity ?? [];
+  const attendance    = data?.attendance    ?? { late: 0, absent: 0, present: 0 }; // today's tallies
+  const recentActivity = data?.recentActivity ?? [];                               // list of recent completions
 
   return (
     <TeacherLayout schoolYearLabel={schoolYearLabel}>
@@ -127,6 +144,8 @@ export default function TeacherDashboard() {
         </header>
 
         {/* ── Stat Cards ──────────────────────────────────────────── */}
+        {/* While loading show 4 skeletons; once loaded, map 4 cards straight
+            from `stats` (totalStudents / onTrack / behind / ahead). */}
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
           {loading ? (
             Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-36" />)
@@ -155,7 +174,9 @@ export default function TeacherDashboard() {
         {/* ── Middle Row ──────────────────────────────────────────── */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
 
-          {/* Class Attendance */}
+          {/* Class Attendance (Today) - the 3 tallies from `attendance`
+              (late / absent / present), computed server-side from today's
+              attendance rows in getTeacherDashboard. */}
           <article className="bg-white rounded-2xl p-6 shadow-sm border border-outline-variant/20">
             <h3 className="font-headline text-lg font-extrabold text-primary">
               Class Attendance <span className="text-on-surface-variant font-medium text-sm">(Today)</span>
@@ -181,7 +202,9 @@ export default function TeacherDashboard() {
             </div>
           </article>
 
-          {/* Quick Actions */}
+          {/* Quick Actions - static shortcut buttons (labels/icons hard-coded
+              below). NOTE: these are display-only right now; they have no onClick
+              navigation wired yet. */}
           <article className="bg-white rounded-2xl p-6 shadow-sm border border-outline-variant/20">
             <h3 className="font-headline text-lg font-extrabold text-primary mb-4">Quick Actions</h3>
             <div className="space-y-1">
@@ -204,7 +227,8 @@ export default function TeacherDashboard() {
             </div>
           </article>
 
-          {/* Recent Activity */}
+          {/* Recent Activity - maps `recentActivity` (up to 3 most-recently
+              completed PACEs, built server-side). Empty state if none. */}
           <article className="bg-white rounded-2xl p-6 shadow-sm border border-outline-variant/20">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-headline text-lg font-extrabold text-primary">Recent Activity</h3>

@@ -16,11 +16,14 @@ const normalizeAuditRow = (r) => {
   };
 };
 
+// Admin dashboard: user counts (total / active / new in last 30d), audit-event
+// count, and a recent system-activity feed (from system_audit_log).
 export const getAdminDashboard = async () => {
   const since30 = new Date();
-  since30.setDate(since30.getDate() - 30);
+  since30.setDate(since30.getDate() - 30);           // cutoff for "new users" = 30 days ago
   const since30Iso = since30.toISOString();
 
+  // three COUNT-only queries in parallel: total / active / new-in-30d users
   const [
     { count: totalUsers },
     { count: activeUsers },
@@ -66,16 +69,19 @@ export const getAdminDashboard = async () => {
   };
 };
 
+// Principal dashboard stats: student/supervisor/active-student counts, announcements
+// posted, active school year, and recent announcements for the notifications panel.
 export const getDashboardStats = async () => {
+  // all the counts + lookups for the cards run in parallel
   const [
     { count: totalStudents },
     { count: totalTeachers },
     { count: totalAdmins },
-    { count: activeStudents },
+    { count: activeStudents },       // students whose linked user account is active
     { count: announcementsPosted },
-    { data: schoolYear },
-    { data: students },
-    { data: announcements },
+    { data: schoolYear },            // the active school year
+    { data: students },              // enrollment_date rows (for the trend chart)
+    { data: announcements },         // 5 most recent for the notifications panel
   ] = await Promise.all([
     supabaseAdmin.from("student").select("*", { count: "exact", head: true }),
     supabaseAdmin.from("teacher").select("*", { count: "exact", head: true }),
@@ -96,8 +102,9 @@ export const getDashboardStats = async () => {
       .limit(5),
   ]);
 
-  const totalEmployees = (totalTeachers || 0) + (totalAdmins || 0);
+  const totalEmployees = (totalTeachers || 0) + (totalAdmins || 0);   // supervisors + admins
 
+  // active enrollments = diagnostic assessments taken this school year
   let activeEnrollments = 0;
   if (schoolYear) {
     const { count } = await supabaseAdmin
@@ -107,7 +114,7 @@ export const getDashboardStats = async () => {
     activeEnrollments = count || 0;
   }
 
-  const enrollmentTrends = buildEnrollmentTrends(students || []);
+  const enrollmentTrends = buildEnrollmentTrends(students || []);   // monthly enrollment chart data
 
   return {
     totalStudents:       totalStudents       || 0,

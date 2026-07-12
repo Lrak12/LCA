@@ -1,4 +1,10 @@
-﻿import { useEffect, useMemo, useState } from "react";
+﻿// Announcements (principal): post announcements to chosen audiences (immediate or
+// scheduled), and browse published/scheduled feeds; auto-expire after 7 days.
+// Backend chain (frontend api/announcements.js -> routes/announcement.routes.js):
+//   list:   GET    /announcements     -> controllers/announcement.controller.js > getAll (~line 5)  -> services/announcement.service.js > getAnnouncements (~line 25)
+//   create: POST   /announcements     -> controllers/announcement.controller.js > create (~line 15) -> services/announcement.service.js > createAnnouncement (~line 37)
+//   delete: DELETE /announcements/:id -> controllers/announcement.controller.js > remove (~line 25) -> services/announcement.service.js > deleteAnnouncement (~line 61)
+import { useEffect, useMemo, useState } from "react";
 import PrincipalLayout from "../../components/PrincipalLayout.jsx";
 import { fetchAnnouncements, createAnnouncement, deleteAnnouncement } from "../../api/announcements.js";
 import { useAuth } from "../../context/AuthContext.jsx";
@@ -29,13 +35,16 @@ const formatTime = (value) => {
   return new Date(value).toLocaleString("en-US", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 };
 
+// truncate long content to a ~145-char card preview
 const getPreview = (content = "") =>
   content.length > 145 ? `${content.slice(0, 145).trim()}...` : content;
 
+// map the stored audience_role to a friendly label
 const normalizeAudience = (audience = "All") =>
   audience === "Parent" ? "Parents" : audience === "All" ? "Entire Community" : audience;
 
 // ─── Days remaining until auto-delete ────────────────────────────────────────
+// announcements expire 7 days after posting; returns days left (can be negative)
 const getDaysRemaining = (postedDate) => {
   if (!postedDate) return null;
   const posted  = new Date(postedDate);
@@ -78,6 +87,7 @@ function ConfirmDeleteModal({ announcement, onConfirm, onCancel, deleting }) {
           >
             Cancel
           </button>
+          {/* Delete -> onConfirm = page's handleDelete() (deleteAnnouncement, then reload) */}
           <button
             onClick={onConfirm}
             disabled={deleting}
@@ -103,7 +113,7 @@ const AUDIENCE_CHOICES = [
 ];
 
 function CreateAnnouncementModal({ onClose, onSuccess }) {
-  const [audiences, setAudiences] = useState({ All: false, Students: false, Supervisors: false });
+  const [audiences, setAudiences] = useState({ All: false, Students: false, Supervisors: false }); // checked audiences
   const [title,     setTitle]     = useState("");
   const [content,   setContent]   = useState("");
   const [publish,   setPublish]   = useState("immediate"); // immediate | schedule
@@ -112,7 +122,7 @@ function CreateAnnouncementModal({ onClose, onSuccess }) {
   const [saving,    setSaving]    = useState(false);
   const [error,     setError]     = useState("");
 
-  const toggleAudience = (key) => setAudiences((a) => ({ ...a, [key]: !a[key] }));
+  const toggleAudience = (key) => setAudiences((a) => ({ ...a, [key]: !a[key] })); // check/uncheck one audience
 
   // Resolve checked audiences → distinct backend roles. "All" covers everyone.
   const selectedRoles = () => {
@@ -121,6 +131,7 @@ function CreateAnnouncementModal({ onClose, onSuccess }) {
     return [...new Set(checked.map((c) => c.role))];
   };
 
+  // validate, resolve the posted date (now or scheduled), then create one row per audience
   const handleSubmit = async () => {
     setError("");
     const roles = selectedRoles();
@@ -129,6 +140,7 @@ function CreateAnnouncementModal({ onClose, onSuccess }) {
     if (!content.trim())    { setError("Announcement message is required."); return; }
     if (publish === "schedule" && !date) { setError("Pick a date to schedule this announcement."); return; }
 
+    // scheduled -> the chosen date/time; immediate -> now
     const posted_date = publish === "schedule"
       ? new Date(`${date}T${time || "00:00"}`).toISOString()
       : new Date().toISOString();
@@ -260,6 +272,7 @@ function CreateAnnouncementModal({ onClose, onSuccess }) {
           <button onClick={onClose} disabled={saving} className="px-6 py-2.5 rounded-xl border border-outline-variant/40 text-sm font-bold text-on-surface hover:bg-surface-container-low transition-colors disabled:opacity-60">
             Cancel
           </button>
+          {/* Publish/Schedule -> handleSubmit() (createAnnouncement per audience, then onSuccess) */}
           <button onClick={handleSubmit} disabled={saving} className="px-7 py-2.5 rounded-xl bg-primary text-white text-sm font-bold flex items-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-60">
             {saving
               ? <><span className="material-symbols-outlined text-base animate-spin">progress_activity</span> Saving…</>
@@ -276,14 +289,14 @@ function CreateAnnouncementModal({ onClose, onSuccess }) {
 export default function Announcements() {
   const { user }        = useAuth();
   const schoolYearLabel = useSchoolYear();
-  const isAdmin         = user?.role === "principal";
+  const isAdmin         = user?.role === "principal"; // only the principal can post/delete
 
   const [announcements, setAnnouncements] = useState([]);
   const [loading,       setLoading]       = useState(true);
   const [error,         setError]         = useState("");
-  const [currentTime,   setCurrentTime]   = useState(0);
-  const [showModal,     setShowModal]     = useState(false);
-  const [deleteTarget,  setDeleteTarget]  = useState(null);
+  const [currentTime,   setCurrentTime]   = useState(0);   // "now" snapshot for published-vs-scheduled split
+  const [showModal,     setShowModal]     = useState(false); // Create modal open?
+  const [deleteTarget,  setDeleteTarget]  = useState(null);  // announcement pending delete
   const [deleting,      setDeleting]      = useState(false);
 
   const load = async () => {
@@ -301,6 +314,7 @@ export default function Announcements() {
 
   useEffect(() => { load(); }, []);
 
+  // delete the pending announcement, then refresh
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
@@ -315,16 +329,19 @@ export default function Announcements() {
     }
   };
 
+  // active + posted date already reached -> shown in the main feed
   const published = useMemo(
     () => announcements.filter((ann) => ann.is_active !== false && (!ann.posted_date || new Date(ann.posted_date).getTime() <= currentTime)),
     [announcements, currentTime]
   );
 
+  // active + posted date still in the future -> shown in the Scheduled sidebar
   const scheduled = useMemo(
     () => announcements.filter((ann) => ann.is_active !== false && ann.posted_date && new Date(ann.posted_date).getTime() > currentTime),
     [announcements, currentTime]
   );
 
+  // inactive rows -> drafts
   const drafts = useMemo(
     () => announcements.filter((ann) => ann.is_active === false),
     [announcements]
@@ -362,6 +379,7 @@ export default function Announcements() {
             <h2 className="font-headline text-4xl font-extrabold tracking-tight text-primary">Announcements</h2>
             <p className="text-on-surface-variant mt-1">"Communication is the bridge between wisdom and community."</p>
           </div>
+          {/* Create New Announcement -> setShowModal(true) opens <CreateAnnouncementModal> (principal only) */}
           {isAdmin && (
             <button
               onClick={() => setShowModal(true)}
@@ -421,7 +439,7 @@ export default function Announcements() {
                                 {daysLeft}d left
                               </span>
                             )}
-                            {/* Delete button — admin only */}
+                            {/* Delete button — admin only; -> setDeleteTarget(ann) opens <ConfirmDeleteModal> */}
                             {isAdmin && (
                               <button
                                 onClick={() => setDeleteTarget(ann)}

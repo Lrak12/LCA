@@ -427,7 +427,7 @@ export default function PaceProgress() {
                             onChange={(e) =>
                               setSelectedPace((prev) => ({ ...prev, [subject]: Number(e.target.value) }))
                             }
-                            className="text-sm font-bold text-on-surface bg-white border border-outline-variant/30 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary/20"
+                            className="text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl pl-4 pr-8 py-2.5 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                           >
                             {paces.map((m) => (
                               <option key={m.paceNo} value={m.paceNo}>

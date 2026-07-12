@@ -24,22 +24,25 @@ export const writeAudit = async ({ user_id = null, action, entity_affected, enti
   }
 };
 
-// user_id -> { name, role }
+// Build user_id -> { name, role } so the log can show who did each action.
 const buildUserMap = async () => {
+  // users (role/username) + all four role tables (names) in parallel
   const [{ data: users }, ...roleResults] = await Promise.all([
     supabaseAdmin.from("users").select("user_id, username, role"),
     ...ROLE_TABLES.map(({ table }) => supabaseAdmin.from(table).select("user_id, first_name, last_name")),
   ]);
 
+  // index full names by user_id across every role table
   const nameByUserId = new Map();
   roleResults.forEach(({ data }) =>
     (data ?? []).forEach((row) => {
-      if (row.user_id == null) return;
+      if (row.user_id == null) return;               // skip rows not linked to a user
       const name = `${row.first_name ?? ""} ${row.last_name ?? ""}`.trim();
       if (name) nameByUserId.set(row.user_id, name);
     })
   );
 
+  // merge: prefer the profile name, fall back to username, then a "User #id" placeholder
   const map = new Map();
   (users ?? []).forEach((u) => {
     map.set(u.user_id, {
@@ -50,6 +53,7 @@ const buildUserMap = async () => {
   return map;
 };
 
+// read system_audit_log with filters + pagination (Audit Logs page)
 export const listAuditLogs = async ({
   search = "",
   user_id = "all",
@@ -60,11 +64,13 @@ export const listAuditLogs = async ({
   page = 1,
   pageSize = 5,
 } = {}) => {
+  // all log rows (newest first) + the user lookup map, in parallel
   const [{ data: rows }, userMap] = await Promise.all([
     supabaseAdmin.from("system_audit_log").select("*").order("timestamp", { ascending: false }),
     buildUserMap(),
   ]);
 
+  // shape each raw row for the UI, resolving the actor's name/role (null user_id = "System")
   let logs = (rows ?? []).map((r) => {
     const u = userMap.get(r.user_id) ?? { name: r.user_id ? `User #${r.user_id}` : "System", role: null };
     return {
@@ -74,7 +80,7 @@ export const listAuditLogs = async ({
       userName:    u.name,
       userRole:    u.role,
       action:      r.action,
-      module:      r.entity_affected,
+      module:      r.entity_affected,               // entity_affected column -> "Module" column
       description: r.details,
     };
   });
@@ -88,12 +94,14 @@ export const listAuditLogs = async ({
     modules: [...new Set(logs.map((l) => l.module).filter(Boolean))].sort(),
   };
 
+  // apply the dropdown + date-range filters
   if (user_id !== "all") logs = logs.filter((l) => String(l.user_id) === String(user_id));
   if (action !== "all")  logs = logs.filter((l) => l.action === action);
   if (mod !== "all")     logs = logs.filter((l) => l.module === mod);
-  if (from) { const f = new Date(from);                         logs = logs.filter((l) => new Date(l.timestamp) >= f); }
-  if (to)   { const t = new Date(to); t.setHours(23, 59, 59, 999); logs = logs.filter((l) => new Date(l.timestamp) <= t); }
+  if (from) { const f = new Date(from);                         logs = logs.filter((l) => new Date(l.timestamp) >= f); } // on/after "from"
+  if (to)   { const t = new Date(to); t.setHours(23, 59, 59, 999); logs = logs.filter((l) => new Date(l.timestamp) <= t); } // up to end of "to" day
 
+  // free-text search across name / action / module / description
   const q = String(search).trim().toLowerCase();
   if (q) {
     logs = logs.filter((l) =>
@@ -104,6 +112,7 @@ export const listAuditLogs = async ({
     );
   }
 
+  // paginate the filtered set (clamped page)
   const total      = logs.length;
   const size       = Math.max(1, parseInt(pageSize, 10) || 5);
   const totalPages = Math.max(1, Math.ceil(total / size));

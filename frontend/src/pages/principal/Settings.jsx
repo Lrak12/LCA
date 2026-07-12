@@ -1,3 +1,12 @@
+// Account Settings (principal): three tabs - Profile & Security (edit name/email/contact +
+// change password), Accessibility (local display prefs), and Contact Administrator (submit
+// support requests to admin).
+// Backend chain (frontend api/settings.js -> routes/account.routes.js, mounted at /account):
+//   profile read:  GET  /account          -> controllers/account.controller.js > getAccount (~line 7)       -> services/account.service.js > getAccount (~line 15)
+//   profile save:  PUT  /account          -> controllers/account.controller.js > updateAccount (~line 12)    -> services/account.service.js > updateAccount (~line 39)
+//   password:      POST /account/password -> controllers/account.controller.js > changePassword (~line 23)   -> services/account.service.js > changePassword (~line 67)
+//   support (list/submit): GET|POST /account/support-requests -> controllers/account.controller.js > getSupportRequests (~line 34) / createSupportRequest (~line 39)
+//   accessibility tab is client-side only (utils/accessibility.js, localStorage).
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import PrincipalLayout from "../../components/PrincipalLayout.jsx";
@@ -8,6 +17,7 @@ import { loadSettings, saveSettings, applySettings } from "../../utils/accessibi
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
+// the three left-nav tabs
 const TABS = [
   { key: "profile",       icon: "lock_person", label: "Profile Information & Security" },
   { key: "accessibility", icon: "settings",    label: "Accessibility" },
@@ -32,7 +42,7 @@ function PasswordField({ label, value, onChange }) {
           placeholder={label === "Current Password" ? "Enter current password" : label === "New Password" ? "Enter new password" : "Confirm new password"}
           className={`${inputClass} pr-10`}
         />
-        <button type="button" onClick={() => setShow((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary">
+        <button type="button" onClick={() => setShow((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1 flex items-center justify-center text-on-surface-variant hover:text-on-surface">
           <span className="material-symbols-outlined text-base">{show ? "visibility" : "visibility_off"}</span>
         </button>
       </div>
@@ -45,17 +55,18 @@ export default function Settings() {
   const navigate         = useNavigate();
   const schoolYearLabel  = useSchoolYear();
 
-  const [activeTab, setActiveTab] = useState("profile");
-  const [form,  setForm]  = useState({ first_name: "", last_name: "", email: "", contact_number: "" });
-  const [saved, setSaved] = useState({ first_name: "", last_name: "", email: "", contact_number: "" });
-  const [pwd,   setPwd]   = useState({ current: "", new: "", confirm: "" });
+  const [activeTab, setActiveTab] = useState("profile"); // which settings tab is shown
+  const [form,  setForm]  = useState({ first_name: "", last_name: "", email: "", contact_number: "" }); // editable profile
+  const [saved, setSaved] = useState({ first_name: "", last_name: "", email: "", contact_number: "" }); // last-saved snapshot (for Discard)
+  const [pwd,   setPwd]   = useState({ current: "", new: "", confirm: "" }); // change-password fields
   const [loading, setLoading] = useState(true);
   const [saving,  setSaving]  = useState(false);
   const [error,   setError]   = useState("");
-  const [okMsg,   setOkMsg]   = useState("");
-  const [support, setSupport] = useState([]);
+  const [okMsg,   setOkMsg]   = useState("");           // success message
+  const [support, setSupport] = useState([]);           // this user's past support requests
   const [supportLoading, setSupportLoading] = useState(true);
 
+  // (re)load the user's support-request history
   const loadSupport = () => {
     setSupportLoading(true);
     fetchSupportRequests()
@@ -64,6 +75,7 @@ export default function Settings() {
       .finally(() => setSupportLoading(false));
   };
 
+  // seed both the editable form and the saved snapshot from an account record
   const applyAccount = (d) => {
     const next = {
       first_name:     d.first_name ?? "",
@@ -76,6 +88,7 @@ export default function Settings() {
     setSaved(next);
   };
 
+  // load the account once on mount
   useEffect(() => {
     fetchAccount()
       .then((res) => applyAccount(res.data))
@@ -83,6 +96,7 @@ export default function Settings() {
       .finally(() => setLoading(false));
   }, []);
 
+  // load support history only when the Contact tab is opened
   useEffect(() => {
     if (activeTab !== "contact") return;
     let cancelled = false;
@@ -93,20 +107,22 @@ export default function Settings() {
     return () => { cancelled = true; };
   }, [activeTab]);
 
-  const set = (k, v) => { setForm((f) => ({ ...f, [k]: v })); setOkMsg(""); };
-  const setP = (k, v) => { setPwd((p) => ({ ...p, [k]: v })); setOkMsg(""); };
+  const set = (k, v) => { setForm((f) => ({ ...f, [k]: v })); setOkMsg(""); }; // edit a profile field
+  const setP = (k, v) => { setPwd((p) => ({ ...p, [k]: v })); setOkMsg(""); }; // edit a password field
 
+  // revert unsaved edits back to the last saved snapshot
   const handleDiscard = () => {
     setForm(saved);
     setPwd({ current: "", new: "", confirm: "" });
     setError(""); setOkMsg("");
   };
 
+  // validate, optionally change the password, then save the profile
   const handleSave = async () => {
     setError(""); setOkMsg("");
     if (!form.first_name.trim() || !form.last_name.trim()) { setError("First and last name are required."); return; }
 
-    const wantsPwd = pwd.current || pwd.new || pwd.confirm;
+    const wantsPwd = pwd.current || pwd.new || pwd.confirm; // only touch the password if any field is filled
     if (wantsPwd) {
       if (!pwd.current)            { setError("Enter your current password."); return; }
       if (pwd.new.length < 8)      { setError("New password must be at least 8 characters."); return; }
@@ -145,6 +161,7 @@ export default function Settings() {
             <h2 className="font-headline text-3xl font-extrabold tracking-tight text-primary">Account Settings</h2>
             <p className="text-sm text-on-surface-variant mt-0.5">Configure the academic environment and administrative controls.</p>
           </div>
+          {/* Discard -> handleDiscard() (revert to saved snapshot); Save Changes -> handleSave() (updateAccount + optional changeAccountPassword) */}
           {activeTab === "profile" && (
             <div className="flex items-center gap-4 shrink-0">
               <button onClick={handleDiscard} disabled={saving} className="text-on-surface-variant font-bold text-sm hover:text-primary transition-colors disabled:opacity-50">
@@ -172,7 +189,7 @@ export default function Settings() {
         {/* Body grid */}
         <div className="grid grid-cols-1 xl:grid-cols-[230px_1fr_260px] gap-6">
 
-          {/* Left nav */}
+          {/* Left nav -> setActiveTab(key) switches the Profile / Accessibility / Contact tabs */}
           <aside className="space-y-1">
             {TABS.map((t) => {
               const active = activeTab === t.key;
@@ -272,6 +289,7 @@ export default function Settings() {
                 </button>
               </div>
 
+              {/* Log Out -> handleLogout() (logout() then navigate to /login) */}
               <div className="mt-6 pt-5 border-t border-outline-variant/15">
                 <button
                   onClick={handleLogout}
@@ -319,9 +337,11 @@ function A11yRow({ icon, iconBg, iconColor, glyphText, title, desc, children }) 
   );
 }
 
+// Local accessibility prefs (text size, contrast, colour/font); stored client-side only.
 function AccessibilityTab() {
-  const [s, setS] = useState(loadSettings);
+  const [s, setS] = useState(loadSettings);            // seeded from localStorage
 
+  // apply a preference change: update state, live-preview it, and persist
   const update = (patch) => {
     const next = { ...s, ...patch };
     setS(next);
@@ -380,6 +400,7 @@ function AccessibilityTab() {
 }
 
 // ─── Contact Administrator (authenticated support request) ────────────────────
+// Send a support request to the admin (lands in the admin User Support page).
 function ContactAdminTab({ account, onSubmitted }) {
   const [reason,  setReason]  = useState("");
   const [message, setMessage] = useState("");
@@ -390,6 +411,7 @@ function ContactAdminTab({ account, onSubmitted }) {
   const fullName = `${account.first_name ?? ""} ${account.last_name ?? ""}`.trim();
   const idNumber = account.id_number ? String(account.id_number) : "";
 
+  // validate + submit the support request, then clear the form
   const submit = async () => {
     setErr(""); setOk("");
     if (!reason || !message.trim()) { setErr("Please choose a reason and write a message."); return; }
@@ -398,7 +420,7 @@ function ContactAdminTab({ account, onSubmitted }) {
       await submitSupportRequest({ reason, message: message.trim(), full_name: fullName });
       setReason(""); setMessage("");
       setOk("Your concern has been submitted to the administrator.");
-      onSubmitted?.();
+      onSubmitted?.();                                  // parent refreshes the request history
     } catch (e) {
       setErr(e.response?.data?.message ?? e.message);
     } finally {
@@ -445,6 +467,7 @@ function ContactAdminTab({ account, onSubmitted }) {
           <label className={labelClass}>Message</label>
           <textarea rows={5} className={`${inputClass} resize-none`} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Type your message here..." />
         </div>
+        {/* Submit -> submit() (submitSupportRequest, then clears the form) */}
         <div className="flex justify-end">
           <button onClick={submit} disabled={sending} className="bg-primary text-white px-6 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-primary/90 transition-colors disabled:opacity-60">
             {sending ? <span className="material-symbols-outlined text-base animate-spin">progress_activity</span> : <span className="material-symbols-outlined text-base">send</span>}

@@ -1,3 +1,9 @@
+// School Year Rollover (principal): preview each student's promotion for the next year,
+// override per student, then commit - creating the new school year and re-placing every
+// student.
+// Backend chain (frontend api/rollover.js -> routes/rollover.routes.js):
+//   preview: GET  /rollover/preview -> controllers/rollover.controller.js > preview (~line 5)  -> services/rollover.service.js > previewRollover (~line 46)
+//   commit:  POST /rollover/commit  -> controllers/rollover.controller.js > commit (~line 10)  -> services/rollover.service.js > commitRollover (~line 151)
 import { useState, useEffect } from "react";
 import PrincipalLayout from "../../components/PrincipalLayout.jsx";
 import { fetchRolloverPreview, commitRollover } from "../../api/rollover.js";
@@ -9,13 +15,14 @@ const Skeleton = ({ className }) => (
   <div className={`animate-pulse bg-surface-container-high rounded-xl ${className}`} />
 );
 
-// "2025–2026" → "2026–2027"
+// "2025–2026" → "2026–2027" (advance both years in the label)
 const nextYearLabel = (label) => {
   if (!label || label === "—") return "";
   const parts = label.replace(/\s/g, "").split("–");
   if (parts.length < 2) return "";
   return `${Number(parts[0]) + 1}–${Number(parts[1]) + 1}`;
 };
+// add one year to an ISO date (for the proposed start/end dates)
 const addYear = (iso) => {
   if (!iso) return "";
   const d = new Date(iso);
@@ -26,11 +33,11 @@ const addYear = (iso) => {
 export default function SchoolYearRollover() {
   const schoolYearLabel = useSchoolYear();
 
-  const [data, setData]       = useState(null);
+  const [data, setData]       = useState(null);        // rollover preview payload
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState("");
 
-  // New school year fields
+  // New school year fields (pre-filled with next year's label + dates)
   const [yearLabel, setYearLabel] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate,   setEndDate]   = useState("");
@@ -41,11 +48,12 @@ export default function SchoolYearRollover() {
   // View filter — by current grade level (does not affect what gets committed)
   const [gradeFilter, setGradeFilter] = useState("all");
 
-  const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useState(false); // confirm dialog open?
   const [committing, setCommitting] = useState(false);
-  const [done,       setDone]       = useState(null);
+  const [done,       setDone]       = useState(null);  // result after commit
   const [commitError, setCommitError] = useState("");
 
+  // load the preview; seed the new-year fields + each student's promote flag
   useEffect(() => {
     fetchRolloverPreview()
       .then((res) => {
@@ -65,7 +73,7 @@ export default function SchoolYearRollover() {
 
   const students = data?.students ?? [];
   const grades   = data?.grades ?? [];
-  const promoteCount = students.filter((s) => overrides[s.student_id]).length;
+  const promoteCount = students.filter((s) => overrides[s.student_id]).length; // how many will be promoted
 
   // Grades that actually have students, for the filter dropdown
   const gradeOptions = grades.filter((g) => students.some((s) => s.currentGlId === g.gl_id));
@@ -73,12 +81,15 @@ export default function SchoolYearRollover() {
     ? students
     : students.filter((s) => String(s.currentGlId) === String(gradeFilter));
 
+  // display name of a student's proposed next grade
   const nextGradeName = (s) =>
     grades.find((g) => g.gl_id === s.proposedGlId)?.level_name ?? s.proposedGrade;
 
+  // flip one student's promote decision
   const togglePromote = (id) =>
     setOverrides((prev) => ({ ...prev, [id]: !prev[id] }));
 
+  // commit the rollover: create the new year and place every student in the right grade
   const handleCommit = async () => {
     if (!yearLabel.trim() || !startDate || !endDate) {
       setCommitError("Fill in the new school year label, start and end dates.");
@@ -255,6 +266,7 @@ export default function SchoolYearRollover() {
                                 ))}
                               </div>
                             </td>
+                            {/* promote toggle -> togglePromote(student_id) flips this student's promote decision */}
                             <td className="px-3 py-3 text-center">
                               <button
                                 onClick={() => togglePromote(s.student_id)}
@@ -296,6 +308,7 @@ export default function SchoolYearRollover() {
                   <span className="material-symbols-outlined text-sm">error</span>{commitError}
                 </p>
               )}
+              {/* Start New School Year -> setConfirming(true) reveals Cancel + Confirm (two-step guard) */}
               {!confirming ? (
                 <button
                   onClick={() => setConfirming(true)}
@@ -306,6 +319,7 @@ export default function SchoolYearRollover() {
                 </button>
               ) : (
                 <div className="flex items-center gap-2 shrink-0">
+                  {/* Cancel -> setConfirming(false); Confirm -> handleCommit() (commitRollover) */}
                   <button onClick={() => setConfirming(false)} disabled={committing}
                     className="px-4 py-3 text-sm font-bold rounded-xl border border-outline-variant/30 text-on-surface hover:bg-surface-container-low transition-colors">
                     Cancel
