@@ -23,3 +23,6 @@ Thumbs.db
 # Project notes (local only)
 session.md
 project-structure.md
+
+# Claude Code local files
+.claude/
