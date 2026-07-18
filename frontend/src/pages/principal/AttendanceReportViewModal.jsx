@@ -4,6 +4,10 @@
 // Backend chain (frontend api/reports.js fetchAttendanceReport -> routes/reports.routes.js):
 //   GET /reports/teacher/:id/attendance -> controllers/reports.controller.js > getTeacherAttendanceReport (~line 23)
 //                                        -> services/reports.service.js > getTeacherAttendanceReport (~line 384)
+// What the backend computes (this table just renders it): getTeacherAttendanceReport reads the
+// attendance rows for the quarter's date range (only up to today) and, per student per month,
+// tallies Present / Absent / Tardy counts. `months` = the quarter's month headers. Demerits +
+// homework-PACE columns are placeholders (not yet tracked).
 import { useState, useEffect } from "react";
 import { fetchAttendanceReport } from "../../api/reports.js";
 

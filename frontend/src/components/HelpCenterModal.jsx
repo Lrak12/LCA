@@ -219,7 +219,7 @@ export default function HelpCenterModal({ onClose }) {
               )}
 
               {/* Name + Email */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1.5">
                     Name

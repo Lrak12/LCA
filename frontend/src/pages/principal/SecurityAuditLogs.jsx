@@ -1,6 +1,10 @@
 // Security & Audit Logs (principal): security overview cards (last login, active sessions,
-// failed attempts). NOTE: currently backed by mock data (see the TODO in load()) - no real
-// API yet.
+// failed attempts).
+//
+// TWO CAVEATS: (1) backed by MOCK data - load() fakes a setTimeout, there's no API call yet
+// (see the TODO). (2) NOT WIRED IN - nothing imports or renders <SecurityAuditLogs>, so the
+// onRefresh prop is never supplied (defaults to the no-op below) and this component never
+// appears in the running app. Unfinished feature, like AcademicConfiguration/ManageYearModal.
 import { useState, useEffect } from "react";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
@@ -36,6 +40,7 @@ const StatCard = ({ icon, iconBg, iconColor, badge, badgeColor, label, value, su
   </div>
 );
 
+// onRefresh: would be supplied by a parent page, but none renders this -> stays the no-op default.
 export default function SecurityAuditLogs({ onRefresh = () => {} }) {
   const [loading, setLoading]   = useState(true);
   const [overview, setOverview] = useState(null);  // security overview data (mock for now)

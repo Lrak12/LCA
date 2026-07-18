@@ -54,10 +54,12 @@ const getDaysRemaining = (postedDate) => {
 };
 
 // ─── Confirm Delete Modal ─────────────────────────────────────────────────────
+// Rendered by <Announcements> (deleteTarget). onConfirm = handleDelete (deleteAnnouncement
+// + reload); onCancel = () => setDeleteTarget(null); deleting = the in-flight flag.
 function ConfirmDeleteModal({ announcement, onConfirm, onCancel, deleting }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm px-4">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-4 sm:p-8">
         <div className="flex items-center gap-4 mb-6">
           <div className="w-12 h-12 rounded-xl bg-red-100 flex items-center justify-center shrink-0">
             <span className="material-symbols-outlined text-red-500 text-xl" style={fillStyle}>delete</span>
@@ -91,7 +93,7 @@ function ConfirmDeleteModal({ announcement, onConfirm, onCancel, deleting }) {
           <button
             onClick={onConfirm}
             disabled={deleting}
-            className="px-8 py-3 rounded-xl bg-red-500 text-white text-sm font-bold flex items-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-60"
+            className="px-4 sm:px-8 py-3 rounded-xl bg-red-500 text-white text-sm font-bold flex items-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-60"
           >
             {deleting
               ? <><span className="material-symbols-outlined text-base animate-spin">progress_activity</span> Deleting...</>
@@ -112,6 +114,8 @@ const AUDIENCE_CHOICES = [
   { key: "Supervisors", label: "Supervisors", icon: "supervisor_account", role: "Teacher" },
 ];
 
+// Rendered by <Announcements> (showModal). onClose = () => setShowModal(false);
+// onSuccess = load (refetches the announcements list).
 function CreateAnnouncementModal({ onClose, onSuccess }) {
   const [audiences, setAudiences] = useState({ All: false, Students: false, Supervisors: false }); // checked audiences
   const [title,     setTitle]     = useState("");
@@ -349,7 +353,7 @@ export default function Announcements() {
 
   return (
     <PrincipalLayout schoolYearLabel={schoolYearLabel}>
-      <main className="p-10 max-w-full mx-auto w-full">
+      <main className="p-5 sm:p-10 max-w-full mx-auto w-full">
 
         {/* Modals */}
         {showModal && (

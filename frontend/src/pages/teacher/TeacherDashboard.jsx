@@ -118,7 +118,7 @@ export default function TeacherDashboard() {
 
   return (
     <TeacherLayout schoolYearLabel={schoolYearLabel}>
-      <main className="p-8 max-w-full mx-auto w-full">
+      <main className="p-4 sm:p-8 max-w-full mx-auto w-full">
 
         {error && (
           <div className="mb-6 px-4 py-3 rounded-lg bg-error-container text-on-error-container text-sm flex items-center gap-2">
@@ -146,7 +146,7 @@ export default function TeacherDashboard() {
         {/* ── Stat Cards ──────────────────────────────────────────── */}
         {/* While loading show 4 skeletons; once loaded, map 4 cards straight
             from `stats` (totalStudents / onTrack / behind / ahead). */}
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
           {loading ? (
             Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-36" />)
           ) : (
@@ -181,7 +181,7 @@ export default function TeacherDashboard() {
             <h3 className="font-headline text-lg font-extrabold text-primary">
               Class Attendance <span className="text-on-surface-variant font-medium text-sm">(Today)</span>
             </h3>
-            <div className="grid grid-cols-3 gap-3 mt-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-5">
               {loading ? (
                 Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-24" />)
               ) : (

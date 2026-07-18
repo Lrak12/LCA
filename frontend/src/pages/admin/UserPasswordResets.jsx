@@ -361,7 +361,7 @@ export default function UserPasswordResets({ embedded = false }) {
   if (embedded) return <div className="space-y-6">{content}</div>;
   return (
     <AdminLayout schoolYearLabel={schoolYearLabel}>
-      <main className="p-8 max-w-full mx-auto w-full space-y-6">{content}</main>
+      <main className="p-4 sm:p-8 max-w-full mx-auto w-full space-y-6">{content}</main>
     </AdminLayout>
   );
 }

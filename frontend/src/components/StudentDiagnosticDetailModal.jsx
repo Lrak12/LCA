@@ -1,3 +1,11 @@
+// Student Diagnostic & PACE Details modal (principal). Opened from DiagnosticAssessments.jsx
+// "View Details" (setViewTarget). Read-only: diagnostic results + system-recommended starting
+// PACEs + the projected 4-quarter PACE plan.
+// Backend chains (loads TWO endpoints in parallel):
+//   diagnostics: GET /assessments/diagnostic?student_id (api/diagnosticAssessments.js fetchDiagnostics)
+//        -> controllers/assessment.controller.js > getDiagnostics (~line 43) -> services/assessment.service.js > getDiagnosticsByStudent (~line 20)
+//   plan:        GET /student-monitoring/:id/profile (api/studentMonitoring.js fetchStudentProfile)
+//        -> controllers/studentMonitoring.controller.js > getStudentProfile (~line 13) -> services/studentMonitoring.service.js > getStudentProfile (~line 649)
 import { useState, useEffect } from "react";
 import { fetchDiagnostics } from "../api/diagnosticAssessments.js";
 import { fetchStudentProfile } from "../api/studentMonitoring.js";
@@ -14,12 +22,14 @@ const RESULT_TINTS = [
 ];
 const PACE_COLORS = ["text-blue-600", "text-orange-600", "text-green-600", "text-purple-600"];
 
+// "Month D, YYYY" date, or em dash if missing/invalid
 const formatDate = (iso) => {
   if (!iso) return "—";
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 };
 
+// label/value cell used in the summary bar
 const SummaryCell = ({ label, children }) => (
   <div className="min-w-0">
     <p className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant">{label}</p>
@@ -35,17 +45,19 @@ const InfoCard = ({ icon, iconColor, label, children }) => (
   </div>
 );
 
+// `student` is the row clicked in the Diagnostic Assessments table; onClose = () => setViewTarget(null).
 export default function StudentDiagnosticDetailModal({ student, onClose }) {
   const { user } = useAuth();
-  const [diag,    setDiag]    = useState([]);
-  const [profile, setProfile] = useState(null);
+  const [diag,    setDiag]    = useState([]);     // diagnostic result rows for this student
+  const [profile, setProfile] = useState(null);   // the projected-plan payload (subjectPaces)
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState("");
 
   const sid       = student.student_id;
   const fullName  = `${student.first_name ?? ""} ${student.last_name ?? ""}`.trim();
-  const createdBy = [user?.first_name, user?.last_name].filter(Boolean).join(" ") || user?.username || "Principal User";
+  const createdBy = [user?.first_name, user?.last_name].filter(Boolean).join(" ") || user?.username || "Principal User"; // logged-in principal
 
+  // load diagnostics + projected plan together; `cancelled` guards setState after unmount
   useEffect(() => {
     let cancelled = false;
     Promise.all([fetchDiagnostics(sid), fetchStudentProfile(sid)])
@@ -60,9 +72,9 @@ export default function StudentDiagnosticDetailModal({ student, onClose }) {
   }, [sid]);
 
   const gradeLevel   = student.grade_level?.level_name ?? profile?.student?.grade_level ?? "—";
-  const dateAssessed = diag.find((d) => d.test_date)?.test_date ?? null;
-  const subjectPaces = profile?.subjectPaces ?? {};
-  const planSubjects = Object.keys(subjectPaces);
+  const dateAssessed = diag.find((d) => d.test_date)?.test_date ?? null;   // first recorded test date
+  const subjectPaces = profile?.subjectPaces ?? {};                        // subject -> quarters -> paces (the projected plan)
+  const planSubjects = Object.keys(subjectPaces);                          // plan table column headers
 
   return (
     <div
@@ -81,7 +93,7 @@ export default function StudentDiagnosticDetailModal({ student, onClose }) {
 
         {/* Summary bar */}
         <div className="px-7 py-4 bg-surface-container-lowest border-b border-outline-variant/10">
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
             <SummaryCell label="Student ID">{sid}</SummaryCell>
             <SummaryCell label="Student Name">{fullName || "—"}</SummaryCell>
             <SummaryCell label="Grade Level">{gradeLevel}</SummaryCell>
@@ -114,14 +126,14 @@ export default function StudentDiagnosticDetailModal({ student, onClose }) {
                 {/* Assessment information */}
                 <section>
                   <h3 className="font-bold text-on-surface mb-3">Assessment Information</h3>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     <InfoCard icon="event" iconColor="text-blue-500" label="Date Assessed">{formatDate(dateAssessed)}</InfoCard>
                     <InfoCard icon="person" iconColor="text-indigo-500" label="Assessed By">{createdBy}</InfoCard>
                     <InfoCard icon="check_circle" iconColor="text-green-500" label="Placement Basis">Diagnostic Assessment</InfoCard>
                   </div>
                 </section>
 
-                {/* Diagnostic results */}
+                {/* Diagnostic results — one tinted card per recorded subject (from `diag`) */}
                 <section>
                   <h3 className="font-bold text-on-surface mb-3">Diagnostic Results</h3>
                   {diag.length === 0 ? (
@@ -169,7 +181,8 @@ export default function StudentDiagnosticDetailModal({ student, onClose }) {
                 </section>
               </div>
 
-              {/* Right column — projected PACE plan */}
+              {/* Right column — projected PACE plan (from profile.subjectPaces): rows = 4 quarters
+                  x 3 PACE slots, columns = subjects; getStudentProfile built this on the backend */}
               <div>
                 <h3 className="font-bold text-on-surface">Projected PACE Plan</h3>
                 <p className="text-xs text-on-surface-variant mt-0.5 mb-3">
@@ -214,6 +227,7 @@ export default function StudentDiagnosticDetailModal({ student, onClose }) {
                     </table>
                   </div>
                 )}
+                {/* Export / Print -> window.print() (browser print-to-PDF; no backend) */}
                 <div className="flex justify-end mt-4">
                   <button
                     onClick={() => window.print()}
@@ -232,7 +246,7 @@ export default function StudentDiagnosticDetailModal({ student, onClose }) {
         <div className="px-7 py-4 border-t border-outline-variant/20 flex justify-end sticky bottom-0 bg-white">
           <button
             onClick={onClose}
-            className="px-8 py-2.5 rounded-xl border border-outline-variant/40 text-sm font-bold text-on-surface hover:bg-surface-container-low transition-colors"
+            className="px-4 sm:px-8 py-2.5 rounded-xl border border-outline-variant/40 text-sm font-bold text-on-surface hover:bg-surface-container-low transition-colors"
           >
             Close
           </button>

@@ -93,6 +93,8 @@ function GradeLevelSelect({ options, selected, onChange, loading }) {
   );
 }
 
+// Rendered by <Employees> (showModal). onClose = () => setShowModal(false);
+// onSuccess = () => { setLoading(true); setReloadKey(k=>k+1) } which refetches the list.
 function AddSupervisorModal({ onClose, onSuccess }) {
   const [form, setForm]       = useState(defaultForm);
   const [gradeIds, setGradeIds] = useState([]);        // selected grade-level ids
@@ -163,7 +165,7 @@ function AddSupervisorModal({ onClose, onSuccess }) {
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
 
         {/* Header */}
-        <div className="px-8 pt-7 pb-5 flex items-start justify-between gap-4 sticky top-0 bg-white">
+        <div className="px-4 sm:px-8 pt-7 pb-5 flex items-start justify-between gap-4 sticky top-0 bg-white">
           <div>
             <h2 className="font-headline text-2xl font-extrabold text-primary">Add Supervisor</h2>
             <p className="text-sm text-on-surface-variant mt-1">Create a new supervisor account and assign grade levels.</p>
@@ -176,7 +178,7 @@ function AddSupervisorModal({ onClose, onSuccess }) {
           </button>
         </div>
 
-        <div className="px-8 pb-2 space-y-6">
+        <div className="px-4 sm:px-8 pb-2 space-y-6">
           {error && (
             <div className="px-4 py-3 rounded-lg bg-error-container text-on-error-container text-sm flex items-center gap-2">
               <span className="material-symbols-outlined text-base">error</span>
@@ -276,7 +278,7 @@ function AddSupervisorModal({ onClose, onSuccess }) {
         </div>
 
         {/* Footer */}
-        <div className="px-8 py-5 flex items-center justify-end gap-3 border-t border-outline-variant/20 mt-2 sticky bottom-0 bg-white">
+        <div className="px-4 sm:px-8 py-5 flex items-center justify-end gap-3 border-t border-outline-variant/20 mt-2 sticky bottom-0 bg-white">
           <button onClick={onClose} className="px-6 py-2.5 rounded-xl border border-outline-variant/40 text-sm font-bold text-on-surface hover:bg-surface-container-low transition-colors">
             Cancel
           </button>
@@ -311,7 +313,13 @@ function InfoRow({ label, children }) {
 
 // Read-only supervisor profile: info, assigned grade levels / PACE modules, and a
 // per-grade student count table.
+// Rendered by <Employees> (viewSup). onClose = () => setViewSup(null).
+// NOTE: onEdit is NOT passed at the render site, so the "Edit Supervisor" button here
+// (onClick={() => onEdit?.(sup)}) is currently a no-op - edit isn't wired up yet.
 function ViewDetailsModal({ supervisor: sup, year, onClose, onEdit }) {
+  // `sup` is the same row the list loaded via fetchSupervisors; its gradeLevels / paceModules /
+  // gradeLevelDetails / totalStudents are built in the backend by
+  // services/employees.service.js > getSupervisors (~line 42) (per-grade student counts included).
   const gradeDetails = sup.gradeLevelDetails ?? [];
   const totalStudents = sup.totalStudents             // use the API total, else sum the per-grade counts
     ?? gradeDetails.reduce((sum, d) => sum + (d.studentCount ?? 0), 0);
@@ -364,7 +372,7 @@ function ViewDetailsModal({ supervisor: sup, year, onClose, onEdit }) {
           </section>
 
           {/* Assignment cards */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="border border-outline-variant/30 rounded-2xl px-4 py-4">
               <div className="flex items-center gap-2 mb-3">
                 <span className="material-symbols-outlined text-primary text-lg">school</span>
@@ -432,7 +440,7 @@ function ViewDetailsModal({ supervisor: sup, year, onClose, onEdit }) {
           >
             Close
           </button>
-          {/* Edit Supervisor -> onEdit(sup) callback (edit flow handled by the parent) */}
+          {/* Edit Supervisor -> onEdit?.(sup); but Employees doesn't pass onEdit, so this is currently a no-op */}
           <button
             onClick={() => onEdit?.(sup)}
             className="px-6 py-2.5 rounded-xl bg-primary text-white text-sm font-bold flex items-center gap-2 hover:opacity-90 transition-opacity"
@@ -529,7 +537,7 @@ export default function Employees() {
 
   return (
     <PrincipalLayout schoolYearLabel={schoolYearLabel}>
-      <main className="p-8 max-w-full mx-auto w-full">
+      <main className="p-4 sm:p-8 max-w-full mx-auto w-full">
 
         {showModal && (
           <AddSupervisorModal

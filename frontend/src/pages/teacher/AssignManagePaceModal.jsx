@@ -159,7 +159,7 @@ export default function AssignManagePaceModal({ studentId, onClose, onSaved }) {
       <div className="bg-white rounded-2xl shadow-xl border border-outline-variant/20 w-full max-w-6xl mx-4">
 
         {/* Header */}
-        <div className="flex items-start justify-between px-8 py-6 border-b border-outline-variant/10">
+        <div className="flex items-start justify-between px-4 sm:px-8 py-6 border-b border-outline-variant/10">
           <div>
             <h2 className="text-lg font-extrabold text-on-surface uppercase tracking-wide">Assign / Manage Student PACE</h2>
             <p className="text-sm text-on-surface-variant mt-0.5">View current PACE modules per subject and set dates, extensions, and other details.</p>
@@ -179,7 +179,7 @@ export default function AssignManagePaceModal({ studentId, onClose, onSaved }) {
             <span className="material-symbols-outlined text-base">error</span>{error}
           </div>
         ) : (
-          <div className="p-8">
+          <div className="p-4 sm:p-8">
 
             {/* Student + stats */}
             <div className="flex flex-wrap items-start justify-between gap-6 mb-6">

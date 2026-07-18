@@ -54,6 +54,8 @@ const buildInitial = (recommended) => {
   return g;
 };
 
+// Rendered by <ProjectedPaceRecommendation> (planPaces). onBack = () => setPlanPaces(null)
+// (back to the recommendation); onCancel + onSaved both navigate("/admin/diagnostic").
 export default function ProjectedPacePlanModal({ student, studentId, recommended, schoolYearLabel, onBack, onCancel, onSaved }) {
   const [grid,   setGrid]   = useState(() => buildInitial(recommended)); // subject -> [q1,q2,q3,q4] start PACEs
   const [saving, setSaving] = useState(false);
@@ -119,7 +121,7 @@ export default function ProjectedPacePlanModal({ student, studentId, recommended
         </div>
 
         {/* Summary bar */}
-        <div className="px-6 py-4 border-b border-outline-variant/10 grid grid-cols-2 md:grid-cols-5 gap-4 shrink-0">
+        <div className="px-6 py-4 border-b border-outline-variant/10 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 shrink-0">
           <div>
             <p className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant">Student ID</p>
             <p className="text-sm font-bold text-on-surface mt-0.5">{student?.student_id ?? studentId}</p>

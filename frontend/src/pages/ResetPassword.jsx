@@ -33,7 +33,7 @@ export default function ResetPassword() {
 
   return (
     <div className="bg-surface text-on-surface min-h-screen flex items-center justify-center p-4">
-      <main className="w-full max-w-md bg-surface-container-lowest rounded-xl shadow-2xl p-8 md:p-12">
+      <main className="w-full max-w-md bg-surface-container-lowest rounded-xl shadow-2xl p-4 sm:p-8 md:p-12">
         <div className="flex items-center gap-3 mb-8">
           <span className="material-symbols-outlined text-primary text-4xl">lock_reset</span>
           <div>

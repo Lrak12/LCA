@@ -167,7 +167,7 @@ export default function PaceTestScheduling() {
 
   return (
     <TeacherLayout schoolYearLabel={schoolYearLabel}>
-      <main className="p-8 max-w-full mx-auto w-full">
+      <main className="p-4 sm:p-8 max-w-full mx-auto w-full">
 
         {/* Breadcrumb */}
         <nav className="flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-widest mb-2">

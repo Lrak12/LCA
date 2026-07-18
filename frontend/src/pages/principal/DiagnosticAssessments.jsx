@@ -35,6 +35,8 @@ const DEFAULT_BASIS = "Diagnostic Assessment";
 // ─── New Student Modal ────────────────────────────────────────────────────────
 // Enroll a brand-new student for diagnostic testing; on success shows an auto-generated
 // login-credentials card, then routes into the diagnostic recording flow.
+// Rendered by <DiagnosticAssessments> (showModal). onClose = () => setShowModal(false);
+// onCreated = handleStudentCreated (navigates to RecordDiagnostic for the new student).
 function NewStudentModal({ onClose, onCreated }) {
   const [form, setForm] = useState({
     first_name: "", last_name: "", date_of_birth: "",
@@ -114,7 +116,7 @@ function NewStudentModal({ onClose, onCreated }) {
         <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
 
           {/* Success header */}
-          <div className="bg-primary px-8 py-6 flex items-center gap-4">
+          <div className="bg-primary px-4 sm:px-8 py-6 flex items-center gap-4">
             <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center shrink-0">
               <span className="material-symbols-outlined text-white text-2xl" style={fillStyle}>check_circle</span>
             </div>
@@ -126,7 +128,7 @@ function NewStudentModal({ onClose, onCreated }) {
             </div>
           </div>
 
-          <div className="px-8 py-6 space-y-4">
+          <div className="px-4 sm:px-8 py-6 space-y-4">
             <p className="text-sm text-on-surface-variant">
               Share these login credentials with the student. They can change their password later from their profile settings.
             </p>
@@ -183,7 +185,7 @@ function NewStudentModal({ onClose, onCreated }) {
       <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden">
 
         {/* Header */}
-        <div className="px-8 pt-8 pb-4 flex items-start justify-between">
+        <div className="px-4 sm:px-8 pt-8 pb-4 flex items-start justify-between">
           <div>
             <h2 className="text-2xl font-bold text-primary font-headline">New Student Assessment</h2>
             <p className="text-on-surface-variant text-sm mt-1">Enroll a new student for diagnostic placement testing.</p>
@@ -193,7 +195,7 @@ function NewStudentModal({ onClose, onCreated }) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-8 pb-8 space-y-4">
+        <form onSubmit={handleSubmit} className="px-4 sm:px-8 pb-8 space-y-4">
           {error && (
             <div className="px-4 py-3 rounded-xl bg-error-container text-on-error-container text-sm flex items-center gap-2">
               <span className="material-symbols-outlined text-base">error</span>
@@ -202,7 +204,7 @@ function NewStudentModal({ onClose, onCreated }) {
           )}
 
           {/* First / Last Name */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">First Name</label>
               <input
@@ -222,7 +224,7 @@ function NewStudentModal({ onClose, onCreated }) {
           </div>
 
           {/* DOB / Gender */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">
                 Date of Birth
@@ -433,7 +435,7 @@ export default function DiagnosticAssessments() {
         />
       )}
 
-      <main className="p-8 w-full">
+      <main className="p-4 sm:p-8 w-full">
 
         {error && (
           <div className="mb-6 px-4 py-3 rounded-lg bg-error-container text-on-error-container text-sm flex items-center gap-2">
@@ -525,7 +527,7 @@ export default function DiagnosticAssessments() {
         {/* Table */}
         <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm overflow-hidden">
           {loading ? (
-            <div className="p-8 space-y-4">
+            <div className="p-4 sm:p-8 space-y-4">
               {[1,2,3].map((i) => (
                 <div key={i} className="flex gap-4 items-center">
                   <div className="flex-1 space-y-2">
@@ -537,7 +539,7 @@ export default function DiagnosticAssessments() {
               ))}
             </div>
           ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-24 text-center px-8">
+            <div className="flex flex-col items-center justify-center py-24 text-center px-4 sm:px-8">
               <div className="w-16 h-16 bg-primary-fixed rounded-full flex items-center justify-center mb-5">
                 <span className="material-symbols-outlined text-3xl text-primary" style={fillStyle}>assignment</span>
               </div>

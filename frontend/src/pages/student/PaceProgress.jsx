@@ -201,7 +201,7 @@ export default function PaceProgress() {
 
   return (
     <StudentLayout schoolYearLabel={schoolYearLabel}>
-      <main className="p-8 max-w-full mx-auto w-full">
+      <main className="p-4 sm:p-8 max-w-full mx-auto w-full">
 
         {error && (
           <div className="mb-6 px-4 py-3 rounded-lg bg-error-container text-on-error-container text-sm flex items-center gap-2">
@@ -235,7 +235,7 @@ export default function PaceProgress() {
         </header>
 
         {/* ── Stat Cards ──────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
           {loading ? (
             Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-40" />)
           ) : (

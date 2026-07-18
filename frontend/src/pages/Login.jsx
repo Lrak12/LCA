@@ -66,7 +66,7 @@ export default function Login() {
         </div>
 
         {/* ── Right: Form panel ── */}
-        <div className="bg-surface-container-lowest p-8 md:p-16 lg:p-20 flex flex-col justify-center">
+        <div className="bg-surface-container-lowest p-4 sm:p-8 md:p-16 lg:p-20 flex flex-col justify-center">
 
           <div className="mb-10 lg:hidden flex items-center gap-3">
             <span className="material-symbols-outlined text-primary text-4xl">school</span>

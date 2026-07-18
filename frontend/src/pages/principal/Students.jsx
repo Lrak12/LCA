@@ -94,6 +94,8 @@ const exportCSV = (students) => {
 
 // ─── Import Modal ─────────────────────────────────────────────────────────────
 // 4-step CSV import wizard: upload > preview rows > import > show result.
+// Rendered by <Students> (showModal). onClose = () => setShowModal(false);
+// onSuccess = loadStudents (refetches the table after a successful import).
 function ImportModal({ onClose, onSuccess }) {
   const [step,       setStep]       = useState("upload"); // which wizard step is showing
   const [rows,       setRows]       = useState([]);       // parsed CSV rows awaiting import
@@ -242,7 +244,7 @@ function ImportModal({ onClose, onSuccess }) {
                 onDrop={handleDrop}
                 onDragOver={(e) => e.preventDefault()}
                 onClick={() => fileRef.current?.click()}
-                className="border-2 border-dashed border-outline-variant/40 rounded-2xl p-10 flex flex-col items-center gap-3 cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors"
+                className="border-2 border-dashed border-outline-variant/40 rounded-2xl p-5 sm:p-10 flex flex-col items-center gap-3 cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors"
               >
                 <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center">
                   <span className="material-symbols-outlined text-primary text-3xl" style={fillStyle}>upload_file</span>
@@ -480,7 +482,7 @@ export default function Students() {
         />
       )}
 
-      <main className="p-8 max-w-full mx-auto w-full">
+      <main className="p-4 sm:p-8 max-w-full mx-auto w-full">
         {error && (
           <div className="mb-6 px-4 py-3 rounded-lg bg-error-container text-on-error-container text-sm flex items-center gap-2">
             <span className="material-symbols-outlined text-base">error</span>

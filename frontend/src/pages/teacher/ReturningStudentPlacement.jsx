@@ -138,7 +138,7 @@ export default function ReturningStudentPlacement() {
 
   return (
     <TeacherLayout schoolYearLabel={schoolYearLabel}>
-      <main className="p-8 max-w-full mx-auto w-full">
+      <main className="p-4 sm:p-8 max-w-full mx-auto w-full">
 
         {/* Breadcrumb */}
         <nav className="flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-widest mb-2">
@@ -220,7 +220,7 @@ export default function ReturningStudentPlacement() {
             {/* Student demographic card */}
             <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 p-6 mb-6">
               <div className="flex items-start justify-between gap-4">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-4 flex-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-4 flex-1">
                   <Info label="Student Name & ID" value={<>{selected.name}<br /><span className="text-on-surface-variant font-normal">{selected.idNumber}</span></>} />
                   <Info label="Date of Birth" value={formatDob(selected.dateOfBirth)} />
                   <Info label="Age" value={selected.age ?? "—"} />
@@ -281,7 +281,7 @@ export default function ReturningStudentPlacement() {
               </div>
 
               {decision === "modify" && (
-                <div className="mt-5 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+                <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
                   {SUBJECT_LABELS.map((label) => (
                     <div key={label}>
                       <label className="block text-[9px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-1 leading-tight">{SUBJECT_HEAD[label]}</label>

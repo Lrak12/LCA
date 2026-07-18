@@ -159,7 +159,7 @@ export default function RecordDiagnostic() {
         />
       )}
 
-      <main className="p-8 w-full max-w-7xl">
+      <main className="p-4 sm:p-8 w-full max-w-7xl">
 
         {/* Breadcrumb + Select Another Student */}
         <div className="flex items-start justify-between gap-4 mb-5 flex-wrap">
@@ -206,7 +206,7 @@ export default function RecordDiagnostic() {
             <span className="material-symbols-outlined text-primary text-lg" style={fillStyle}>person</span>
             <h3 className="font-bold text-on-surface">Student Information</h3>
           </div>
-          <div className="px-6 py-5 grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div className="px-6 py-5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
             <div>
               <p className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant">Student ID</p>
               <p className="text-sm font-bold text-on-surface mt-1">{loading ? "…" : student?.student_id ?? "—"}</p>

@@ -1,5 +1,10 @@
-// "View Student Details" modal, opened from the principal Student Monitoring page.
-// Data: GET /student-monitoring/:id/summary (studentMonitoring.service.getStudentSummary).
+// "View Student Details" modal, opened from the principal Student Monitoring page
+// (setSelectedStudent). Read-only: info + PACE progress summary + projected plan + ranking.
+// Backend chain (frontend api/studentMonitoring.js fetchStudentSummary -> routes/studentMonitoring.routes.js):
+//   GET /student-monitoring/:id/summary -> controllers/studentMonitoring.controller.js > getStudentSummary (~line 26)
+//                                        -> services/studentMonitoring.service.js > getStudentSummary (~line 452)
+//   (getStudentSummary reuses buildRecommendation + getPaceAnalytics internally, so the numbers
+//    here match the Records/Recommendations/Analytics tabs.)
 import { useState, useEffect } from "react";
 import { fetchStudentSummary } from "../api/studentMonitoring.js";
 import StudentProfileModal from "./StudentProfileModal.jsx";
@@ -53,12 +58,14 @@ const SkeletonLine = ({ className = "" }) => (
 
 // Shows student info, PACE progress summary, projected plan, and ranking.
 // "View Full Plan" opens StudentProfileModal (the per-subject grade grid).
+// `studentId` = the row's id (set by the page's setSelectedStudent); onClose = () => setSelectedStudent(null).
 export default function StudentSummaryModal({ studentId, onClose }) {
-  const [data, setData]       = useState(null);
+  const [data, setData]       = useState(null);    // getStudentSummary payload
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState("");
-  const [showFullPlan, setShowFullPlan] = useState(false);
+  const [showFullPlan, setShowFullPlan] = useState(false); // is the nested full-plan modal open?
 
+  // fetch this student's summary; `cancelled` guards setState after unmount
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -77,10 +84,10 @@ export default function StudentSummaryModal({ studentId, onClose }) {
     return () => { cancelled = true; };
   }, [studentId]);
 
-  const s    = data?.student;
-  const pace = data?.paceSummary;
-  const plan = data?.projectedPlan ?? [];
-  const rank = data?.ranking;
+  const s    = data?.student;          // identity fields
+  const pace = data?.paceSummary;      // counts + completion rate + status + points
+  const plan = data?.projectedPlan ?? []; // per-subject projected PACE range
+  const rank = data?.ranking;          // current + grade-level rank
 
   return (
     <div
@@ -171,7 +178,7 @@ export default function StudentSummaryModal({ studentId, onClose }) {
                   <p className="text-sm text-on-surface-variant">No PACE projection recorded for this school year yet.</p>
                 ) : (
                   <>
-                    <div className="overflow-hidden rounded-xl border border-outline-variant/20">
+                    <div className="overflow-x-auto rounded-xl border border-outline-variant/20">
                       <table className="w-full">
                         <thead>
                           <tr className="bg-surface-container-lowest border-b border-outline-variant/20">
@@ -189,6 +196,7 @@ export default function StudentSummaryModal({ studentId, onClose }) {
                         </tbody>
                       </table>
                     </div>
+                    {/* View Full Plan -> setShowFullPlan(true) opens the nested <StudentProfileModal> */}
                     <div className="flex justify-center mt-4">
                       <button
                         onClick={() => setShowFullPlan(true)}
@@ -224,6 +232,7 @@ export default function StudentSummaryModal({ studentId, onClose }) {
         </div>
       </div>
 
+      {/* nested full-plan modal: `showFullPlan` -> StudentProfileModal; onClose = () => setShowFullPlan(false) */}
       {showFullPlan && s && (
         <StudentProfileModal
           student={{ student_id: s.student_id }}

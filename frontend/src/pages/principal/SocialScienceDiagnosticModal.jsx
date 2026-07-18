@@ -34,6 +34,8 @@ const formatDOB = (dob) => {
   return isNaN(d) ? dob : d.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" });
 };
 
+// Rendered by <RecordDiagnostic> (socialSciSubject). onClose = () => setSocialSciSubject(null);
+// onSaved = handleSocialSciSaved (closes the modal + reloads the student's diagnostics).
 export default function SocialScienceDiagnosticModal({ subject, student, existing, onClose, onSaved }) {
   const [scores,    setScores]    = useState(() => Object.fromEntries(PACE_ROWS.map((r) => [r.page, ""]))); // page -> score
   const [startPace, setStartPace] = useState(existing?.start_pace != null ? String(existing.start_pace) : ""); // ready-to-advance PACE
@@ -75,14 +77,14 @@ export default function SocialScienceDiagnosticModal({ subject, student, existin
       <div className="bg-white w-full max-w-3xl rounded-xl shadow-2xl overflow-hidden max-h-[95vh] flex flex-col">
 
         {/* Header */}
-        <div className="bg-primary px-8 py-4 flex items-center justify-between shrink-0">
+        <div className="bg-primary px-4 sm:px-8 py-4 flex items-center justify-between shrink-0">
           <h2 className="text-white font-bold text-lg tracking-widest uppercase">{subject}</h2>
           <button onClick={onClose} className="text-white/70 hover:text-white transition-colors">
             <span className="material-symbols-outlined">close</span>
           </button>
         </div>
 
-        <div className="overflow-y-auto flex-1 px-8 py-6 space-y-6">
+        <div className="overflow-y-auto flex-1 px-4 sm:px-8 py-6 space-y-6">
 
           {error && (
             <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-center gap-2">
@@ -95,7 +97,7 @@ export default function SocialScienceDiagnosticModal({ subject, student, existin
           <div>
             <p className="text-xs font-bold text-primary tracking-widest uppercase mb-3">Student Information</p>
             <div className="border border-outline-variant rounded-xl overflow-hidden">
-              <div className="grid grid-cols-2 divide-x divide-outline-variant border-b border-outline-variant">
+              <div className="grid grid-cols-1 sm:grid-cols-2 divide-x divide-outline-variant border-b border-outline-variant">
                 {[
                   { label: "LAST NAME",   value: student.last_name   ?? "", placeholder: "e.g., Dela Cruz" },
                   { label: "FIRST NAME",  value: student.first_name  ?? "", placeholder: "e.g., Juan"      },
@@ -108,7 +110,7 @@ export default function SocialScienceDiagnosticModal({ subject, student, existin
                   </div>
                 ))}
               </div>
-              <div className="grid grid-cols-3 divide-x divide-outline-variant">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 divide-x divide-outline-variant">
                 <div className="px-4 py-3">
                   <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-1">AGE</p>
                   <p className="text-sm text-on-surface font-medium">
@@ -152,7 +154,7 @@ export default function SocialScienceDiagnosticModal({ subject, student, existin
               </div>
 
               {/* Score Table */}
-              <div className="flex-1">
+              <div className="flex-1 overflow-x-auto">
                 <table className="w-full border border-outline-variant rounded-lg overflow-hidden text-sm">
                   <thead>
                     <tr className="bg-surface-container-low">
@@ -212,7 +214,7 @@ export default function SocialScienceDiagnosticModal({ subject, student, existin
         </div>
 
         {/* Footer */}
-        <div className="px-8 py-4 border-t border-outline-variant flex items-center justify-between shrink-0">
+        <div className="px-4 sm:px-8 py-4 border-t border-outline-variant flex items-center justify-between shrink-0">
           <button
             onClick={onClose}
             className="text-sm font-bold text-on-surface-variant hover:text-primary uppercase tracking-widest transition-colors"

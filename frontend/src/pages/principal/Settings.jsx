@@ -153,12 +153,12 @@ export default function Settings() {
 
   return (
     <PrincipalLayout schoolYearLabel={schoolYearLabel}>
-      <main className="p-8 w-full">
+      <main className="p-4 sm:p-8 w-full">
 
         {/* Header */}
-        <header className="flex items-start justify-between gap-4 mb-6">
+        <header className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
           <div>
-            <h2 className="font-headline text-3xl font-extrabold tracking-tight text-primary">Account Settings</h2>
+            <h2 className="font-headline text-2xl sm:text-3xl font-extrabold tracking-tight text-primary">Account Settings</h2>
             <p className="text-sm text-on-surface-variant mt-0.5">Configure the academic environment and administrative controls.</p>
           </div>
           {/* Discard -> handleDiscard() (revert to saved snapshot); Save Changes -> handleSave() (updateAccount + optional changeAccountPassword) */}
@@ -320,8 +320,8 @@ const FONT_STYLES  = ["Default", "Serif", "Monospace", "Dyslexic-Friendly"];
 
 function A11yRow({ icon, iconBg, iconColor, glyphText, title, desc, children }) {
   return (
-    <div className="flex items-center justify-between gap-4 py-4 border-b border-outline-variant/10 last:border-0">
-      <div className="flex items-start gap-3 min-w-0">
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 py-4 border-b border-outline-variant/10 last:border-0">
+      <div className="flex items-start gap-3 min-w-0 flex-1">
         <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}>
           {glyphText
             ? <span className="text-sm font-extrabold">{glyphText}</span>
@@ -332,7 +332,8 @@ function A11yRow({ icon, iconBg, iconColor, glyphText, title, desc, children }) 
           <p className="text-[11px] text-on-surface-variant leading-snug">{desc}</p>
         </div>
       </div>
-      <div className="shrink-0">{children}</div>
+      {/* control drops below the label on mobile, indented under the text */}
+      <div className="shrink-0 pl-12 sm:pl-0">{children}</div>
     </div>
   );
 }

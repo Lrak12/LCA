@@ -303,7 +303,7 @@ export default function Attendance() {
 
   return (
     <TeacherLayout schoolYearLabel={schoolYearLabel}>
-      <main className="p-8 max-w-full mx-auto w-full">
+      <main className="p-4 sm:p-8 max-w-full mx-auto w-full">
 
         {/* ── Header ──────────────────────────────────────────────────── */}
         <div className="flex items-start justify-between gap-4 mb-6">
@@ -352,7 +352,7 @@ export default function Attendance() {
         {viewMode === "today" && (
         <>
         {/* ── Stat Cards ──────────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
           {/* Total Students */}
           <div className="bg-white rounded-2xl px-6 py-5 shadow-sm border border-outline-variant/20">
             <p className="text-sm text-on-surface-variant mb-3">Total Students</p>
@@ -541,7 +541,7 @@ export default function Attendance() {
             {/* Legend */}
             <div className="mt-5 pt-4 border-t border-outline-variant/10">
               <p className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-3">Legend</p>
-              <div className="grid grid-cols-2 gap-y-2 gap-x-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-3">
                 {[
                   { dot: "bg-green-400", label: "Present"  },
                   { dot: "bg-amber-400", label: "Late"     },
@@ -585,7 +585,7 @@ export default function Attendance() {
         {viewMode === "history" && (
         <>
           {/* Stat cards (recorded summary) */}
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
             {[
               { label: "Total Students", value: summary.total,   pct: "100%",            accent: "",                          pill: "bg-blue-50 text-blue-600"  },
               { label: "Present Today",  value: summary.present,  pct: pctOf(summary.present), accent: "border-l-4 border-l-green-400", pill: "bg-green-50 text-green-600" },

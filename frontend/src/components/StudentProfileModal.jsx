@@ -1,26 +1,34 @@
+// Student Full Plan / Profile modal (principal). Opened from StudentSummaryModal's
+// "View Full Plan" button - the per-subject PACE grade grid + attendance + 100s/homework lists.
+// Backend chain (frontend api/studentMonitoring.js fetchStudentProfile -> routes/studentMonitoring.routes.js):
+//   GET /student-monitoring/:id/profile -> controllers/studentMonitoring.controller.js > getStudentProfile (~line 13)
+//                                        -> services/studentMonitoring.service.js > getStudentProfile (~line 649)
 import { useState, useEffect } from "react";
 import { fetchStudentProfile } from "../api/studentMonitoring.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
-const PREVIEW_LIMIT = 5;
+const PREVIEW_LIMIT = 5;   // rows shown before a list section needs "show more"
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// "Month D, YYYY" date, or em dash / raw string if unparseable
 const formatDate = (iso) => {
   if (!iso) return "—";
   const d = new Date(iso);
   return isNaN(d) ? iso : d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 };
 
-const round2 = (n) => (typeof n === "number" ? Math.round(n * 100) / 100 : null);
+const round2 = (n) => (typeof n === "number" ? Math.round(n * 100) / 100 : null); // 2-decimal round, null-safe
 
+// average of the numeric scores in one quarter (null if none entered)
 function quarterTotal(scores) {
   const nums = scores.filter((s) => typeof s === "number");
   if (!nums.length) return null;
   return round2(nums.reduce((a, b) => a + b, 0) / nums.length);
 }
 
+// average across a subject's quarters (average of quarter averages)
 function subjectAverage(quarters) {
   const totals = quarters.map((q) => quarterTotal(q.scores)).filter((t) => t !== null);
   if (!totals.length) return null;
@@ -122,14 +130,16 @@ const ListSection = ({ title, icon, iconBg, count, rows, col1Label, col2Label, c
 
 // ─── Main Modal ───────────────────────────────────────────────────────────────
 
+// `student` carries at least student_id; onClose = () => setShowFullPlan(false) (from StudentSummaryModal).
 export default function StudentProfileModal({ student, onClose }) {
-  const [profile,    setProfile]    = useState(null);
+  const [profile,    setProfile]    = useState(null);   // getStudentProfile payload
   const [loading,    setLoading]    = useState(true);
   const [error,      setError]      = useState("");
-  const [activeTab,  setActiveTab]  = useState(null);
+  const [activeTab,  setActiveTab]  = useState(null);   // which subject's grade grid is showing
 
   const studentId = student.student_id || student.id;
 
+  // load the full profile; default the active tab to the first subject
   useEffect(() => {
     setLoading(true);
     setError("");
@@ -153,13 +163,14 @@ export default function StudentProfileModal({ student, onClose }) {
   const contact     = profile?.student.contact_number ?? student.contact      ?? student.contact_number ?? "—";
   const gradeLevel  = profile?.student.grade_level   ?? student.gradeLevel   ?? student.grade_level  ?? "—";
 
-  const paceStats      = profile?.paceStats      ?? null;
-  const subjectPaces   = profile?.subjectPaces   ?? {};
-  const attendance     = profile?.attendance     ?? null;
-  const boughtHome     = profile?.pacesBroughtHome   ?? [];
-  const hundreds       = profile?.hundredsAchieved   ?? [];
-  const subjects       = Object.keys(subjectPaces);
-  const subjectData    = activeTab ? subjectPaces[activeTab] : null;
+  // sections of the profile payload (all built by getStudentProfile on the backend)
+  const paceStats      = profile?.paceStats      ?? null;   // completed / ongoing / remaining counts
+  const subjectPaces   = profile?.subjectPaces   ?? {};     // subject -> quarters -> PACE scores (the grade grid)
+  const attendance     = profile?.attendance     ?? null;   // present / absent / tardy totals
+  const boughtHome     = profile?.pacesBroughtHome   ?? []; // homework PACE list
+  const hundreds       = profile?.hundredsAchieved   ?? []; // 100-score PACE list
+  const subjects       = Object.keys(subjectPaces);         // subject tab labels
+  const subjectData    = activeTab ? subjectPaces[activeTab] : null; // the selected subject's grid
 
   return (
     <div
@@ -249,7 +260,7 @@ export default function StudentProfileModal({ student, onClose }) {
 
             {/* Right: PACE Stats */}
             <div className="col-span-12 md:col-span-4 flex flex-col gap-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="bg-orange-50 border border-orange-100 rounded-2xl p-4 flex flex-col gap-1">
                   <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center mb-1">
                     <span className="material-symbols-outlined text-white text-base" style={fillStyle}>schedule</span>
@@ -290,7 +301,7 @@ export default function StudentProfileModal({ student, onClose }) {
             </div>
           </div>
 
-          {/* ── Subject Tabs ─────────────────────────────────────────────── */}
+          {/* ── Subject Tabs -> setActiveTab(subject) picks which subject's grade grid renders ── */}
           {!loading && subjects.length > 0 && (
             <div className="px-6 border-t border-outline-variant/20">
               <div className="flex gap-1 overflow-x-auto py-3 scrollbar-hide">
@@ -405,11 +416,11 @@ export default function StudentProfileModal({ student, onClose }) {
           <div className="px-6 pb-4">
             <p className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface mb-3">Attendance Summary</p>
             {loading ? (
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {[1,2,3].map((i) => <SkeletonBlock key={i} className="h-24 rounded-2xl" />)}
               </div>
             ) : (
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <AttendanceCard icon="check_circle" iconBg="bg-green-500"  label="Present"      value={attendance?.present ?? 0} bg="bg-green-50 border border-green-100 rounded-2xl"   />
                 <AttendanceCard icon="cancel"        iconBg="bg-red-500"    label="Absent"       value={attendance?.absent  ?? 0} bg="bg-red-50 border border-red-100 rounded-2xl"     />
                 <AttendanceCard icon="schedule"      iconBg="bg-orange-500" label="Tardy / Late" value={attendance?.tardy   ?? 0} bg="bg-orange-50 border border-orange-100 rounded-2xl" />

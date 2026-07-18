@@ -112,6 +112,8 @@ const exportCSV = (students) => {
 // ─── Import Modal (copied from the Students page) ─────────────────────────────
 // CSV import: upload > preview > import > result. Parses client-side, then POSTs
 // via importStudentsCSV (api/student.js).
+// Rendered by <StudentMonitoring> (showImport). onClose = () => setShowImport(false);
+// onSuccess = reload (refetches the monitoring dataset).
 function ImportModal({ onClose, onSuccess }) {
   const [step,       setStep]       = useState("upload"); // upload | preview | importing | result
   const [rows,       setRows]       = useState([]);
@@ -253,7 +255,7 @@ function ImportModal({ onClose, onSuccess }) {
                 onDrop={handleDrop}
                 onDragOver={(e) => e.preventDefault()}
                 onClick={() => fileRef.current?.click()}
-                className="border-2 border-dashed border-outline-variant/40 rounded-2xl p-10 flex flex-col items-center gap-3 cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors"
+                className="border-2 border-dashed border-outline-variant/40 rounded-2xl p-5 sm:p-10 flex flex-col items-center gap-3 cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors"
               >
                 <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center">
                   <span className="material-symbols-outlined text-primary text-3xl" style={fillStyle}>upload_file</span>
@@ -449,8 +451,13 @@ const ProgressStatusBadge = ({ status }) => {
   );
 };
 
-// Student Progress tab. Uses the `students` prop already loaded by the parent
-// (fetchStudentMonitoring) and derives everything locally - no API call of its own.
+// Student Progress tab. No API of its own - it reads the `students` prop the parent loaded
+// via fetchStudentMonitoring (GET /student-monitoring). The per-student progress fields it
+// displays (counts, completion %, pace status) are computed BY THE BACKEND in
+// services/studentMonitoring.service.js > getStudentMonitoring (~line 167): per student it
+// pulls student_pace (findStudentPaces) + the latest pace_test_result score, then derives
+// `counts` via getPaceCounts() and the badge via getStudentStatus(counts). This tab only
+// filters (grade/status/search) and paginates those already-computed rows.
 function StudentProgressTab({ students, loading }) {
   const [gradeLevel, setGradeLevel] = useState("");
   const [status,     setStatus]     = useState("");
@@ -651,8 +658,21 @@ const RecStatusBadge = ({ status }) => {
   );
 };
 
-// Recommendations tab. Shows only students that have a recommendation (built by
-// the backend); reads the `students` prop, no API of its own. onView opens the modal.
+// Recommendations tab. No API of its own - it filters the `students` prop that
+// <StudentMonitoring> already loaded via fetchStudentMonitoring (GET /student-monitoring),
+// showing only rows whose `recommendation` field is non-null.
+//
+// WHERE THE RECOMMENDATION IS BUILT (backend):
+//   services/studentMonitoring.service.js > buildRecommendation (~line 60),
+//   called from getStudentMonitoring (~line 215) [and reused by getStudentSummary (~line 485)].
+//   Decision order (first match wins; returns null = student won't appear here):
+//     1. PLACEMENT - diagnostic recorded learning_gaps -> recommend those exact PACEs (Needs Support)
+//     2. PLACEMENT - diagnostic start_pace but not yet placed -> place at start_pace (Needs Support)
+//     3. ADVANCE   - current PACE passed (score >= 90) -> next PACE (On Track)
+//     4. REMEDIATE - current PACE failed (score < 90) -> retake current PACE (Needs Support)
+//     5. CONTINUE  - current PACE in progress -> stay on it (Needs Support if stalled/backlogged)
+//   Each rec = { mode, currentPaceLabel, projectedPaceLabel, basis, status }.
+// onView(s) -> page's setSelectedStudent (opens StudentSummaryModal).
 function RecommendationsTab({ students, loading, onView }) {
   const [page, setPage] = useState(1);
 
@@ -862,8 +882,20 @@ const CompletionTrendChart = ({ trend }) => {
   );
 };
 
-// PACE Analytics & Rankings tab. Loads its own data via fetchPaceAnalytics
-// (getPaceAnalytics): the Top-10 completion list + this-vs-last-month trend chart.
+// PACE Analytics & Rankings tab. Loads its OWN data (separate from the other tabs) via
+// fetchPaceAnalytics -> GET /student-monitoring/pace-analytics.
+//
+// WHERE IT'S BUILT (backend): services/studentMonitoring.service.js > getPaceAnalytics
+//   (~line 297) [controller getPaceAnalytics ~line 20]. What it does:
+//   - Finds the active quarter from the school's academic config (so it matches Settings).
+//   - `rankings`: per student, sums performance points over PACEs FINISHED this quarter,
+//     sorted by points desc, then # On-Time. Points per PACE come from scoreFinishedPace
+//     (~line 290) = student_pace.points_earned (10 On-Time / 7 Extended / 5 Late-passed / 0
+//     not-passed), stamped at completion by the Assign/Manage Student PACE flow.
+//   - `topCompletion`: Top-10 by completion % (completed / total PACEs whose start_date is
+//     in the quarter).
+//   - `trend`: this-month-vs-last-month weekly completion counts for the chart.
+//   - `stats`: topPerformer, pacesFinished, avgPoints.
 function PaceAnalyticsTab() {
   const [data,    setData]    = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1000,6 +1032,8 @@ const Field = ({ label, required, hint, span = 1, children }) => (
 
 // Add Student form (student + parent/guardian). fetchAllSections fills the grade
 // dropdown; createStudent (api/student.js) saves with auto-generated login creds.
+// Rendered by <StudentMonitoring> (showAdd). onClose = () => setShowAdd(false);
+// onSuccess = reload (refetches the monitoring dataset after createStudent).
 function AddStudentModal({ onClose, onSuccess }) {
   const todayISO = new Date().toISOString().slice(0, 10);
   const [form, setForm] = useState({
@@ -1209,7 +1243,7 @@ function AddStudentModal({ onClose, onSuccess }) {
               <span className="material-symbols-outlined text-base">close</span>
               Cancel
             </button>
-            {/* Add Student -> handleSubmit() (createStudent, then onCreated) */}
+            {/* Add Student -> handleSubmit() (createStudent, then onSuccess = page's reload) */}
             <button
               onClick={handleSubmit}
               disabled={saving}
@@ -1315,7 +1349,7 @@ export default function StudentMonitoring() {
         />
       )}
 
-      <main className="p-8 max-w-full mx-auto w-full">
+      <main className="p-4 sm:p-8 max-w-full mx-auto w-full">
 
         {/* ── Header ─────────────────────────────────────────────────── */}
         <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">

@@ -145,7 +145,7 @@ export default function AccountSettings() {
 
   return (
     <AdminLayout schoolYearLabel={schoolYearLabel}>
-      <main className="p-8 max-w-full mx-auto w-full">
+      <main className="p-4 sm:p-8 max-w-full mx-auto w-full">
 
         <header className="mb-8">
           <h2 className="font-headline text-3xl font-extrabold tracking-tight text-on-surface">Account Settings</h2>
@@ -165,7 +165,7 @@ export default function AccountSettings() {
 
         {/* Tabs -> setTab(key) switches between Profile Settings and the reused User Password Resets page */}
         <div className="border-b border-outline-variant/30 mb-6">
-          <div className="flex gap-6">
+          <div className="flex gap-6 overflow-x-auto">
             {TABS.map((t) => (
               <button key={t.key} onClick={() => setTab(t.key)}
                 className={`pb-3 text-sm font-bold border-b-2 -mb-px transition-colors ${tab === t.key ? "border-primary text-primary" : "border-transparent text-on-surface-variant hover:text-on-surface"}`}>

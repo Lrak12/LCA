@@ -110,7 +110,7 @@ export default function Reports() {
       {modal === "academic"   && <ClassAcademicRecordModal onClose={closeModal} />}
       {modal === "analytics"  && <PaceAnalyticsRankingsModal onClose={closeModal} />}
 
-      <main className="p-8 max-w-full mx-auto w-full">
+      <main className="p-4 sm:p-8 max-w-full mx-auto w-full">
         <header className="mb-8">
           <h2 className="font-headline text-4xl font-extrabold tracking-tight text-on-surface">Reports</h2>
           <p className="text-on-surface-variant mt-1 text-sm">Generate, manage and publish academic records and report cards.</p>

@@ -182,7 +182,7 @@ export default function UserSupport() {
 
   return (
     <AdminLayout schoolYearLabel={schoolYearLabel}>
-      <main className="p-8 max-w-full mx-auto w-full">
+      <main className="p-4 sm:p-8 max-w-full mx-auto w-full">
 
         <header className="mb-8">
           <h2 className="font-headline text-3xl font-extrabold tracking-tight text-on-surface">User Support Management</h2>
@@ -201,7 +201,7 @@ export default function UserSupport() {
         )}
 
         {/* Stat cards */}
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4 mb-8">
           {loading && !data
             ? Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-28" />)
             : STAT_CARDS.map((c) => (
@@ -348,7 +348,7 @@ export default function UserSupport() {
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-y-4 gap-x-3 mb-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-4 gap-x-3 mb-4">
                   <div>
                     <p className="text-[10px] uppercase tracking-wider font-bold text-on-surface-variant mb-1">Ticket ID</p>
                     <p className="text-sm font-bold text-on-surface">{selected.ticketId}</p>

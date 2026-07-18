@@ -61,6 +61,8 @@ const labelCls = "block text-[10px] font-extrabold tracking-widest uppercase tex
 
 // ── Edit School Year modal ────────────────────────────────────────────────────
 // Small modal to rename a school year or adjust its start/end dates.
+// Rendered by <SchoolYearTab> (editing). onClose = () => setEditing(null);
+// onSaved = () => { setEditing(null); setBanner("School year updated."); reload(); }.
 function EditSchoolYearModal({ sy, onClose, onSaved }) {
   const [form, setForm] = useState({                 // seeded from the row being edited
     year_label: sy.year_label ?? "",
@@ -104,7 +106,7 @@ function EditSchoolYearModal({ sy, onClose, onSaved }) {
             <label className={labelCls}>School Year Label</label>
             <input value={form.year_label} onChange={set("year_label")} placeholder="e.g., SY 2026-2027" className={inputCls} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Start Date</label>
               <input type="date" value={form.start_date} onChange={set("start_date")} className={inputCls} />
@@ -433,7 +435,7 @@ function UserAccessTab({ setBanner }) {
       )}
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {statCards.map((c) => (
           <div key={c.label} className="bg-white rounded-2xl p-5 border border-outline-variant/20 shadow-sm flex items-center gap-4">
             <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${c.bg} ${c.color}`}>
@@ -580,7 +582,7 @@ export default function SystemConfiguration() {
 
   return (
     <AdminLayout schoolYearLabel={schoolYearLabel}>
-      <main className="p-8 max-w-full mx-auto w-full">
+      <main className="p-4 sm:p-8 max-w-full mx-auto w-full">
         <header className="mb-6">
           <h2 className="font-headline text-3xl font-extrabold tracking-tight text-on-surface">System Configuration</h2>
           <p className="text-on-surface-variant mt-1">Manage school year records and user access settings.</p>

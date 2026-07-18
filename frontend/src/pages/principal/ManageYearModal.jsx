@@ -1,5 +1,11 @@
 // Manage Academic Year modal (principal): edit the active school year's label + start/end
-// dates and lay out its quarters. Opened from AcademicConfiguration's "Manage Year".
+// dates and lay out its quarters. Was intended to be opened by AcademicConfiguration's
+// "Manage Year" button.
+//
+// NOT WIRED IN: nothing imports or renders <ManageYearModal> (its would-be parent,
+// AcademicConfiguration, is itself not rendered anywhere). So onClose/onSuccess are never
+// supplied and this modal never appears in the running app. Unfinished feature.
+//
 // Backend chain (frontend api/settings.js updateSchoolYear -> routes/settings.routes.js):
 //   PUT /settings/academic/school-year -> controllers/settings.controller.js > updateSchoolYear (~line 10)
 //                                      -> services/settings.service.js > updateSchoolYear (~line 100)
@@ -74,7 +80,7 @@ export default function ManageYearModal({ schoolYear, onClose, onSuccess }) {
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
 
         {/* Header */}
-        <div className="px-8 pt-8 pb-4 border-b border-outline-variant/20 flex items-start justify-between">
+        <div className="px-4 sm:px-8 pt-8 pb-4 border-b border-outline-variant/20 flex items-start justify-between">
           <div>
             <h2 className="font-headline text-xl font-extrabold text-primary">Manage Academic Year</h2>
             <p className="text-sm text-on-surface-variant mt-1">Configure the calendar framework and term structures.</p>
@@ -88,7 +94,7 @@ export default function ManageYearModal({ schoolYear, onClose, onSuccess }) {
         </div>
 
         {/* Body */}
-        <div className="px-8 py-6 space-y-5">
+        <div className="px-4 sm:px-8 py-6 space-y-5">
 
           {error && (
             <div className="px-4 py-3 rounded-lg bg-error-container text-on-error-container text-sm flex items-center gap-2">
@@ -116,7 +122,7 @@ export default function ManageYearModal({ schoolYear, onClose, onSuccess }) {
                   onChange={(e) => setYearLabel(e.target.value)}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Start Date</label>
                   <input
@@ -168,7 +174,7 @@ export default function ManageYearModal({ schoolYear, onClose, onSuccess }) {
                         value={q.label}
                         onChange={(e) => updateQuarter(idx, "label", e.target.value)}
                       />
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                           <label className={labelClass}>Start</label>
                           <input
@@ -242,7 +248,7 @@ export default function ManageYearModal({ schoolYear, onClose, onSuccess }) {
         </div>
 
         {/* Footer */}
-        <div className="px-8 pb-8 flex items-center justify-end gap-3">
+        <div className="px-4 sm:px-8 pb-8 flex items-center justify-end gap-3">
           <button
             onClick={onClose}
             className="px-6 py-3 rounded-xl text-sm font-bold text-on-surface-variant hover:bg-surface-container-low transition-colors"
@@ -253,7 +259,7 @@ export default function ManageYearModal({ schoolYear, onClose, onSuccess }) {
           <button
             onClick={handleSave}
             disabled={saving}
-            className="px-8 py-3 rounded-xl bg-primary text-white text-sm font-bold flex items-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-60"
+            className="px-4 sm:px-8 py-3 rounded-xl bg-primary text-white text-sm font-bold flex items-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-60"
           >
             {saving
               ? <><span className="material-symbols-outlined text-base animate-spin">progress_activity</span> Saving...</>

@@ -171,7 +171,7 @@ export default function StudentDashboard() {
 
   return (
     <StudentLayout schoolYearLabel={schoolYearLabel}>
-      <main className="p-8 max-w-full mx-auto w-full">
+      <main className="p-4 sm:p-8 max-w-full mx-auto w-full">
 
         {error && (
           <div className="mb-6 px-4 py-3 rounded-lg bg-error-container text-on-error-container text-sm flex items-center gap-2">
@@ -198,7 +198,7 @@ export default function StudentDashboard() {
         </header>
 
         {/* ── Stat Cards ──────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
           {loading ? (
             Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-40" />)
           ) : (
@@ -292,9 +292,9 @@ export default function StudentDashboard() {
             {loading ? (
               <Skeleton className="h-24 w-full" />
             ) : (
-              <div>
+              <div className="overflow-x-auto">
                 {/* Column headers */}
-                <div className="grid grid-cols-5 gap-4 mb-4">
+                <div className="grid grid-cols-5 gap-4 mb-4 min-w-[440px]">
                   {["Subject", "Module", "Status", "Progress", "Latest Check-up Score"].map((h) => (
                     <p key={h} className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant text-center">
                       {h}
@@ -303,7 +303,7 @@ export default function StudentDashboard() {
                 </div>
 
                 {/* Row */}
-                <div className="grid grid-cols-5 gap-4 items-center">
+                <div className="grid grid-cols-5 gap-4 items-center min-w-[440px]">
                   {/* Subject */}
                   <div className="flex flex-col items-center gap-2">
                     <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${subjectStyle.bg}`}>

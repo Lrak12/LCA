@@ -14,7 +14,7 @@ const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
 const QUARTER_LABELS = { 1: "1st Quarter", 2: "2nd Quarter", 3: "3rd Quarter", 4: "4th Quarter" };
 
-// the report tabs (analytics is a placeholder for now)
+// the report tabs (analytics is a placeholder)
 const TABS = [
   { key: "academic",   label: "Class Academic Record Summary", icon: "menu_book"       },
   { key: "attendance", label: "Attendance Summary Report",     icon: "event_available" },
@@ -76,7 +76,7 @@ export default function SupervisorReportModal({
 
         {/* Summary bar */}
         <div className="px-7 py-4 bg-surface-container-lowest border-b border-outline-variant/10 shrink-0">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 items-start">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 items-start">
             <SummaryCell label="Supervisor">{teacherName}</SummaryCell>
             <SummaryCell label="Assigned Grade Level(s)">{gradeRange ?? "—"}</SummaryCell>
             <SummaryCell label="Quarter">{quarterLabel}</SummaryCell>

@@ -120,6 +120,8 @@ const LabeledInput = ({ label, required, icon, trailing, children }) => (
 
 // Add New User modal. Validates the form then createUser()s; onCreated hands the
 // new user back to the parent (which prepends it to the list).
+// Rendered by <UserManagement> (showAdd). onClose = () => setShowAdd(false);
+// onCreated = the page's onCreated() (toasts the new login ID + reloads page 1).
 function AddUserModal({ onClose, onCreated }) {
   const [form, setForm] = useState({                 // all the form fields in one object
     first_name: "", last_name: "", email: "",
@@ -268,6 +270,8 @@ function AddUserModal({ onClose, onCreated }) {
 // ── Edit User modal ───────────────────────────────────────────────────────────
 // Edit User modal. Prefills from the row, optionally resets the password, then
 // updateUser()s. Role isn't editable (shown read-only).
+// Rendered by <UserManagement> (editUser). onClose = () => setEditUser(null);
+// onSaved = (name) => { setEditUser(null); setBanner(`${name} updated.`); load(); }.
 function EditUserModal({ user, onClose, onSaved }) {
   const [form, setForm] = useState({                 // editable fields, seeded from the user row
     full_name: `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || user.name || "",
@@ -520,7 +524,7 @@ export default function UserManagement() {
 
   return (
     <AdminLayout schoolYearLabel={schoolYearLabel}>
-      <main className="p-8 max-w-full mx-auto w-full" onClick={() => setMenuOpen(null)}>
+      <main className="p-4 sm:p-8 max-w-full mx-auto w-full" onClick={() => setMenuOpen(null)}>
 
         {/* Header */}
         <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-8">
@@ -550,7 +554,7 @@ export default function UserManagement() {
         )}
 
         {/* Stat cards */}
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
           {loading && !data
             ? Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-28" />)
             : STAT_CARDS.map((c) => (
@@ -594,7 +598,7 @@ export default function UserManagement() {
 
         {/* Table */}
         <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm overflow-hidden">
-          <table className="w-full text-left">
+          <div className="overflow-x-auto"><table className="w-full text-left">
             <thead>
               <tr className="border-b border-outline-variant/20 text-[11px] uppercase tracking-wider text-on-surface-variant">
                 <th className="px-6 py-3.5 font-bold">User</th>
@@ -675,7 +679,7 @@ export default function UserManagement() {
                 ))
               )}
             </tbody>
-          </table>
+          </table></div>
 
           {/* Pagination -> setPage(prev/exact/next); page change re-runs load() */}
           <div className="flex items-center justify-between px-6 py-4 border-t border-outline-variant/20">

@@ -50,7 +50,7 @@ export default function ForgotPassword() {
         </div>
 
         {/* ── Right: Form / Success panel ── */}
-        <div className="bg-surface-container-lowest p-8 md:p-16 lg:p-20 flex flex-col justify-center">
+        <div className="bg-surface-container-lowest p-4 sm:p-8 md:p-16 lg:p-20 flex flex-col justify-center">
 
           {!submitted ? (
             <>

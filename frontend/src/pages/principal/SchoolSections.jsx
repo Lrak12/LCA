@@ -101,7 +101,7 @@ function GradeLevelCard({ level, onManageStudents, onAssignSupervisor, onView })
       </div>
 
       {/* Action footer: Manage -> onManageStudents (Enroll modal); Assign -> onAssignSupervisor; View -> onView (all set page-level state) */}
-      <div className="grid grid-cols-3 border-t border-outline-variant/15 divide-x divide-outline-variant/15">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 border-t border-outline-variant/15 divide-x divide-outline-variant/15">
         <CardAction icon="group"      label="Manage" onClick={() => onManageStudents(level)} />
         <CardAction icon="group_add"  label="Assign" primary onClick={() => onAssignSupervisor(level)} />
         <CardAction icon="visibility" label="View"   onClick={() => onView(level)} />
@@ -112,6 +112,8 @@ function GradeLevelCard({ level, onManageStudents, onAssignSupervisor, onView })
 
 // ─── Enroll Students Modal ────────────────────────────────────────────────────
 // Pick students (searchable + filterable, multi-select) to enroll into this level.
+// Rendered by <SchoolSections> (enrollTarget). onClose = () => setEnrollTarget(null);
+// onConfirm = handleEnroll (calls enrollStudentsInLevel, then reloads).
 function EnrollStudentsModal({ level, onClose, onConfirm }) {
   const [search,      setSearch]      = useState("");
   const [gradeFilter, setGradeFilter] = useState("all"); // filter by current grade / unassigned
@@ -318,6 +320,8 @@ function EnrollStudentsModal({ level, onClose, onConfirm }) {
 
 // ─── Assign Teacher Modal ─────────────────────────────────────────────────────
 // Pick one available supervisor (teacher) to assign to this grade level.
+// Rendered by <SchoolSections> (assignTarget). onClose = () => setAssignTarget(null);
+// onConfirm = handleAssignTeacher (calls assignTeacherToSection, then reloads).
 function AssignTeacherModal({ level, onClose, onConfirm }) {
   const [search,   setSearch]   = useState("");
   const [teachers, setTeachers] = useState([]);       // teachers not already on this level
@@ -475,6 +479,7 @@ function SummaryStat({ value, label, icon, iconBg, iconColor, valueColor = "text
 }
 
 // Read-only grade-level details: info, gender/status summary, recent enrollments.
+// Rendered by <SchoolSections> (viewTarget). onClose = () => setViewTarget(null). No other callbacks.
 function ViewGradeModal({ level, onClose }) {
   const [students, setStudents] = useState([]);
   const [loading,  setLoading]  = useState(true);
@@ -546,7 +551,7 @@ function ViewGradeModal({ level, onClose }) {
               <p className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-3">
                 Student Summary
               </p>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <SummaryStat value={loading ? "…" : total}    label="Total Students"    icon="groups" iconBg="bg-blue-50"     iconColor="text-blue-500" />
                 <SummaryStat value={male || dash}             label="Male Students"     icon="man"    iconBg="bg-indigo-50"   iconColor="text-indigo-500" />
                 <SummaryStat value={female || dash}           label="Female Students"   icon="woman"  iconBg="bg-rose-50"     iconColor="text-rose-500" />
@@ -645,7 +650,7 @@ export default function SchoolSections() {
 
   return (
     <PrincipalLayout schoolYearLabel={schoolYearLabel}>
-      <main className="p-8 max-w-full">
+      <main className="p-4 sm:p-8 max-w-full">
 
         {/* Header */}
         <div className="mb-8">
@@ -656,7 +661,7 @@ export default function SchoolSections() {
         </div>
 
         {/* Stat Cards */}
-        <div className="grid grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
           {[
             { label: "Grade Levels",        value: levels.length,                  sub: "Active",      subColor: "text-amber-600",         icon: "inventory_2" },
             { label: "Total Students",      value: totalStudents.toLocaleString(), sub: "Students",    subColor: "text-on-surface-variant", icon: "hub"        },

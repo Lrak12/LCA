@@ -4,6 +4,10 @@
 // Backend chain (frontend api/reports.js fetchPaceReport -> routes/reports.routes.js):
 //   GET /reports/teacher/:id/pace -> controllers/reports.controller.js > getTeacherPaceReport (~line 30)
 //                                 -> services/reports.service.js > getTeacherPaceReport (~line 878)
+// What the backend computes (this table just renders it): getTeacherPaceReport pulls each
+// student's student_pace rows, groups them by subject (the `subjects` columns), and per
+// subject reports the PACE-number range + count, with a per-PACE status (completed / ongoing /
+// not-started) that drives the STATUS_COLOR below. `total` = total PACEs across subjects.
 import { useState, useEffect } from "react";
 import { fetchPaceReport } from "../../api/reports.js";
 

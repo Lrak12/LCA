@@ -1,9 +1,14 @@
+//incase rani if panels ask about how are students promoted, the logic is in services/rollover.service.js > previewRollover (~line 46) and commitRollover (~line 151)
+
+
+
 // School Year Rollover (principal): preview each student's promotion for the next year,
 // override per student, then commit - creating the new school year and re-placing every
 // student.
 // Backend chain (frontend api/rollover.js -> routes/rollover.routes.js):
 //   preview: GET  /rollover/preview -> controllers/rollover.controller.js > preview (~line 5)  -> services/rollover.service.js > previewRollover (~line 46)
 //   commit:  POST /rollover/commit  -> controllers/rollover.controller.js > commit (~line 10)  -> services/rollover.service.js > commitRollover (~line 151)
+
 import { useState, useEffect } from "react";
 import PrincipalLayout from "../../components/PrincipalLayout.jsx";
 import { fetchRolloverPreview, commitRollover } from "../../api/rollover.js";
@@ -120,7 +125,7 @@ export default function SchoolYearRollover() {
 
   return (
     <PrincipalLayout schoolYearLabel={schoolYearLabel}>
-      <main className="p-8 max-w-[1100px] mx-auto w-full">
+      <main className="p-4 sm:p-8 max-w-[1100px] mx-auto w-full">
 
         {/* Header */}
         <header className="mb-6">
@@ -142,7 +147,7 @@ export default function SchoolYearRollover() {
 
         {/* Success state */}
         {done && (
-          <div className="bg-white rounded-2xl border border-green-200 shadow-sm p-8 text-center">
+          <div className="bg-white rounded-2xl border border-green-200 shadow-sm p-4 sm:p-8 text-center">
             <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-3">
               <span className="material-symbols-outlined text-green-600 text-3xl" style={fillStyle}>check_circle</span>
             </div>

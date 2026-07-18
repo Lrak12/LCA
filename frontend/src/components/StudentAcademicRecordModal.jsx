@@ -114,7 +114,7 @@ export default function StudentAcademicRecordModal({ studentId, onClose }) {
                 {/* Completion summary */}
                 <div className="sm:col-span-2 border border-outline-variant/20 rounded-xl p-4">
                   <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-3">PACE Completion Summary</p>
-                  <div className="grid grid-cols-4 gap-2 text-center">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-center">
                     <SumCell n={cs.onTime} label="Completed On Time" color="text-green-600" />
                     <SumCell n={cs.late} label="Completed Late" color="text-orange-500" />
                     <SumCell n={cs.extended} label="Completed with Extension" color="text-blue-500" />
@@ -124,7 +124,7 @@ export default function StudentAcademicRecordModal({ studentId, onClose }) {
                 {/* Attendance summary */}
                 <div className="border border-outline-variant/20 rounded-xl p-4">
                   <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-3">Attendance Summary</p>
-                  <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 text-center">
                     <AttCell n={as.present} pct={as.presentPct} label="Present" bg="bg-green-50" color="text-green-600" />
                     <AttCell n={as.absent} pct={as.absentPct} label="Absent" bg="bg-red-50" color="text-red-500" />
                     <AttCell n={as.tardy} pct={as.tardyPct} label="Tardy / Late" bg="bg-amber-50" color="text-amber-600" />

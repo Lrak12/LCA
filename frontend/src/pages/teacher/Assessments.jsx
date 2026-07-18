@@ -161,7 +161,7 @@ function SelfTestRecordingView({ row, student, passMark, onBack, onRecorded }) {
         open ? (
           <div className="max-w-md mx-auto border border-outline-variant/20 rounded-2xl p-5 mb-4">
             <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-3">Record Attempt {nextAttempt}</p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-[10px] font-bold text-on-surface-variant mb-1">Score (%)</label>
                 <input type="number" min="0" max="100" value={score} onChange={(e) => setScore(e.target.value)} placeholder="0–100"
@@ -186,7 +186,7 @@ function SelfTestRecordingView({ row, student, passMark, onBack, onRecorded }) {
         ) : (
           <div className="flex justify-center mb-4">
             <button onClick={() => setOpen(true)}
-              className="flex items-center gap-2 px-8 py-3.5 bg-[#0d1b2e] text-white text-sm font-bold rounded-xl hover:opacity-90 transition-opacity">
+              className="flex items-center gap-2 px-4 sm:px-8 py-3.5 bg-[#0d1b2e] text-white text-sm font-bold rounded-xl hover:opacity-90 transition-opacity">
               <span className="material-symbols-outlined text-lg">add_circle</span>
               Record Attempt {nextAttempt}
             </button>
@@ -318,7 +318,7 @@ function PaceTestRecordingView({ row, student, passMark, onBack, onRecorded }) {
         open ? (
           <div className="max-w-md mx-auto border border-outline-variant/20 rounded-2xl p-5 mb-4">
             <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-3">Record Attempt {nextAttempt}</p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-[10px] font-bold text-on-surface-variant mb-1">Score (%)</label>
                 <input type="number" min="0" max="100" value={score} onChange={(e) => setScore(e.target.value)} placeholder="0–100"
@@ -343,7 +343,7 @@ function PaceTestRecordingView({ row, student, passMark, onBack, onRecorded }) {
         ) : (
           <div className="flex justify-center mb-4">
             <button onClick={() => setOpen(true)}
-              className="flex items-center gap-2 px-8 py-3.5 bg-[#0d1b2e] text-white text-sm font-bold rounded-xl hover:opacity-90 transition-opacity">
+              className="flex items-center gap-2 px-4 sm:px-8 py-3.5 bg-[#0d1b2e] text-white text-sm font-bold rounded-xl hover:opacity-90 transition-opacity">
               <span className="material-symbols-outlined text-lg">add_circle</span>
               Record Attempt {nextAttempt}
             </button>
@@ -406,7 +406,7 @@ export default function Assessments() {
 
   return (
     <TeacherLayout schoolYearLabel={schoolYearLabel}>
-      <main className="p-8 max-w-full mx-auto w-full">
+      <main className="p-4 sm:p-8 max-w-full mx-auto w-full">
 
         {/* The page renders one of 3 states: the Self-Test recording view, the
             PACE-Test recording view, or (default) the student picker + Assigned

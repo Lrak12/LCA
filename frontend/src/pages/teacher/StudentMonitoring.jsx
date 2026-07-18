@@ -110,7 +110,7 @@ export default function StudentMonitoring() {
 
   return (
     <TeacherLayout schoolYearLabel={schoolYearLabel}>
-      <main className="p-8 max-w-full mx-auto w-full">
+      <main className="p-4 sm:p-8 max-w-full mx-auto w-full">
 
         {/* Header */}
         <header className="flex items-start justify-between gap-4 mb-6">

@@ -36,15 +36,18 @@ const Toggle = ({ value, onChange }) => (
 
 // ─── Accessibility feature row ────────────────────────────────────────────────
 const AccessRow = ({ icon, iconBg, title, desc, children }) => (
-  <div className="flex items-center gap-4 py-5 border-b border-outline-variant/10 last:border-0">
-    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${iconBg}`}>
-      <span className="material-symbols-outlined text-white text-xl" style={fillStyle}>{icon}</span>
+  <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 py-5 border-b border-outline-variant/10 last:border-0">
+    <div className="flex items-center gap-4 flex-1 min-w-0">
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${iconBg}`}>
+        <span className="material-symbols-outlined text-white text-xl" style={fillStyle}>{icon}</span>
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-extrabold text-on-surface">{title}</p>
+        <p className="text-[11px] text-on-surface-variant mt-0.5">{desc}</p>
+      </div>
     </div>
-    <div className="flex-1 min-w-0">
-      <p className="text-sm font-extrabold text-on-surface">{title}</p>
-      <p className="text-[11px] text-on-surface-variant mt-0.5">{desc}</p>
-    </div>
-    <div className="shrink-0">{children}</div>
+    {/* control drops below the label on mobile, indented under the text */}
+    <div className="shrink-0 pl-14 sm:pl-0">{children}</div>
   </div>
 );
 
@@ -87,15 +90,16 @@ const NAV = [
 ];
 
 const SubNav = ({ active, onSelect }) => (
-  <div className="w-56 shrink-0">
-    <div className="space-y-1">
+  <div className="w-full lg:w-56 shrink-0">
+    {/* horizontal scrollable tabs on mobile, vertical rail on lg+ */}
+    <div className="flex lg:flex-col gap-1 overflow-x-auto pb-1 lg:pb-0">
       {NAV.map((n) => {
         const on = active === n.key;
         return (
           <button
             key={n.key}
             onClick={() => onSelect(n.key)}
-            className={`w-full flex items-center gap-3 text-left px-3 py-2.5 rounded-lg border-l-[3px] transition-colors ${
+            className={`shrink-0 lg:w-full flex items-center gap-3 text-left px-3 py-2.5 rounded-lg border-l-[3px] whitespace-nowrap transition-colors ${
               on
                 ? "border-secondary bg-secondary/5 text-secondary"
                 : "border-transparent text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface"
@@ -128,7 +132,7 @@ const PrefRow = ({ iconBg, icon, title, sub, subColor }) => (
 );
 
 const PrefSidebar = ({ onLogout }) => (
-  <div className="w-64 shrink-0 space-y-4">
+  <div className="w-full lg:w-64 shrink-0 space-y-4">
     <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-5">
       <h3 className="text-sm font-extrabold text-on-surface mb-2">Preferences Overview</h3>
       <div className="divide-y divide-outline-variant/10">
@@ -376,12 +380,12 @@ export default function Settings() {
 
   return (
     <StudentLayout schoolYearLabel={schoolYearLabel}>
-      <main className="p-8 max-w-full mx-auto w-full">
+      <main className="p-4 sm:p-8 max-w-full mx-auto w-full">
 
         {/* ── Header ──────────────────────────────────────────────────── */}
-        <div className="flex items-start justify-between mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
           <div>
-            <h2 className="font-headline text-4xl font-extrabold tracking-tight text-on-surface">Account Settings</h2>
+            <h2 className="font-headline text-2xl sm:text-4xl font-extrabold tracking-tight text-on-surface">Account Settings</h2>
             <p className="text-on-surface-variant mt-1 text-sm">Manage your profile, preferences, and security settings.</p>
           </div>
           <div className="flex items-center gap-4 shrink-0">
@@ -401,8 +405,8 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* ── Three-column layout ─────────────────────────────────────── */}
-        <div className="flex gap-6 items-start">
+        {/* ── Three-column layout (stacks on < lg) ─────────────────────── */}
+        <div className="flex flex-col lg:flex-row gap-6 lg:items-start">
 
           <SubNav active={activeTab} onSelect={setActiveTab} />
 
@@ -417,7 +421,7 @@ export default function Settings() {
                   <h3 className="text-base font-extrabold text-on-surface">Profile Information &amp; Security</h3>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className={labelCls}>First Name</label>
                     <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} className={inputCls} />
@@ -426,18 +430,18 @@ export default function Settings() {
                     <label className={labelCls}>Last Name</label>
                     <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} className={inputCls} />
                   </div>
-                  <div className="col-span-2">
+                  <div className="sm:col-span-2">
                     <label className={labelCls}>Email Address</label>
                     <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
                   </div>
-                  <div className="col-span-2">
+                  <div className="sm:col-span-2">
                     <label className={labelCls}>Contact Number</label>
                     <input type="tel" value={contact} onChange={(e) => setContact(e.target.value)} className={inputCls} />
                   </div>
                 </div>
 
                 <h4 className="text-base font-extrabold text-on-surface mt-8 mb-4">Change Password</h4>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   <PasswordField label="Current Password" value={currentPw} onChange={setCurrentPw} placeholder="Enter current password" />
                   <PasswordField label="New Password"     value={newPw}     onChange={setNewPw}     placeholder="Enter new password" />
                   <PasswordField label="Confirm Password" value={confirmPw} onChange={setConfirmPw} placeholder="Confirm new password" />

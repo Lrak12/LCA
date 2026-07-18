@@ -442,7 +442,7 @@ export default function StudentIndividualRecordModal({ onClose }) {
 
         {/* ── Footer ─────────────────────────────────────────────────── */}
         <div className="flex items-center justify-center px-6 py-4 border-t border-outline-variant/20">
-          <button className="flex items-center gap-2 text-sm font-bold text-white bg-slate-800 hover:bg-slate-900 transition-colors rounded-xl px-8 py-2.5 shadow-sm">
+          <button className="flex items-center gap-2 text-sm font-bold text-white bg-slate-800 hover:bg-slate-900 transition-colors rounded-xl px-4 sm:px-8 py-2.5 shadow-sm">
             <span className="material-symbols-outlined text-base" style={fillStyle}>upload</span>
             Send to Parent
           </button>

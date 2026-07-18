@@ -85,7 +85,7 @@ export default function AdminDashboard() {
 
   return (
     <AdminLayout schoolYearLabel={schoolYearLabel}>
-      <main className="p-8 max-w-full mx-auto w-full">
+      <main className="p-4 sm:p-8 max-w-full mx-auto w-full">
 
         {/* Header */}
         <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-8">
@@ -108,7 +108,7 @@ export default function AdminDashboard() {
         )}
 
         {/* Stat cards - map STAT_CARDS to the matching `stats` value (skeletons while loading) */}
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
           {loading
             ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-32" />)
             : STAT_CARDS.map((c) => (

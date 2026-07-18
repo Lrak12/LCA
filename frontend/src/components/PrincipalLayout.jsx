@@ -1,4 +1,9 @@
-﻿import { useState } from "react";
+﻿// Shared chrome for every PRINCIPAL page: left sidebar nav + top bar (school year,
+// notification bell, help, logout) wrapping each page's {children}. Every pages/principal/*.jsx
+// renders <PrincipalLayout>...</PrincipalLayout>. Data comes from AuthContext (user) - no API here.
+// NOTE: principal routes live under /admin/* (the sysadmin role uses /sysadmin/*); the two
+// commented-out navItems (Students, New School Year) are hidden for now but their pages still exist.
+import { useState } from "react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNavigate, useLocation } from "react-router-dom";
 import HelpCenterModal from "./HelpCenterModal.jsx";
@@ -6,6 +11,7 @@ import NotificationBell from "./NotificationBell.jsx";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
+// sidebar nav items (icon + label + route). Commented rows are intentionally hidden for now.
 const navItems = [
   { icon: "dashboard",      label: "Dashboard",            path: "/admin/dashboard"     },
   { icon: "groups",         label: "Supervisor Management", path: "/admin/employees"     },
@@ -24,6 +30,7 @@ export default function PrincipalLayout({ children, schoolYearLabel = "—" }) {
   const navigate  = useNavigate();
   const location  = useLocation();
   const [showHelp, setShowHelp] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false); // mobile drawer
 
   const handleLogout = async () => {
     await logout();
@@ -39,8 +46,20 @@ export default function PrincipalLayout({ children, schoolYearLabel = "—" }) {
     <div className="bg-background text-on-background font-body antialiased min-h-screen">
       {showHelp && <HelpCenterModal onClose={() => setShowHelp(false)} />}
 
-      {/* Sidebar */}
-      <aside className="h-screen w-64 fixed left-0 top-0 flex flex-col bg-surface z-50">
+      {/* Mobile backdrop (only when drawer is open on small screens) */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-40 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar — off-canvas drawer on mobile, fixed on md+ */}
+      <aside
+        className={`h-screen w-64 fixed left-0 top-0 flex flex-col bg-surface z-50 transform transition-transform duration-300 md:translate-x-0 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
         <div className="flex flex-col h-full py-6 px-5">
 
           <div className="mb-10 px-2 flex items-center gap-3">
@@ -51,6 +70,14 @@ export default function PrincipalLayout({ children, schoolYearLabel = "—" }) {
               <h1 className="text-lg font-bold text-primary tracking-tight font-headline">LCA Principal</h1>
               <p className="text-[9px] uppercase tracking-[0.18em] text-secondary font-semibold">Academic Sanctuary</p>
             </div>
+            {/* Close button (mobile only) */}
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="ml-auto md:hidden text-on-surface-variant hover:text-primary"
+              aria-label="Close menu"
+            >
+              <span className="material-symbols-outlined">close</span>
+            </button>
           </div>
 
           <nav className="flex-1 space-y-2">
@@ -63,7 +90,7 @@ export default function PrincipalLayout({ children, schoolYearLabel = "—" }) {
                 <a
                   key={item.label}
                   href="#"
-                  onClick={(e) => { e.preventDefault(); navigate(item.path); }}
+                  onClick={(e) => { e.preventDefault(); navigate(item.path); setSidebarOpen(false); }}
                   className={`${base} ${isActive ? active : inactive}`}
                 >
                   <span className="material-symbols-outlined text-xl" style={isActive ? fillStyle : undefined}>{item.icon}</span>
@@ -86,24 +113,29 @@ export default function PrincipalLayout({ children, schoolYearLabel = "—" }) {
       </aside>
 
       {/* Top Bar */}
-      <header
-        className="w-full h-16 sticky top-0 z-40 bg-surface flex justify-between items-center px-8 border-b border-outline-variant/20"
-        style={{ marginLeft: "16rem", maxWidth: "calc(100% - 16rem)" }}
-      >
-        {/* Left: accent border + school name + SY */}
-        <div className="flex items-center gap-4">
+      <header className="w-full md:w-[calc(100%-16rem)] md:ml-64 h-16 sticky top-0 z-30 bg-surface flex justify-between items-center gap-3 px-4 sm:px-8 border-b border-outline-variant/20">
+        {/* Left: hamburger (mobile) + accent border + school name + SY */}
+        <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+          {/* Hamburger (mobile only) */}
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="md:hidden text-primary shrink-0"
+            aria-label="Open menu"
+          >
+            <span className="material-symbols-outlined">menu</span>
+          </button>
           {/* Left accent bar */}
-          <div className="w-1 h-8 rounded-full bg-primary" />
-          <span className="text-xl font-extrabold text-primary font-headline tracking-tight">
+          <div className="w-1 h-8 rounded-full bg-primary hidden sm:block shrink-0" />
+          <span className="text-base sm:text-xl font-extrabold text-primary font-headline tracking-tight truncate">
             Lifegiver Christian Academy
           </span>
-          <span className="text-secondary font-bold border-b-2 border-secondary text-sm tracking-widest uppercase">
+          <span className="hidden sm:inline text-secondary font-bold border-b-2 border-secondary text-sm tracking-widest uppercase shrink-0">
             {schoolYearLabel !== "—" ? `SY ${schoolYearLabel}` : "—"}
           </span>
         </div>
 
         {/* Right: notification bell + user info + avatar */}
-        <div className="flex items-center gap-5">
+        <div className="flex items-center gap-3 sm:gap-5 shrink-0">
 
           <NotificationBell />
 
@@ -112,7 +144,7 @@ export default function PrincipalLayout({ children, schoolYearLabel = "—" }) {
 
           {/* User info + avatar */}
           <div className="flex items-center gap-3">
-            <div className="text-right">
+            <div className="text-right hidden sm:block">
               <p className="text-sm font-bold text-on-surface leading-tight">{displayName}</p>
               <p className="text-xs text-on-surface-variant leading-tight">{displayRole}</p>
             </div>
@@ -130,7 +162,7 @@ export default function PrincipalLayout({ children, schoolYearLabel = "—" }) {
       {/* Page Content */}
       {/* min-h is viewport minus the 4rem (h-16) sticky header so a short page
           still pins the footer to the bottom without forcing an extra scroll */}
-      <div style={{ marginLeft: "16rem" }} className="flex flex-col min-h-[calc(100vh-4rem)]">
+      <div className="md:ml-64 flex flex-col min-h-[calc(100vh-4rem)]">
         <div className="flex-1">
           {children}
         </div>

@@ -4,6 +4,11 @@
 // Backend chain (frontend api/reports.js fetchAcademicReport -> routes/reports.routes.js):
 //   GET /reports/teacher/:id/academic -> controllers/reports.controller.js > getTeacherAcademicReport (~line 16)
 //                                      -> services/reports.service.js > getTeacherAcademicReport (~line 295)
+// What the backend computes per student (this table just renders it): the heavy lifting is in
+// reports.service.js > computeAcademicMetrics (~line 186), which for the quarter derives:
+//   paces = # PACEs completed, cum/ave = average score, h100/cum100 = count of 100s (quarter
+//   + cumulative), hr = honor-roll grade, tard/abs = tardies/absences, days = homework days.
+//   (dmts demerits + s1/s2 scriptures are hardcoded 0/false for now - not yet tracked.)
 import { useState, useEffect } from "react";
 import { fetchAcademicReport } from "../../api/reports.js";
 

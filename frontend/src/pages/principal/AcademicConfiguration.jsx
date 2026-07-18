@@ -1,9 +1,19 @@
 // Academic Configuration (principal): read-only overview of the active school year, its
-// four quarters, and the grade levels/sections; buttons hand off to the Manage Year modal
-// and grade-level editors (handlers passed in by the parent).
+// four quarters, and the grade levels/sections; buttons are meant to hand off to a Manage
+// Year modal + grade-level editors via callback props.
+//
+// NOT WIRED IN: nothing imports or renders <AcademicConfiguration>. grep the whole app and
+// the only reference is a comment in ManageYearModal.jsx. So the onManageYear/onAddGrade/
+// onEditGrade props below are NEVER supplied by a parent - they fall back to their default
+// no-ops (() => {}), i.e. those buttons currently do nothing. This component + ManageYearModal
+// look like an unfinished "Academic Config" tab; the live principal Settings.jsx only has
+// Profile/Accessibility/Contact tabs.
+//
 // Backend chain (frontend api/settings.js fetchAcademicConfig -> routes/settings.routes.js):
 //   GET /settings/academic -> controllers/settings.controller.js > getAcademicConfig (~line 4)
 //                          -> services/settings.service.js > getAcademicConfig (~line 13)
+//   (the useEffect below DOES call fetchAcademicConfig, so the display data is real - only the
+//    action buttons are unwired.)
 import { useState, useEffect } from "react";
 import {
   fetchAcademicConfig,
@@ -67,10 +77,13 @@ const Skeleton = ({ className }) => (
 );
 
 // ─── Main component ───────────────────────────────────────────────────────────
+// The three props below would be supplied by whatever page renders this component - but
+// none does (see the top note), so each stays its default no-op. A wiring parent would pass
+// e.g. onManageYear={() => setManageOpen(true)} and render <ManageYearModal> itself.
 export default function AcademicConfiguration({
-  onManageYear = () => {},
-  onAddGrade   = () => {},
-  onEditGrade  = () => {},
+  onManageYear = () => {},   // intended: open <ManageYearModal>  (currently no-op)
+  onAddGrade   = () => {},   // intended: open an add-grade form   (currently no-op)
+  onEditGrade  = () => {},   // intended: edit/manage a grade level (currently no-op)
 }) {
   const [schoolYear, setSchoolYear] = useState(null); // active school year
   const [quarters, setQuarters]     = useState([]);    // the four grading periods
@@ -139,7 +152,7 @@ export default function AcademicConfiguration({
                 </p>
               </div>
             </div>
-            {/* Manage Year -> onManageYear() callback (parent opens <ManageYearModal>) */}
+            {/* Manage Year -> onManageYear() prop; no parent supplies it, so currently a no-op */}
             <button
               onClick={onManageYear}
               className="px-5 py-2.5 rounded-lg border border-outline-variant/40 bg-white text-sm font-bold text-on-surface hover:border-primary hover:text-primary transition-all shadow-sm"
@@ -183,7 +196,7 @@ export default function AcademicConfiguration({
           <p className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant">
             Grade Levels &amp; Sections
           </p>
-          {/* Add Grade Level -> onAddGrade() callback (parent handles the add flow) */}
+          {/* Add Grade Level -> onAddGrade() prop; no parent supplies it, so currently a no-op */}
           <button
             onClick={onAddGrade}
             className="flex items-center gap-1.5 text-secondary font-bold text-xs hover:underline transition-all"
@@ -224,7 +237,7 @@ export default function AcademicConfiguration({
             >
               <span className="font-extrabold text-sm text-on-surface">{gl.level_name}</span>
               <SectionsBadge count={gl.sections ?? 0} />
-              {/* row actions -> onEditGrade(gl.gl_id) callback (edit / manage sections) */}
+              {/* row actions -> onEditGrade(gl.gl_id) prop; no parent supplies it, so currently a no-op */}
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => onEditGrade(gl.gl_id)}

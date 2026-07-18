@@ -13,14 +13,19 @@ const formatDate = (iso) => {
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 };
 
-// Shared notification bell + dropdown used across all dashboard layouts.
+// Shared notification bell + dropdown used across all dashboard layouts (principal + admin).
+// Backend chain (frontend api/notifications.js -> routes/notification.routes.js):
+//   list:     GET   /notifications          -> controllers/notification.controller.js > getMine (~line 5)     -> services/notification.service.js > getMyNotifications (~line 5)
+//   mark 1:   PATCH /notifications/:id/read  -> controllers/notification.controller.js > markRead (~line 10)   -> services/notification.service.js > markRead (~line 18)
+//   mark all: PATCH /notifications/read-all  -> controllers/notification.controller.js > markAllRead (~line 15) -> services/notification.service.js > markAllRead (~line 23)
 export default function NotificationBell() {
-  const [open, setOpen]       = useState(false);
-  const [items, setItems]     = useState([]);
-  const [unread, setUnread]   = useState(0);
+  const [open, setOpen]       = useState(false);   // dropdown open?
+  const [items, setItems]     = useState([]);       // notification rows
+  const [unread, setUnread]   = useState(0);        // unread badge count
   const [loading, setLoading] = useState(true);
   const ref = useRef(null);
 
+  // load the current user's notifications on mount
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -76,7 +81,7 @@ export default function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-80 max-h-[26rem] overflow-y-auto bg-white rounded-2xl shadow-2xl border border-outline-variant/20 z-50">
+        <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] max-h-[26rem] overflow-y-auto bg-white rounded-2xl shadow-2xl border border-outline-variant/20 z-50">
           <div className="flex items-center justify-between px-4 py-3 border-b border-outline-variant/10 sticky top-0 bg-white">
             <p className="font-bold text-primary text-sm">Notifications</p>
             {unread > 0 && (

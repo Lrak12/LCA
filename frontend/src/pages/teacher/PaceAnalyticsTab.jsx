@@ -126,7 +126,7 @@ export default function PaceAnalyticsTab({ grade }) {
         <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 p-5">
           <p className="text-[11px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-2 text-center">On-Time vs Late Completion</p>
           <div className="flex justify-center"><Donut segs={donutSegs} total={otl.total} /></div>
-          <div className="grid grid-cols-2 gap-2 mt-3 text-[11px]">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 text-[11px]">
             {donutSegs.map((seg) => (
               <div key={seg.label} className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full" style={{ background: seg.color }} />
@@ -170,7 +170,7 @@ export default function PaceAnalyticsTab({ grade }) {
 
         <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 p-5">
           <p className="text-sm font-extrabold text-on-surface mb-3">Students Below 50% Completion Rate</p>
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full text-sm">
             <thead>
               <tr className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant border-b border-outline-variant/15">
                 <th className="py-2 text-left">Student ID</th>
@@ -191,7 +191,7 @@ export default function PaceAnalyticsTab({ grade }) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
           {below.length > 5 && <p className="text-[11px] font-bold text-primary mt-3">View all students needing intervention ›</p>}
         </div>
       </div>

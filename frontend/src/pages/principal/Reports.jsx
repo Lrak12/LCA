@@ -117,7 +117,7 @@ export default function Reports() {
 
   return (
     <PrincipalLayout schoolYearLabel={schoolYearLabel}>
-      <main className="p-8 max-w-full mx-auto w-full">
+      <main className="p-4 sm:p-8 max-w-full mx-auto w-full">
 
         {/* ── Header ──────────────────────────────────────────────────── */}
         <header className="mb-8">

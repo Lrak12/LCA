@@ -63,7 +63,7 @@ export default function ContactAdministrator() {
         </div>
 
         {/* Right: Form / Success */}
-        <div className="bg-surface-container-lowest p-8 md:p-14 lg:p-16 flex flex-col justify-center">
+        <div className="bg-surface-container-lowest p-4 sm:p-8 md:p-14 lg:p-16 flex flex-col justify-center">
 
           {!submitted ? (
             <>

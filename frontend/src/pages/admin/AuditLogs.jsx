@@ -101,7 +101,7 @@ export default function AuditLogs() {
 
   return (
     <AdminLayout schoolYearLabel={schoolYearLabel}>
-      <main className="p-8 max-w-full mx-auto w-full">
+      <main className="p-4 sm:p-8 max-w-full mx-auto w-full">
 
         {/* Header */}
         <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-8">
@@ -211,7 +211,7 @@ export default function AuditLogs() {
             </p>
           </div>
 
-          <table className="w-full text-left">
+          <div className="overflow-x-auto"><table className="w-full text-left">
             <thead>
               <tr className="border-b border-outline-variant/20 text-[11px] uppercase tracking-wider text-on-surface-variant">
                 <th className="px-6 py-3.5 font-bold">Date &amp; Time</th>
@@ -253,7 +253,7 @@ export default function AuditLogs() {
                 ))
               )}
             </tbody>
-          </table>
+          </table></div>
 
           {/* Footer / pagination */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 border-t border-outline-variant/20">

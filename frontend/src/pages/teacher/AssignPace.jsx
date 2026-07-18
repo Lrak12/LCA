@@ -348,7 +348,7 @@ export default function AssignPace() {
 
   return (
     <TeacherLayout schoolYearLabel={schoolYearLabel}>
-      <main className="p-8 w-full max-w-full">
+      <main className="p-4 sm:p-8 w-full max-w-full">
 
         {/* ── Page Header ─────────────────────────────────────────── */}
         <div className="flex items-start justify-between mb-6">
@@ -454,7 +454,7 @@ export default function AssignPace() {
             {/* ── Student Info Card ──────────────────────────────── */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-5">
               <div className="flex items-start justify-between gap-4">
-                <div className="grid grid-cols-4 gap-6 flex-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 flex-1">
                   <div>
                     <p className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1">Student ID</p>
                     <p className="text-base font-extrabold text-[#0d1b2e]">{displayName}</p>
@@ -512,7 +512,7 @@ export default function AssignPace() {
               )}
 
               <div className="border-t border-gray-100 my-4" />
-              <div className="grid grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <div>
                   <p className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1">Head Level / Grade</p>
                   <p className="text-sm font-bold text-on-surface">{gradeName}</p>

@@ -102,7 +102,7 @@ export default function Announcements() {
 
   return (
     <StudentLayout schoolYearLabel={schoolYearLabel}>
-      <main className="p-8 max-w-full mx-auto w-full">
+      <main className="p-4 sm:p-8 max-w-full mx-auto w-full">
 
         {error && (
           <div className="mb-6 px-4 py-3 rounded-lg bg-error-container text-on-error-container text-sm flex items-center gap-2">
@@ -139,7 +139,7 @@ export default function Announcements() {
               ))}
             </div>
           ) : announcements.length === 0 ? (
-            <div className="bg-white rounded-2xl p-10 text-center shadow-sm border border-outline-variant/20">
+            <div className="bg-white rounded-2xl p-5 sm:p-10 text-center shadow-sm border border-outline-variant/20">
               <span className="material-symbols-outlined text-4xl text-on-surface-variant mb-3 block" style={fillStyle}>notifications_off</span>
               <p className="text-on-surface-variant text-sm font-bold">No announcements at this time.</p>
             </div>
