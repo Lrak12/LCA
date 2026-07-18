@@ -25,12 +25,12 @@ app.use(cors({
 app.use(morgan("dev"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
+app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));// for pinging server 
 app.use("/api", router);
 
 app.use(notFound);
 app.use(errorHandler);
-app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
+
 app.listen(PORT, () => {
   console.log(`LCA server running on port ${PORT}`);
   
