@@ -30,7 +30,8 @@ app.use("/api", router);
 
 app.use(notFound);
 app.use(errorHandler);
-
+app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
 app.listen(PORT, () => {
   console.log(`LCA server running on port ${PORT}`);
+  
 });
