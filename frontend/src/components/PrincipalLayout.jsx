@@ -16,8 +16,7 @@ const navItems = [
   { icon: "dashboard",      label: "Dashboard",            path: "/admin/dashboard"     },
   { icon: "groups",         label: "Supervisor Management", path: "/admin/employees"     },
   //{ icon: "group",          label: "Students",             path: "/admin/students"      }, comment for now this is for testing
-  // [PANEL-50] hidden for panel — beyond the 50% increment scope
-  // { icon: "visibility",     label: "Student Monitoring",   path: "/admin/monitoring"    },
+  { icon: "visibility",     label: "Student Monitoring",   path: "/admin/monitoring"    },
   { icon: "corporate_fare", label: "Grade level",      path: "/admin/sections"      },
   // [PANEL-50] hidden for panel — beyond the 50% increment scope
   // { icon: "assessment",     label: "Reports",              path: "/admin/reports"       },
