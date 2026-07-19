@@ -77,7 +77,7 @@ export default function TeacherLayout({ children, schoolYearLabel = "—" }) {
               const isActive = location.pathname === item.path;
               const base     = "flex items-center gap-4 px-4 py-3 rounded-lg transition-all duration-200 text-sm";
               const active   = "bg-primary text-white font-bold shadow-lg shadow-primary/20";
-              const inactive = "text-black hover:bg-surface-container-low hover:text-primary";
+              const inactive = "text-primary hover:bg-surface-container-low hover:text-primary";
               return (
                 <a
                   key={item.label}
