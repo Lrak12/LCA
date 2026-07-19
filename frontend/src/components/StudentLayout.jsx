@@ -8,9 +8,10 @@ const fillStyle = { fontVariationSettings: '"FILL" 1' };
 const navItems = [
   { icon: "dashboard",        label: "Dashboard",         path: "/student/dashboard"    },
   { icon: "menu_book",        label: "PACE Progress",     path: "/student/pace"         },
-  { icon: "assignment",       label: "Assessment Results",path: "/student/assessments"  },
-  { icon: "grade",            label: "Grades",            path: "/student/grades"       },
-  { icon: "event_available",  label: "Attendance",        path: "/student/attendance"   },
+  // [PANEL-50] hidden for panel — beyond the 50% increment scope
+  // { icon: "assignment",       label: "Assessment Results",path: "/student/assessments"  },
+  // { icon: "grade",            label: "Grades",            path: "/student/grades"       },
+  // { icon: "event_available",  label: "Attendance",        path: "/student/attendance"   },
   { icon: "campaign",         label: "Announcements",     path: "/student/announcements"},
   { icon: "settings",         label: "Settings",          path: "/student/settings"     },
 ];

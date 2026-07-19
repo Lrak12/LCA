@@ -15,11 +15,13 @@ const fillStyle = { fontVariationSettings: '"FILL" 1' };
 const navItems = [
   { icon: "dashboard",      label: "Dashboard",            path: "/admin/dashboard"     },
   { icon: "groups",         label: "Supervisor Management", path: "/admin/employees"     },
-  //{ icon: "group",          label: "Students",             path: "/admin/students"      }, comment for now this is for testing 
-  { icon: "visibility",     label: "Student Monitoring",   path: "/admin/monitoring"    },
+  //{ icon: "group",          label: "Students",             path: "/admin/students"      }, comment for now this is for testing
+  // [PANEL-50] hidden for panel — beyond the 50% increment scope
+  // { icon: "visibility",     label: "Student Monitoring",   path: "/admin/monitoring"    },
   { icon: "corporate_fare", label: "Grade level",      path: "/admin/sections"      },
-  { icon: "assessment",     label: "Reports",              path: "/admin/reports"       },
-  { icon: "campaign",       label: "Announcements",        path: "/admin/announcements" },
+  // [PANEL-50] hidden for panel — beyond the 50% increment scope
+  // { icon: "assessment",     label: "Reports",              path: "/admin/reports"       },
+  // { icon: "campaign",       label: "Announcements",        path: "/admin/announcements" },
   { icon: "assignment",     label: "Diagnostic Assessment", path: "/admin/diagnostic"   },
   //{ icon: "autorenew",      label: "New School Year",      path: "/admin/rollover"      },
   { icon: "settings",       label: "Settings",             path: "/admin/settings"      },

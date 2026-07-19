@@ -13,8 +13,9 @@ const navItems = [
   { icon: "dashboard",        label: "Dashboard",              path: "/sysadmin/dashboard" },
   { icon: "manage_accounts",  label: "User Management",        path: "/sysadmin/users"     },
   { icon: "settings",         label: "System Configuration",   path: "/sysadmin/config"    },
-  { icon: "receipt_long",     label: "Audit Logs",             path: "/sysadmin/audit"     },
-  { icon: "support_agent",    label: "User Support Management", path: "/sysadmin/support"   },
+  // [PANEL-50] hidden for panel — beyond the 50% increment scope
+  // { icon: "receipt_long",     label: "Audit Logs",             path: "/sysadmin/audit"     },
+  // { icon: "support_agent",    label: "User Support Management", path: "/sysadmin/support"   },
   { icon: "account_circle",   label: "Account Settings",       path: "/sysadmin/settings"  },
 ];
 
