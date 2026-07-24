@@ -99,18 +99,14 @@ const CREATE_ROLES = [
   { value: "administrator", label: "Supervisor"   },
 ];
 
-// Optional, UI-only for now — there is no department column in the data model yet.
-const DEPARTMENTS = ["Elementary", "Junior High School", "Senior High School", "Administration"];
-
 const LabeledInput = ({ label, required, icon, trailing, children }) => (
   <div className="flex-1">
     <label className="block text-[13px] font-semibold text-on-surface mb-1.5">
       {label} {required && <span className="text-red-500">*</span>}
-      {!required && <span className="font-normal text-on-surface-variant">(optional)</span>}
     </label>
     <div className="relative">
       {icon && (
-        <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-base text-on-surface-variant pointer-events-none">{icon}</span>
+        <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1 text-base text-on-surface-variant pointer-events-none">{icon}</span>
       )}
       {children}
       {trailing}
@@ -125,7 +121,7 @@ const LabeledInput = ({ label, required, icon, trailing, children }) => (
 function AddUserModal({ onClose, onCreated }) {
   const [form, setForm] = useState({                 // all the form fields in one object
     first_name: "", last_name: "", email: "",
-    role: "", department: "", password: "", confirm: "",
+    role: "", contact_number: "", password: "", confirm: "",
     status: "active",
   });
   const [showPw, setShowPw]           = useState(false); // password field visible?
@@ -152,7 +148,7 @@ function AddUserModal({ onClose, onCreated }) {
         email:          form.email.trim(),
         password:       form.password,
         is_active:      form.status === "active",
-        contact_number: null,
+        contact_number: form.contact_number.trim() || null,
       });
       onCreated(res.data);                            // parent adds it to the table
     } catch (err) {
@@ -167,8 +163,8 @@ function AddUserModal({ onClose, onCreated }) {
   const selectCls = `${inputBase} px-3.5 pr-9 appearance-none cursor-pointer`;
   const chevron   = <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-outline text-lg pointer-events-none">expand_more</span>;
   const eye = (shown, toggle) => (
-    <button type="button" onClick={toggle} className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-primary">
-      <span className="material-symbols-outlined text-lg">{shown ? "visibility_off" : "visibility"}</span>
+    <button type="button" onClick={toggle} className="absolute right-3 top-1/2 -translate-y-1 flex items-center justify-center text-on-surface-variant hover:text-on-surface">
+      <span className="material-symbols-outlined leading-none text-xl">{shown ? "visibility_off" : "visibility"}</span>
     </button>
   );
 
@@ -209,7 +205,7 @@ function AddUserModal({ onClose, onCreated }) {
             <input type="email" value={form.email} onChange={set("email")} required placeholder="Enter email address" className={withIcon} />
           </LabeledInput>
 
-          {/* Role + Department */}
+          {/* Role + Contact Number */}
           <div className="flex gap-3">
             <LabeledInput label="Role" required trailing={chevron}>
               <select value={form.role} onChange={set("role")} required className={selectCls}>
@@ -217,11 +213,8 @@ function AddUserModal({ onClose, onCreated }) {
                 {CREATE_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
               </select>
             </LabeledInput>
-            <LabeledInput label="Department" trailing={chevron}>
-              <select value={form.department} onChange={set("department")} className={selectCls}>
-                <option value="">Select department</option>
-                {DEPARTMENTS.map((d) => <option key={d} value={d}>{d}</option>)}
-              </select>
+            <LabeledInput label="Contact Number" required icon="call">
+              <input type="tel" value={form.contact_number} onChange={set("contact_number")} placeholder="Enter contact number" className={withIcon} />
             </LabeledInput>
           </div>
 
