@@ -1,3 +1,19 @@
+// Login (all roles): the single sign-in screen. One ID-number + password form;
+// on success it sends each role to its own dashboard via ROLE_DASHBOARDS below.
+//
+// Backend chain (login):
+//   handleSubmit -> AuthContext.login (context/AuthContext.jsx ~line 32)
+//     -> loginRequest (api/auth.js)                         POST /auth/login
+//     -> routes/auth.routes.js  ->  controllers/auth.controller.js > login (~line 8)
+//     -> services/auth.service.js > login (~line 54)
+//          -> findUserBySchoolId (~line 13): looks the ID up across the role tables
+//             student|teacher|principal|administrator (the ID IS the table PK), then
+//             reads that user's `users` row (email/is_active/username)
+//          -> supabase.auth.signInWithPassword(email, password) validates the password
+//        DB touched: student|teacher|principal|administrator, users, Supabase Auth
+//   The controller also writes a LOGIN audit row (audit.service.writeAudit) and returns
+//   { access_token, user }. AuthContext saves the token to localStorage + setUser(...),
+//   then handleSubmit navigates to ROLE_DASHBOARDS[user.role].
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -27,6 +43,8 @@ export default function Login() {
     setError("");
     setLoading(true);
     try {
+      // login() hits POST /auth/login (see backend chain at top) and returns the
+      // authenticated user; we then jump to that role's dashboard.
       const user = await login(idNumber, password);
       navigate(ROLE_DASHBOARDS[user.role] ?? "/login");
     } catch (err) {

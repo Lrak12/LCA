@@ -2,6 +2,20 @@
 // auto-load their info + last-completed PACE per subject (the "basis") + any saved
 // projection > edit the 4-quarter table > Save. Projection load:
 // getStudentPaceProjection; save: reports.service.generatePaceProjection (/assign-pace).
+//
+// Backend chain (Supervisor: view projected PACE plan + assign PACEs):
+//   student search     fetchTeacherStudents (api/teacher.js)     GET /teacher/students
+//   load one student   parallel: GET /students/:id (profile)
+//                                 fetchLastCompletedPaces        GET /teacher/last-completed-paces
+//                                 fetchStudentPaceProjection     GET /teacher/pace-projection
+//       -> controllers/teacher.controller.js > getPaceProjection (~line 38)
+//       -> services/teacher.service.js > getStudentPaceProjection (~line 131)
+//            reads the saved pace_quarterly_projection rows for the student
+//   save the plan      client.post("/teacher/assign-pace", ...) POST /teacher/assign-pace
+//       -> routes/teacher-portal.routes.js (requireRole "teacher")
+//       -> controllers/reports.controller.js > assignPace
+//       -> services/reports.service.js > generatePaceProjection (~line 615)
+//            writes/updates the pace_quarterly_projection rows (the projected plan) in DB
 import { useState, useEffect, useRef } from "react";
 import TeacherLayout from "../../components/TeacherLayout.jsx";
 import { fetchTeacherStudents, fetchStudentPaceProjection, fetchLastCompletedPaces } from "../../api/teacher.js";

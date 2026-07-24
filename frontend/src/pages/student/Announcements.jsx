@@ -1,3 +1,15 @@
+// Announcements (student): "View announcements". Read-only list of the announcements the
+// principal/admin posted for students, newest first, paged locally (PAGE_SIZE at a time).
+//
+// Backend chain (load):
+//   useEffect -> fetchStudentAnnouncements (api/student.js)    GET /student/announcements
+//     -> routes/student.routes.js (requireRole "student")
+//     -> controllers/student.controller.js > getAnnouncements (~line 78)
+//     -> services/student.service.js > getStudentAnnouncements (~line 343)
+//          - student      : the greeting name
+//          - announcement : is_active = true AND audience_role in (All, Student),
+//                           ordered by posted_date desc
+//   Returns the list; the page only displays it (no writes from the student side).
 import { useState, useEffect } from "react";
 import StudentLayout from "../../components/StudentLayout.jsx";
 import { fetchStudentAnnouncements } from "../../api/student.js";
@@ -47,6 +59,7 @@ export default function Announcements() {
   const [error, setError]         = useState("");
   const [visible, setVisible]     = useState(PAGE_SIZE);
 
+  // Load once on mount: GET /student/announcements (see backend chain at top).
   useEffect(() => {
     fetchStudentAnnouncements()
       .then((res) => setData(res.data))

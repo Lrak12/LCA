@@ -1,3 +1,21 @@
+// Student Dashboard (student): the landing page after a student logs in. Shows the
+// greeting, PACE stat cards (completed / in-progress / remaining), current-PACE
+// progress + latest check-up, an overall score, a per-quarter PACE chart, and the
+// latest student-facing announcements. Read-only - this is "View learning progress".
+//
+// Backend chain (dashboard load):
+//   useEffect -> fetchStudentDashboard (api/student.js)         GET /student/dashboard
+//     -> routes/student.routes.js (requireRole "student")
+//     -> controllers/student.controller.js > getDashboard (~line 50)  [passes req.user.user_id]
+//     -> services/student.service.js > getStudentDashboard (~line 1373)
+//          - student            : resolve student_id from the logged-in user_id
+//          - school_year        : active sy_id (getActiveSchoolYearId ~line 25)
+//          - pace_quarterly_projection : the 4-quarter plan slots (getPaceProjectionRows ~line 34)
+//                                        -> completed / ongoing / remaining counts + Q1-Q4 chart
+//          - student_pace + pace_module : map each PACE to its subject
+//          - pace_test_result + check_up_result : current-PACE progress + overall score
+//          - announcement      : latest active rows for audience All/Student
+//   Returns one JSON blob; the page just renders it (no further storing).
 import { useState, useEffect } from "react";
 import StudentLayout from "../../components/StudentLayout.jsx";
 import { fetchStudentDashboard } from "../../api/student.js";
@@ -138,6 +156,7 @@ export default function StudentDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  // One-shot load on mount: GET /student/dashboard (see backend chain at top of file).
   useEffect(() => {
     fetchStudentDashboard()
       .then((res) => setData(res.data))

@@ -1,3 +1,30 @@
+// PACE Progress (student): "View assigned PACEs" + "View learning progress". Lists the
+// student's PACEs per subject with status (completed / in progress / assigned) and lets
+// the student request a PACE test, which the supervisor later schedules.
+//
+// Backend chain (load the PACE list):
+//   load -> fetchStudentPace (api/student.js)                 GET /student/pace
+//     -> routes/student.routes.js (requireRole "student")
+//     -> controllers/student.controller.js > getPace (~line 98)
+//     -> services/student.service.js > getStudentPace (~line 802)
+//          - student                    : resolve student_id from user_id
+//          - pace_quarterly_projection  : the planned 4-quarter slots (getPaceProjectionRows)
+//          - student_pace + pace_module : the actual assigned PACEs + subject/module_number
+//          - pace_test_result           : scores; a >=90 test also counts the PACE completed
+//        -> overlays real completions onto the plan -> per-subject status + completion rate
+//
+// Backend chain (request a PACE test  -  handleSubmitRequest):
+//   submitPaceTestRequest(sp_id) (api/student.js)             POST /student/pace/test-request
+//     -> controllers/student.controller.js > requestPaceTest (~line 103)
+//     -> services/student.service.js > submitPaceTestRequest (~line 1141)
+//          - verifies the PACE (student_pace row) belongs to this student (ownership check)
+//          - finds its quarter from pace_quarterly_projection so the supervisor's
+//            quarter-filtered scheduling list picks it up
+//          - resolves the supervisor: student_pace.teacher_id, else grade_level.teacher_id
+//          - GATE: self_test_result average for this PACE must be >= 90, and no request is
+//            already pending/scheduled, else it throws
+//          - STORES the request as a pace_test_result row (status "Requested") - the one
+//            student write - then notifies the supervisor (notification.service)
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import StudentLayout from "../../components/StudentLayout.jsx";
@@ -134,6 +161,7 @@ export default function PaceProgress() {
   const [quarterFilter, setQuarterFilter] = useState("all"); // "all" | "1".."4"
   const [selectedPace, setSelectedPace]   = useState({});     // subject → paceNo
 
+  // Pull the student's PACE list: GET /student/pace (see backend chain at top).
   const load = (showSpinner = true) => {
     if (showSpinner) setLoading(true);
     return fetchStudentPace()
@@ -150,6 +178,8 @@ export default function PaceProgress() {
     setError("");
     setNotice("");
     try {
+      // POST /student/pace/test-request - inserts the "Requested" pace_test_result row
+      // (backend gates on self-test >= 90 and notifies the supervisor); then reload.
       await submitPaceTestRequest(sp_id);
       setNotice("Your PACE test request was submitted. Your supervisor will schedule it.");
       await load(false);

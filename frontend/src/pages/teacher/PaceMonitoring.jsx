@@ -4,6 +4,26 @@
 // getPaceMonitoring (load), updatePaceProjectionCell (re-base a quarter),
 // updatePaceProjectionStatus (set a cell), assignStudentPace (initial assign).
 // The footer opens AssignManagePaceModal for per-PACE execution management.
+//
+// Backend chain (Supervisor: view projected PACE plan / assign PACEs / view assigned):
+//   load grid          fetchTeacherPaceMonitoring (api/teacher.js)  GET  /teacher/pace-monitoring
+//       -> routes/teacher-portal.routes.js (requireRole "teacher")
+//       -> controllers/teacher.controller.js > getPaceMonitoring (~line 331)
+//       -> services/teacher.service.js > getPaceMonitoring (~line 1241)
+//            reads pace_quarterly_projection + student + student_pace + pace_module
+//            + pace_test_result -> the 7x4x3 grid, statuses, and quarter readiness
+//   assign (initial)   assignStudentPace          POST /teacher/assign-pace
+//       -> controllers/reports.controller.js > assignPace
+//       -> services/reports.service.js > generatePaceProjection (~line 615)
+//            builds/writes the pace_quarterly_projection rows for the student
+//   re-base a quarter  updatePaceCell             PATCH /teacher/pace-projection/cell
+//       -> controller.updatePaceCell (~line 68) -> service.updatePaceProjectionCell (~line 1400)
+//   set one cell       updatePaceCellStatus       PATCH /teacher/pace-projection/status
+//       -> controller.updatePaceStatus (~line 53) -> service.updatePaceProjectionStatus (~line 1473)
+//   per-PACE manage    (AssignManagePaceModal)    GET/POST /teacher/student-pace-manage
+//       -> controller.getStudentPaceManage (~line 148) / saveStudentPace (~line 155)
+//       -> service.getStudentPaceManage (~line 2086) / saveStudentPace (~line 2246)
+//            upserts the student_pace row (dates/status), resolving its pace_module
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import TeacherLayout from "../../components/TeacherLayout.jsx";
