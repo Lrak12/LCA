@@ -110,7 +110,7 @@ const LabeledInput = ({ label, required, icon, trailing, children }) => (
     </label>
     <div className="relative">
       {icon && (
-        <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-lg pointer-events-none">{icon}</span>
+        <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-base text-on-surface-variant pointer-events-none">{icon}</span>
       )}
       {children}
       {trailing}

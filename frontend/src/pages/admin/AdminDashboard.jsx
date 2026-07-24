@@ -20,7 +20,7 @@ const Skeleton = ({ className }) => (
 // greeting based on the local hour
 const getGreeting = () => {
   const h = new Date().getHours();                 // 0-23 local hour
-  if (h < 12) return "Good morning";
+  if (h < 12) return "Good morning"; 
   if (h < 17) return "Good afternoon";
   return "Good evening";
 };
