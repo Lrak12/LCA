@@ -523,7 +523,7 @@ export default function UserManagement() {
         <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-8">
           <div>
             <h2 className="font-headline text-3xl font-extrabold tracking-tight text-on-surface">User Management</h2>
-            <p className="text-on-surface-variant mt-1">Manage all user accounts, roles, and access permissions.</p>
+            <p className="text-on-surface-variant mt-1">Manage all user accounts and roles.</p>
           </div>
           {/* Add New User -> setShowAdd(true) opens <AddUserModal> (rendered at the bottom) */}
           <button
