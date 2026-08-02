@@ -12,22 +12,22 @@ export default function ForgotPassword() {
   const [submitted, setSubmitted] = useState(false);
 
   const handleSubmit = async (e) => {
-    //e.preventDefault();
-   // setError("");
-   // if (!idNumber.trim()) {
-   //   setError("Please enter your ID number.");
-   //   return;
-   // }
-   // setLoading(true);
-   // try {
-   //   await forgotPasswordRequest(idNumber.trim());
-   //   setSubmitted(true);
-   // } catch (err) {
-   //   setError(err.response?.data?.message ?? err.message ?? "Something went wrong. Please try again.");
-   // } finally {
-   //   setLoading(false);
-   // }
-  };
+    e.preventDefault();
+    setError("");
+    if (!idNumber.trim()) {
+      setError("Please enter your ID number.");
+      return;
+    }
+    setLoading(true);
+    try {
+      await forgotPasswordRequest(idNumber.trim());
+      setSubmitted(true);
+    } catch (err) {
+      setError(err.response?.data?.message ?? err.message ?? "Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <div className="bg-surface text-on-surface min-h-screen flex items-center justify-center p-4">

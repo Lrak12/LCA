@@ -96,8 +96,15 @@ export default function TeacherLayout({ children, schoolYearLabel = "—" }) {
 
           {/* Bottom */}
           <div className="mt-4 pt-4 border-t border-outline-variant/20">
-            <button className="flex items-center gap-3 text-on-surface-variant px-3 py-2 hover:text-primary transition-colors w-full text-sm">
-              <span className="material-symbols-outlined text-xl">help_outline</span>
+            <button
+              onClick={() => navigate("/teacher/help")}
+              className={`flex items-center gap-3 px-3 py-2 transition-colors w-full text-sm ${
+                location.pathname === "/teacher/help"
+                  ? "text-primary font-bold"
+                  : "text-on-surface-variant hover:text-primary"
+              }`}
+            >
+              <span className="material-symbols-outlined text-xl" style={location.pathname === "/teacher/help" ? fillStyle : undefined}>help_outline</span>
               Help Center
             </button>
           </div>

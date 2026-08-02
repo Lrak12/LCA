@@ -21,6 +21,7 @@ import RecordDiagnostic      from "../pages/principal/RecordDiagnostic.jsx";
 import ProjectedPaceRecommendation from "../pages/principal/ProjectedPaceRecommendation.jsx";
 import Announcements from "../pages/principal/Announcements.jsx";
 import Settings from "../pages/principal/Settings.jsx";
+import PrincipalHelpCenter from "../pages/principal/HelpCenter.jsx";
 import ProtectedRoute from "./ProtectedRoute.jsx";
 import StudentDashboard from "../pages/student/StudentDashboard.jsx";
 import PaceProgress       from "../pages/student/PaceProgress.jsx";
@@ -42,6 +43,7 @@ import TeacherAttendance        from "../pages/teacher/Attendance.jsx";
 import TeacherReports           from "../pages/teacher/Reports.jsx";
 import TeacherAnnouncements     from "../pages/teacher/Announcements.jsx";
 import TeacherAccountSettings   from "../pages/teacher/AccountSettings.jsx";
+import TeacherHelpCenter        from "../pages/teacher/HelpCenter.jsx";
 
 
 const Placeholder = ({ role }) => (
@@ -111,6 +113,10 @@ export const router = createBrowserRouter([
   {
     path: "/admin/settings",
     element: <ProtectedRoute allowedRoles={["principal", "administrator"]}><Settings /></ProtectedRoute>,
+  },
+  {
+    path: "/admin/help",
+    element: <ProtectedRoute allowedRoles={["principal", "administrator"]}><PrincipalHelpCenter /></ProtectedRoute>,
   },
   {
     path: "/sysadmin/dashboard",
@@ -183,6 +189,10 @@ export const router = createBrowserRouter([
   {
     path: "/teacher/settings",
     element: <ProtectedRoute allowedRoles={["teacher"]}><TeacherAccountSettings /></ProtectedRoute>,
+  },
+  {
+    path: "/teacher/help",
+    element: <ProtectedRoute allowedRoles={["teacher"]}><TeacherHelpCenter /></ProtectedRoute>,
   },
   {
     path: "/student/dashboard",

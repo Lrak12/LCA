@@ -145,17 +145,18 @@ const buildResetMessage = (profile, school_id) =>
   `(ID ${school_id}, role: ${profile.role}). The user could not access their account ` +
   `and is requesting administrator assistance.`;
 
-// Notify admins/principals of a new reset request. The `notification` table is
-// shared by announcements + support messages (one row per recipient user).
-// Columns: notification_id (auto), user_id, title, message_content,
-// created_date (default CURRENT_DATE), is_read (default false).
+// Notify administrators of a new reset request. Password resets are handled in
+// the admin User Support area, so principals are intentionally NOT notified.
+// The `notification` table is shared by announcements + support messages (one
+// row per recipient user). Columns: notification_id (auto), user_id, title,
+// message_content, created_date (default CURRENT_DATE), is_read (default false).
 // Wrapped non-fatally by the caller so a notification failure never blocks the
 // reset request (e.g. before the DB grants are applied).
 const notifyAdminsOfPasswordReset = async (profile, row) => {
   const { data: admins } = await supabaseAdmin
     .from("users")
     .select("user_id")
-    .in("role", ["administrator", "principal"]);
+    .in("role", ["administrator"]);
   if (!admins?.length) return;
 
   const fullName = `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || "A user";

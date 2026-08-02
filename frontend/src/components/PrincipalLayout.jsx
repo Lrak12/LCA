@@ -6,7 +6,6 @@
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNavigate, useLocation } from "react-router-dom";
-import HelpCenterModal from "./HelpCenterModal.jsx";
 import NotificationBell from "./NotificationBell.jsx";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
@@ -30,7 +29,6 @@ export default function PrincipalLayout({ children, schoolYearLabel = "—" }) {
   const { user, logout } = useAuth();
   const navigate  = useNavigate();
   const location  = useLocation();
-  const [showHelp, setShowHelp] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(() => typeof window !== "undefined" && window.innerWidth >= 768); // open on desktop, hidden on mobile; toggled via header ☰
 
   const handleLogout = async () => {
@@ -40,12 +38,11 @@ export default function PrincipalLayout({ children, schoolYearLabel = "—" }) {
 
   // Derive display name and role from user object
   const displayName = user?.fullName || user?.username || "Admin User";
-  const displayRole = user?.role || "Head Administrator";
+  const displayRole = user?.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : "Head Administrator";
   const avatarInitials = displayName.slice(0, 2).toUpperCase();
 
   return (
     <div className="bg-background text-on-background font-body antialiased min-h-screen">
-      {showHelp && <HelpCenterModal onClose={() => setShowHelp(false)} />}
 
       {/* Mobile backdrop (only when drawer is open on small screens) */}
       {sidebarOpen && (
@@ -103,10 +100,14 @@ export default function PrincipalLayout({ children, schoolYearLabel = "—" }) {
 
           <div className="mt-auto pt-6 border-t border-outline-variant/20">
             <button
-              onClick={() => setShowHelp(true)}
-              className="flex items-center gap-3 text-on-surface-variant px-3 py-2 hover:text-primary transition-colors w-full text-sm"
+              onClick={() => navigate("/admin/help")}
+              className={`flex items-center gap-3 px-3 py-2 transition-colors w-full text-sm ${
+                location.pathname === "/admin/help"
+                  ? "text-primary font-bold"
+                  : "text-on-surface-variant hover:text-primary"
+              }`}
             >
-              <span className="material-symbols-outlined">help_outline</span>
+              <span className="material-symbols-outlined" style={location.pathname === "/admin/help" ? fillStyle : undefined}>help_outline</span>
               Help Center
             </button>
           </div>

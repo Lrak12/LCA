@@ -13,7 +13,7 @@ const navItems = [
   // { icon: "grade",            label: "Grades",            path: "/student/grades"       },
   // { icon: "event_available",  label: "Attendance",        path: "/student/attendance"   },
   { icon: "campaign",         label: "Announcements",     path: "/student/announcements"},
-  { icon: "settings",         label: "Settings",          path: "/student/settings"     },
+  { icon: "settings",         label: "Account Settings",          path: "/student/settings"     },
 ];
 
 export default function StudentLayout({ children, schoolYearLabel = "—" }) {

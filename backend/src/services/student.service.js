@@ -32,24 +32,19 @@ async function getActiveSchoolYearId() {
 }
 
 // ── Student ID generation ─────────────────────────────────────────────────────
-// New student IDs use the format YYNN: YY = last two digits of the ACTIVE school
-// year's start year, NN = an incrementing 2-digit sequence within that year.
-// e.g. SY starting 2026, first student added -> 2601, next -> 2602, ...
+// New student IDs use the format YYNN: YY = last two digits of the year the student
+// ENROLLED (from their enrollment_date), NN = an incrementing 2-digit sequence
+// within that year. e.g. enrolled 2026, first student -> 2601, next -> 2602, ...
 // The number is assigned at creation and locked in (never renumbered), so it is
-// safe to use as the login identity. NOTE: 2 digits caps a school year at 99
-// students (the 100th would roll into the next year's block).
-async function generateNextStudentId() {
-  const { data: sy } = await supabaseAdmin
-    .from("school_year")
-    .select("start_date, year_label")
-    .eq("is_active", true)
-    .maybeSingle();
-  if (!sy?.start_date) {
-    throw new Error("No active school year is set. Set an active school year before adding students.");
-  }
+// safe to use as the login identity. NOTE: 2 digits caps a year at 99 students
+// (the 100th would roll into the next year's block).
+async function generateNextStudentId(enrollmentDate) {
+  // Year comes from the student's enrollment date; fall back to the current year.
+  const parsed = enrollmentDate ? new Date(enrollmentDate) : new Date();
+  const year   = isNaN(parsed) ? new Date().getFullYear() : parsed.getFullYear();
 
-  const yy   = new Date(sy.start_date).getFullYear() % 100; // 2026 -> 26
-  const base = yy * 100;                                    // 2600 -> block 2601..2699
+  const yy   = year % 100;   // 2026 -> 26
+  const base = yy * 100;     // 2600 -> block 2601..2699
 
   // Highest ID already assigned in this year's block; next = that + 1.
   const { data: rows, error } = await supabaseAdmin
@@ -145,9 +140,10 @@ export const getStudentByUserId = async (user_id) => {
 };
 
 export const createStudent = async (authPayload, profilePayload, extras = {}) => {
-  // Assign the formatted student ID (YYNN). This stays the student's LOGIN ID —
-  // they sign in with the number (login looks the account up by student_id).
-  const newStudentId = await generateNextStudentId();
+  // Assign the formatted student ID (YYNN). YY = enrollment year. This stays the
+  // student's LOGIN ID — they sign in with the number (login looks the account up
+  // by student_id).
+  const newStudentId = await generateNextStudentId(profilePayload.enrollment_date);
 
   // Auth email is name-based for readability: firstname.lastname@lca.edu.
   // users.email is UNIQUE, so append the student ID if that base is already taken.

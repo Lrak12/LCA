@@ -99,13 +99,13 @@ export default function HelpCenterModal({ onClose }) {
   return (
     /* Backdrop */
     <div
-      className="fixed inset-0 z-50 flex justify-end bg-black/30"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       {/* Panel */}
       <div
         ref={panelRef}
-        className="relative h-full w-full max-w-[440px] bg-white shadow-2xl flex flex-col overflow-y-auto"
+        className="relative w-full max-w-[440px] max-h-[90vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-y-auto"
       >
         {/* Close button */}
         <button
@@ -182,135 +182,6 @@ export default function HelpCenterModal({ onClose }) {
         </div>
 
         {/* ── Still need help? ─────────────────────────────────── */}
-        <div className="px-6 pb-8">
-          <h3 className="text-base font-extrabold text-on-surface mb-1">Still need help?</h3>
-          <p className="text-sm text-on-surface-variant mb-5">
-            Can't find what you need? Our support team is here to help.
-          </p>
-
-          {sent ? (
-            <div className="flex flex-col items-center gap-3 py-10 text-center">
-              <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center">
-                <span className="material-symbols-outlined text-green-600 text-2xl" style={fillStyle}>
-                  check_circle
-                </span>
-              </div>
-              <p className="text-sm font-bold text-on-surface">Message Sent!</p>
-              <p className="text-[12px] text-on-surface-variant max-w-[260px]">
-                We've received your message and will get back to you within 1–2 business days.
-              </p>
-              <button
-                onClick={() => { setSent(false); setName(""); setEmail(""); setSubject(""); setMessage(""); }}
-                className="mt-2 text-xs font-bold text-primary hover:underline"
-              >
-                Send another message
-              </button>
-            </div>
-          ) : (
-            <form
-              onSubmit={(e) => { e.preventDefault(); handleSend(); }}
-              className="space-y-4"
-            >
-              {formErr && (
-                <div className="px-3 py-2.5 rounded-lg bg-red-50 border border-red-100 text-red-600 text-xs flex items-center gap-2">
-                  <span className="material-symbols-outlined text-base">error</span>
-                  {formErr}
-                </div>
-              )}
-
-              {/* Name + Email */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1.5">
-                    Name
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Enter your name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className={inputClass}
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1.5">
-                    Email
-                  </label>
-                  <input
-                    type="email"
-                    placeholder="Enter your email address"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className={inputClass}
-                  />
-                </div>
-              </div>
-
-              {/* Subject */}
-              <div>
-                <label className="block text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1.5">
-                  Subject
-                </label>
-                <select
-                  value={subject}
-                  onChange={(e) => setSubject(e.target.value)}
-                  className={`${inputClass} cursor-pointer`}
-                >
-                  {SUBJECT_OPTIONS.map((s) => (
-                    <option key={s} value={s} disabled={s === "Select a subject"}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Message */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant">
-                    Message
-                  </label>
-                  <span className="text-[10px] text-on-surface-variant">
-                    {message.length}/{MAX_MSG}
-                  </span>
-                </div>
-                <textarea
-                  rows={5}
-                  maxLength={MAX_MSG}
-                  placeholder="Describe your concern or question..."
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  className={`${inputClass} resize-none`}
-                />
-              </div>
-
-              {/* Send button */}
-              <button
-                type="submit"
-                disabled={sending}
-                className="w-full bg-[#0d1b2e] text-white py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-60"
-              >
-                {sending ? (
-                  <>
-                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Sending...
-                  </>
-                ) : (
-                  <>
-                    <span className="material-symbols-outlined text-base">send</span>
-                    Send Message
-                  </>
-                )}
-              </button>
-
-              {/* Support hours */}
-              <p className="text-[11px] text-on-surface-variant flex items-center gap-1.5 pt-1">
-                <span className="material-symbols-outlined text-sm">schedule</span>
-                Our support hours: <strong>Mon - Fri, 8:00 AM – 5:00 PM</strong>
-              </p>
-            </form>
-          )}
-        </div>
       </div>
     </div>
   );

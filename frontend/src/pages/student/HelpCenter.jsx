@@ -134,7 +134,7 @@ export default function HelpCenter() {
 
         {/* ── Search ─────────────────────────────────────────────── */}
         <div className="relative mb-8">
-          <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant text-xl">search</span>
+          <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1 text-on-surface-variant text-xl">search</span>
           <input
             type="text"
             value={search}
@@ -195,88 +195,7 @@ export default function HelpCenter() {
           )}
         </article>
 
-        {/* ── Still need help? ───────────────────────────────────── */}
-        <h3 className="text-base font-extrabold text-on-surface">Still need help?</h3>
-        <p className="text-sm text-on-surface-variant mt-0.5 mb-5">
-          Can't find what you need? Our support team is here to help.
-        </p>
-
-        {formError && (
-          <div className="mb-4 px-4 py-3 rounded-xl bg-red-50 border border-red-100 text-red-600 text-sm flex items-center gap-2">
-            <span className="material-symbols-outlined text-base">error</span>
-            {formError}
-          </div>
-        )}
-        {sent && (
-          <div className="mb-4 px-4 py-3 rounded-xl bg-green-50 border border-green-100 text-green-700 text-sm flex items-center gap-2">
-            <span className="material-symbols-outlined text-base" style={fillStyle}>check_circle</span>
-            Your message has been prepared in your email app — press send there to deliver it.
-          </div>
-        )}
-
-        <form onSubmit={handleSend} className="space-y-5">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <div>
-              <label className="block text-xs font-extrabold text-on-surface mb-1.5">Name</label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Enter your name"
-                className="w-full px-4 py-3 rounded-xl border border-outline-variant/30 bg-white text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-extrabold text-on-surface mb-1.5">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter your email address"
-                className="w-full px-4 py-3 rounded-xl border border-outline-variant/30 bg-white text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-extrabold text-on-surface mb-1.5">Subject</label>
-            <div className="relative">
-              <select
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                className={`w-full appearance-none px-4 py-3 rounded-xl border border-outline-variant/30 bg-white text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30 ${subject ? "text-on-surface" : "text-on-surface-variant"}`}
-              >
-                <option value="">Select a subject</option>
-                {SUBJECT_OPTIONS.map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
-              <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none text-lg">expand_more</span>
-            </div>
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-extrabold text-on-surface">Message</label>
-              <span className="text-[11px] text-on-surface-variant">{message.length}/{MESSAGE_LIMIT}</span>
-            </div>
-            <textarea
-              rows={5}
-              value={message}
-              onChange={(e) => setMessage(e.target.value.slice(0, MESSAGE_LIMIT))}
-              placeholder="Describe your concern or question..."
-              className="w-full px-4 py-3 rounded-xl border border-outline-variant/30 bg-white text-sm shadow-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-primary text-white text-sm font-extrabold hover:opacity-90 transition-opacity"
-          >
-            <span className="material-symbols-outlined text-base" style={fillStyle}>send</span>
-            Send Message
-          </button>
-        </form>
+        
 
       </main>
     </StudentLayout>
