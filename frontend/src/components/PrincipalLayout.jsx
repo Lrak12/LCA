@@ -23,7 +23,7 @@ const navItems = [
   // { icon: "campaign",       label: "Announcements",        path: "/admin/announcements" },
   { icon: "assignment",     label: "Diagnostic Assessment", path: "/admin/diagnostic"   },
   //{ icon: "autorenew",      label: "New School Year",      path: "/admin/rollover"      },
-  { icon: "settings",       label: "Settings",             path: "/admin/settings"      },
+  { icon: "settings",       label: "Account Settings",             path: "/admin/settings"      },
 ];
 
 export default function PrincipalLayout({ children, schoolYearLabel = "—" }) {
