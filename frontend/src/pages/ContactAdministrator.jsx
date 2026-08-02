@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { contactAdminRequest } from "../api/auth.js";
-import schoolImage from "../assets/loginpic.webp";
+import schoolImage from "../assets/newloginpic.webp";
 
 const REASONS = [
   "Account Access Issue",
@@ -25,20 +25,22 @@ export default function ContactAdministrator() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError("");
-    if (!form.full_name.trim() || !form.id_number.trim() || !form.reason || !form.message.trim()) {
-      setError("Please fill in all fields.");
-      return;
-    }
-    setLoading(true);
-    try {
-      await contactAdminRequest({ ...form, id_number: form.id_number.trim() });
-      setSubmitted(true);
-    } catch (err) {
-      setError(err.response?.data?.message ?? err.message ?? "Something went wrong. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+    // [PANEL] Sending is disabled for now — the button does not submit anything yet.
+    // Original submission preserved below for easy restore:
+    // setError("");
+    // if (!form.full_name.trim() || !form.id_number.trim() || !form.reason || !form.message.trim()) {
+    //   setError("Please fill in all fields.");
+    //   return;
+    // }
+    // setLoading(true);
+    // try {
+    //   await contactAdminRequest({ ...form, id_number: form.id_number.trim() });
+    //   setSubmitted(true);
+    // } catch (err) {
+    //   setError(err.response?.data?.message ?? err.message ?? "Something went wrong. Please try again.");
+    // } finally {
+    //   setLoading(false);
+    // }
   };
 
   const inputClass = "w-full px-4 py-3 bg-surface-container-lowest border border-outline-variant/40 rounded-lg focus:ring-2 focus:ring-primary/20 focus:outline-none transition-all font-body text-on-surface placeholder:text-outline";
@@ -55,9 +57,6 @@ export default function ContactAdministrator() {
           </div>
           <div className="relative z-10">
             <div className="mt-6 flex items-center justify-center gap-2">
-              <div className="h-1 w-12 bg-secondary rounded-full" />
-              <span className="text-secondary-fixed text-sm font-label font-semibold tracking-wider">Founded 2007</span>
-              <div className="h-1 w-12 bg-secondary rounded-full" />
             </div>
           </div>
         </div>
