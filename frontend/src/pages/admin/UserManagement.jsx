@@ -12,19 +12,19 @@ import { useSchoolYear } from "../../hooks/useSchoolYear.js";
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 const PAGE_SIZE = 10;
 
-// role value (DB) -> display label + badge colors. `administrator` shows as "Supervisor".
+// role value (DB) -> display label + badge colors. teacher shows as "Supervisor".
 const ROLE_BADGE = {
-  principal:     { label: "Principal",  cls: "bg-orange-100 text-orange-700" },
-  administrator: { label: "Supervisor", cls: "bg-purple-100 text-purple-700" },
-  teacher:       { label: "Teacher",    cls: "bg-blue-100 text-blue-700"     },
-  student:       { label: "Student",    cls: "bg-amber-100 text-amber-700"   },
+  principal:     { label: "Principal",     cls: "bg-orange-100 text-orange-700" },
+  administrator: { label: "Administrator", cls: "bg-purple-100 text-purple-700" },
+  teacher:       { label: "Supervisor",    cls: "bg-blue-100 text-blue-700"     },
+  student:       { label: "Student",       cls: "bg-amber-100 text-amber-700"   },
 };
 
 const ROLE_FILTERS = [
   { value: "all",           label: "All Roles"      },
-  { value: "administrator", label: "Supervisors"    },
+  { value: "administrator", label: "Administrators" },
   { value: "principal",     label: "Principals"     },
-  { value: "teacher",       label: "Teachers"       },
+  { value: "teacher",       label: "Supervisors"    },
   { value: "student",       label: "Students"       },
 ];
 
@@ -39,7 +39,7 @@ const STAT_CARDS = [
   { key: "activeUsers",    label: "Active Users",   icon: "verified_user",  iconBg: "bg-green-100",  iconColor: "text-green-600"  },
   { key: "inactiveUsers",  label: "Inactive Users", icon: "person_off",     iconBg: "bg-red-100",    iconColor: "text-red-500"    },
   { key: "administrators", label: "Administrators", icon: "shield_person",  iconBg: "bg-purple-100", iconColor: "text-purple-600" },
-  { key: "teachers",       label: "Teachers",       icon: "school",         iconBg: "bg-teal-100",   iconColor: "text-teal-600"   },
+  { key: "teachers",       label: "Supervisors",    icon: "school",         iconBg: "bg-teal-100",   iconColor: "text-teal-600"   },
   { key: "students",       label: "Students",       icon: "backpack",       iconBg: "bg-amber-100",  iconColor: "text-amber-600"  },
 ];
 
@@ -94,9 +94,9 @@ const StatusBadge = ({ active }) => (
 
 // ── Add New User modal ────────────────────────────────────────────────────────
 const CREATE_ROLES = [
-  { value: "teacher",       label: "Teacher"      },
-  { value: "principal",     label: "Principal"    },
-  { value: "administrator", label: "Supervisor"   },
+  { value: "principal",     label: "Principal"     },
+  { value: "teacher",       label: "Supervisor"    },
+  { value: "administrator", label: "Administrator" },
 ];
 
 const LabeledInput = ({ label, required, icon, trailing, children }) => (

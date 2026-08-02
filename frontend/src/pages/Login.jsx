@@ -17,7 +17,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
-import schoolImage from "../assets/loginpic.webp";
+import schoolImage from "../assets/newloginpic.webp";
 
 
 const ROLE_DASHBOARDS = {

@@ -21,7 +21,8 @@ const fillStyle = { fontVariationSettings: '"FILL" 1' };
 const TABS = [
   { key: "profile",       icon: "lock_person", label: "Profile Information & Security" },
   { key: "accessibility", icon: "settings",    label: "Accessibility" },
-  { key: "contact",       icon: "mail",        label: "Contact Administrator" },
+  // Hidden: Contact Administrator tab (panel view). Panel + handlers remain below, just no nav entry.
+  // { key: "contact",       icon: "mail",        label: "Contact Administrator" },
 ];
 
 const CONTACT_REASONS = ["Technical Issue", "Account Access", "Data Correction", "Other"];

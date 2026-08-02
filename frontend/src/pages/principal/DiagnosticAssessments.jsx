@@ -38,9 +38,14 @@ const DEFAULT_BASIS = "Diagnostic Assessment";
 // Rendered by <DiagnosticAssessments> (showModal). onClose = () => setShowModal(false);
 // onCreated = handleStudentCreated (navigates to RecordDiagnostic for the new student).
 function NewStudentModal({ onClose, onCreated }) {
+  const todayISO = new Date().toISOString().slice(0, 10);
   const [form, setForm] = useState({
     first_name: "", last_name: "", date_of_birth: "",
     gender: "", gl_id: "", contact_number: "", address: "",
+    enrollment_date: todayISO,
+    // Parent/Guardian (merged in from the former Student Monitoring Add Student modal)
+    p_first: "", p_last: "", relationship: "", p_contact: "", p_email: "",
+    is_active: true,
   });
   const [gradeLevels,  setGradeLevels]  = useState([]);   // grade-level options
   const [saving,       setSaving]       = useState(false);
@@ -60,8 +65,17 @@ function NewStudentModal({ onClose, onCreated }) {
   // validate + create the student account, then surface its login credentials
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.first_name.trim() || !form.last_name.trim() || !form.gl_id) {
-      setError("First name, last name, and grade level are required.");
+    const missing = [
+      ["First Name", form.first_name.trim()],
+      ["Last Name", form.last_name.trim()],
+      ["Grade Level", form.gl_id],
+      ["Parent/Guardian First Name", form.p_first.trim()],
+      ["Parent/Guardian Last Name", form.p_last.trim()],
+      ["Relationship to Student", form.relationship],
+      ["Parent/Guardian Contact Number", form.p_contact.trim()],
+    ].filter(([, v]) => !v).map(([label]) => label);
+    if (missing.length) {
+      setError(`Please fill the required field(s): ${missing.join(", ")}.`);
       return;
     }
     setSaving(true);
@@ -72,25 +86,38 @@ function NewStudentModal({ onClose, onCreated }) {
         ? form.date_of_birth.replace(/\D/g, "")
         : `LCA${new Date().getFullYear()}`;
 
-      // Use a temp email — backend will replace it with {student_id}@lca.edu
+      // Temp email — backend replaces it with a name-based firstname.lastname@lca.edu
       const tempBase = `${form.first_name.toLowerCase().replace(/\s+/g,"")}.${form.last_name.toLowerCase().replace(/\s+/g,"")}.${Date.now()}`;
-      const enrollment_date = new Date().toISOString().split("T")[0];
+      const enrollment_date = form.enrollment_date || new Date().toISOString().split("T")[0];
 
       const res = await createStudent({
         email:    `${tempBase}@lca.edu`,
         password: dobDigits,
         username: tempBase,
-        ...form,
+        first_name:      form.first_name.trim(),
+        last_name:       form.last_name.trim(),
+        date_of_birth:   form.date_of_birth,
+        gender:          form.gender,
+        gl_id:           form.gl_id ? Number(form.gl_id) : undefined,
+        contact_number:  form.contact_number.trim(),
+        address:         form.address.trim(),
         enrollment_date,
-        source: "diagnostic",
+        source:          "diagnostic",
+        is_active:       form.is_active,
+        parent: {
+          parent_name:             `${form.p_first.trim()} ${form.p_last.trim()}`.trim(),
+          contact_number:          form.p_contact.trim(),
+          email:                   form.p_email.trim() || null,
+          relationship_to_student: form.relationship,
+        },
       });
 
       const studentId = res.data?.student_id;
 
-      // Show credentials card — login is {student_id}@lca.edu + DOB digits
+      // Login is the Student ID number; email is the name-based address the backend generated.
       setCredentials({
         studentId,
-        email:    `${studentId}@lca.edu`,
+        email:    res.data?.login_email ?? `${studentId}@lca.edu`,
         password: dobDigits,
         student:  res.data,
       });
@@ -182,10 +209,10 @@ function NewStudentModal({ onClose, onCreated }) {
   // ── Form ──────────────────────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
-      <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden">
+      <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
 
         {/* Header */}
-        <div className="px-4 sm:px-8 pt-8 pb-4 flex items-start justify-between">
+        <div className="px-4 sm:px-8 pt-8 pb-4 flex items-start justify-between shrink-0">
           <div>
             <h2 className="text-2xl font-bold text-primary font-headline">New Student Assessment</h2>
             <p className="text-on-surface-variant text-sm mt-1">Enroll a new student for diagnostic placement testing.</p>
@@ -195,7 +222,7 @@ function NewStudentModal({ onClose, onCreated }) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-4 sm:px-8 pb-8 space-y-4">
+        <form onSubmit={handleSubmit} className="px-4 sm:px-8 pb-8 space-y-4 overflow-y-auto min-h-0">
           {error && (
             <div className="px-4 py-3 rounded-xl bg-error-container text-on-error-container text-sm flex items-center gap-2">
               <span className="material-symbols-outlined text-base">error</span>
@@ -262,6 +289,15 @@ function NewStudentModal({ onClose, onCreated }) {
             </select>
           </div>
 
+          {/* Enrollment Date */}
+          <div>
+            <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Enrollment Date</label>
+            <input
+              type="date" value={form.enrollment_date} onChange={(e) => set("enrollment_date", e.target.value)}
+              className="w-full border border-outline-variant rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          </div>
+
           {/* Contact Number */}
           <div>
             <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Contact Number</label>
@@ -287,12 +323,68 @@ function NewStudentModal({ onClose, onCreated }) {
             />
           </div>
 
+          {/* Parent / Guardian (merged from the former Student Monitoring Add Student modal) */}
+          <div className="pt-3 mt-1 border-t border-outline-variant/30">
+            <h3 className="text-sm font-extrabold text-on-surface mb-3">Parent / Guardian</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">First Name</label>
+                <input type="text" value={form.p_first} onChange={(e) => set("p_first", e.target.value)}
+                  placeholder="e.g. Maria"
+                  className="w-full border border-outline-variant rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Last Name</label>
+                <input type="text" value={form.p_last} onChange={(e) => set("p_last", e.target.value)}
+                  placeholder="e.g. Miller"
+                  className="w-full border border-outline-variant rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+              <div>
+                <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Relationship</label>
+                <select value={form.relationship} onChange={(e) => set("relationship", e.target.value)}
+                  className="w-full border border-outline-variant rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white">
+                  <option value="">Select</option>
+                  <option>Mother</option>
+                  <option>Father</option>
+                  <option>Guardian</option>
+                  <option>Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Contact Number</label>
+                <div className="flex items-stretch border border-outline-variant rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-primary">
+                  <span className="inline-flex items-center px-3 shrink-0 border-r border-outline-variant bg-surface-container-low text-sm text-on-surface-variant font-semibold">+63</span>
+                  <input type="tel" value={form.p_contact} onChange={(e) => set("p_contact", e.target.value)}
+                    placeholder="912 345 6789"
+                    className="flex-1 min-w-0 px-3 py-2.5 text-sm focus:outline-none" />
+                </div>
+              </div>
+            </div>
+            <div className="mt-4">
+              <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Email <span className="normal-case font-normal tracking-normal text-on-surface-variant/70">(optional)</span>
+              </label>
+              <input type="email" value={form.p_email} onChange={(e) => set("p_email", e.target.value)}
+                placeholder="parent@email.com"
+                className="w-full border border-outline-variant rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+            </div>
+          </div>
+
+          {/* Active toggle */}
+          <label className="flex items-center gap-2 text-sm text-on-surface cursor-pointer select-none">
+            <input type="checkbox" checked={form.is_active} onChange={(e) => set("is_active", e.target.checked)}
+              className="w-4 h-4 accent-primary" />
+            Activate account immediately
+          </label>
+
           {/* Credential preview hint */}
           <div className="flex items-start gap-2 px-4 py-3 bg-primary/5 rounded-xl border border-primary/10">
             <span className="material-symbols-outlined text-primary text-base mt-0.5" style={fillStyle}>info</span>
             <div className="text-xs text-on-surface-variant leading-relaxed">
               <span className="font-bold text-primary">Auto-generated credentials — </span>
-              Login: <span className="font-bold text-on-surface">{"{student_id}"}@lca.edu</span>
+              Login: <span className="font-bold text-on-surface">Student ID number</span>
               {" · "}Password: <span className="font-bold text-on-surface">
                 {form.date_of_birth ? form.date_of_birth.replace(/\D/g, "") : "date of birth digits"}
               </span>

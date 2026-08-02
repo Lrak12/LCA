@@ -89,7 +89,8 @@ const PasswordField = ({ label, value, onChange, placeholder }) => {
 const NAV = [
   { key: "profile",       icon: "person",   title: "Profile",       sub: "Information & Security" },
   { key: "accessibility", icon: "settings", title: "Accessibility", sub: ""                       },
-  { key: "contact",       icon: "mail",     title: "Contact",       sub: "Administrator"          },
+  // Hidden: Contact Administrator tab (panel view). Panel + handlers remain below, just no nav entry.
+  // { key: "contact",       icon: "mail",     title: "Contact",       sub: "Administrator"          },
 ];
 
 const SubNav = ({ active, onSelect }) => (

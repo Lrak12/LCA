@@ -8,8 +8,8 @@ const fillStyle = { fontVariationSettings: '"FILL" 1' };
 const navItems = [
   { icon: "dashboard",        label: "Dashboard",         path: "/student/dashboard"    },
   { icon: "menu_book",        label: "PACE Progress",     path: "/student/pace"         },
+  { icon: "assignment",       label: "Assessment Results",path: "/student/assessments"  },
   // [PANEL-50] hidden for panel — beyond the 50% increment scope
-  // { icon: "assignment",       label: "Assessment Results",path: "/student/assessments"  },
   // { icon: "grade",            label: "Grades",            path: "/student/grades"       },
   // { icon: "event_available",  label: "Attendance",        path: "/student/attendance"   },
   { icon: "campaign",         label: "Announcements",     path: "/student/announcements"},
@@ -20,7 +20,7 @@ export default function StudentLayout({ children, schoolYearLabel = "—" }) {
   const { user, logout } = useAuth();
   const navigate  = useNavigate();
   const location  = useLocation();
-  const [sidebarOpen, setSidebarOpen] = useState(false); // mobile drawer
+  const [sidebarOpen, setSidebarOpen] = useState(() => typeof window !== "undefined" && window.innerWidth >= 768); // open on desktop, hidden on mobile; toggled via header ☰
 
   const displayName = user?.first_name && user?.last_name ? `${user.first_name} ${user.last_name}` : user?.fullName || user?.username || "Student User";
   const displayRole    = "Student/Parents";
@@ -39,7 +39,7 @@ export default function StudentLayout({ children, schoolYearLabel = "—" }) {
 
       {/* Sidebar — off-canvas drawer on mobile, fixed on md+ */}
       <aside
-        className={`h-screen w-64 fixed left-0 top-0 flex flex-col bg-surface z-50 transform transition-transform duration-300 md:translate-x-0 ${
+        className={`h-screen w-64 fixed left-0 top-0 flex flex-col bg-surface z-50 transform transition-all duration-300 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -105,14 +105,14 @@ export default function StudentLayout({ children, schoolYearLabel = "—" }) {
       </aside>
 
       {/* Top Bar */}
-      <header className="w-full md:w-[calc(100%-16rem)] md:ml-64 h-16 sticky top-0 z-30 bg-surface flex justify-between items-center gap-3 px-4 sm:px-8 border-b border-outline-variant/20">
+      <header className={`w-full h-16 sticky top-0 z-30 bg-surface flex justify-between items-center gap-3 px-4 sm:px-8 border-b border-outline-variant/20 transition-all duration-300 ${sidebarOpen ? "md:w-[calc(100%-16rem)] md:ml-64" : ""}`}>
         {/* Left */}
         <div className="flex items-center gap-3 sm:gap-4 min-w-0">
           {/* Hamburger (mobile only) */}
           <button
-            onClick={() => setSidebarOpen(true)}
-            className="md:hidden text-primary shrink-0"
-            aria-label="Open menu"
+            onClick={() => setSidebarOpen((o) => !o)}
+            className="text-primary shrink-0"
+            aria-label="Toggle menu"
           >
             <span className="material-symbols-outlined">menu</span>
           </button>
@@ -145,7 +145,7 @@ export default function StudentLayout({ children, schoolYearLabel = "—" }) {
       </header>
 
       {/* Page Content */}
-      <div className="md:ml-64">
+      <div className={`transition-all duration-300 ${sidebarOpen ? "md:ml-64" : ""}`}>
         {children}
       </div>
     </div>

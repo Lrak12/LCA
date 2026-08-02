@@ -57,9 +57,11 @@ const activityIcon = (title = "") => {
 const QUICK_ACTIONS = [
   { label: "Add New User",            icon: "person_add",     iconBg: "bg-blue-100",   iconColor: "text-blue-600",   path: "/sysadmin/users"   },
   { label: "Manage User Roles",       icon: "verified_user",  iconBg: "bg-green-100",  iconColor: "text-green-600",  path: "/sysadmin/users"   },
-  { label: "View Audit Logs",         icon: "receipt_long",   iconBg: "bg-purple-100", iconColor: "text-purple-600", path: "/sysadmin/audit"   },
+  // Hidden for panel — Audit Logs page is out of scope.
+  // { label: "View Audit Logs",         icon: "receipt_long",   iconBg: "bg-purple-100", iconColor: "text-purple-600", path: "/sysadmin/audit"   },
   { label: "System Preferences",      icon: "tune",           iconBg: "bg-amber-100",  iconColor: "text-amber-600",  path: "/sysadmin/config"  },
-  { label: "Manage Support Requests", icon: "support_agent",  iconBg: "bg-slate-100",  iconColor: "text-slate-600",  path: "/sysadmin/support" },
+  // Hidden for panel — User Support page is out of scope.
+  // { label: "Manage Support Requests", icon: "support_agent",  iconBg: "bg-slate-100",  iconColor: "text-slate-600",  path: "/sysadmin/support" },
 ];
 
 export default function AdminDashboard() {
@@ -125,12 +127,12 @@ export default function AdminDashboard() {
         {/* Two columns */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
-          {/* System Activity - the `activity` feed; each row's icon comes from activityIcon(title) */}
+          {/* System Activity - the `activity` feed; each row's icon comes from activityIcon(title) /sysadmin/audit*/}
           <section className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-6">
             <div className="flex items-center justify-between mb-5">
               <h3 className="font-headline text-lg font-extrabold text-on-surface">System Activity</h3>
               {/* View All -> navigate() to the full Audit Logs page */}
-              <button onClick={() => navigate("/sysadmin/audit")} className="text-sm font-bold text-blue-600 hover:underline">View All</button>
+              <button onClick={() => navigate("")} className="text-sm font-bold text-blue-600 hover:underline">View All</button>
             </div>
             {loading ? (
               <div className="space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>

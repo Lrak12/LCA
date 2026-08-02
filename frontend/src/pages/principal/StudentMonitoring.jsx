@@ -21,7 +21,8 @@ const TABS = [
   { id: "records",       label: "Student Records"        },
   { id: "progress",      label: "Student Progress"       },
   { id: "recommendations", label: "Recommendations"      },
-  { id: "analytics",     label: "PACE Analytics & Rankings" },
+  // Hidden for panel view — tab content/handlers remain below, just no nav entry.
+  // { id: "analytics",     label: "PACE Analytics & Rankings" },
 ];
 
 // Derive a simple PACE status label from a student's pace counts
@@ -773,9 +774,10 @@ function RecommendationsTab({ students, loading, onView }) {
                       <button
                         onClick={() => onView(s)}
                         title="View details"
-                        className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-outline-variant/30 text-on-surface-variant hover:bg-surface-container-low hover:text-primary transition-colors"
+                        className="inline-flex items-center gap-1.5 bg-white border border-outline-variant/30 text-on-surface text-xs font-bold px-4 py-2 rounded-lg hover:bg-surface-container-low transition-colors whitespace-nowrap"
                       >
-                        <span className="material-symbols-outlined text-base">visibility</span>
+                        <span className="material-symbols-outlined text-sm">visibility</span>
+                        View Details
                       </button>
                     </td>
                   </tr>
@@ -1361,7 +1363,8 @@ export default function StudentMonitoring() {
               View, track, and monitor student progress and PACE completion.
             </p>
           </div>
-          {/* header actions: Export -> exportCSV(students); Import -> setShowImport (ImportModal); Add -> setShowAdd (AddStudentModal) */}
+          {/* header actions: Export -> exportCSV(students); Import -> setShowImport (ImportModal).
+              Add Student moved to Diagnostic Assessment > "Create New Student Assessment". */}
           <div className="flex items-center gap-3 shrink-0">
             <button
               onClick={() => exportCSV(students)}
@@ -1377,13 +1380,6 @@ export default function StudentMonitoring() {
             >
               <span className="material-symbols-outlined text-lg" style={fillStyle}>upload_file</span>
               Import CSV
-            </button>
-            <button
-              onClick={() => setShowAdd(true)}
-              className="flex items-center gap-2 bg-primary text-white font-bold text-sm px-5 py-3 rounded-xl hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
-            >
-              <span className="material-symbols-outlined text-lg" style={fillStyle}>add</span>
-              Add Student
             </button>
           </div>
         </header>

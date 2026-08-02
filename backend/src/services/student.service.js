@@ -31,6 +31,39 @@ async function getActiveSchoolYearId() {
   return data?.sy_id ?? null;
 }
 
+// ── Student ID generation ─────────────────────────────────────────────────────
+// New student IDs use the format YYNN: YY = last two digits of the ACTIVE school
+// year's start year, NN = an incrementing 2-digit sequence within that year.
+// e.g. SY starting 2026, first student added -> 2601, next -> 2602, ...
+// The number is assigned at creation and locked in (never renumbered), so it is
+// safe to use as the login identity. NOTE: 2 digits caps a school year at 99
+// students (the 100th would roll into the next year's block).
+async function generateNextStudentId() {
+  const { data: sy } = await supabaseAdmin
+    .from("school_year")
+    .select("start_date, year_label")
+    .eq("is_active", true)
+    .maybeSingle();
+  if (!sy?.start_date) {
+    throw new Error("No active school year is set. Set an active school year before adding students.");
+  }
+
+  const yy   = new Date(sy.start_date).getFullYear() % 100; // 2026 -> 26
+  const base = yy * 100;                                    // 2600 -> block 2601..2699
+
+  // Highest ID already assigned in this year's block; next = that + 1.
+  const { data: rows, error } = await supabaseAdmin
+    .from("student")
+    .select("student_id")
+    .gte("student_id", base + 1)
+    .lt("student_id", base + 100)
+    .order("student_id", { ascending: false })
+    .limit(1);
+  if (error) throw new Error(error.message);
+
+  return rows && rows.length ? Number(rows[0].student_id) + 1 : base + 1;
+}
+
 async function getPaceProjectionRows(student_id, sy_id) {
   if (!sy_id) return [];
   const { data } = await supabaseAdmin
@@ -112,12 +145,26 @@ export const getStudentByUserId = async (user_id) => {
 };
 
 export const createStudent = async (authPayload, profilePayload, extras = {}) => {
+  // Assign the formatted student ID (YYNN). This stays the student's LOGIN ID —
+  // they sign in with the number (login looks the account up by student_id).
+  const newStudentId = await generateNextStudentId();
+
+  // Auth email is name-based for readability: firstname.lastname@lca.edu.
+  // users.email is UNIQUE, so append the student ID if that base is already taken.
+  const norm = (s) => String(s ?? "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "");
+  const nameBase = `${norm(profilePayload.first_name)}.${norm(profilePayload.last_name)}`.replace(/^\.+|\.+$/g, "") || `student.${newStudentId}`;
+  let loginEmail = `${nameBase}@lca.edu`;
+  const { data: emailTaken } = await supabaseAdmin
+    .from("users").select("user_id").eq("email", loginEmail).maybeSingle();
+  if (emailTaken) loginEmail = `${nameBase}.${newStudentId}@lca.edu`;
+
+  // Username stays the student ID number (the login identifier); email is name-based.
   const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-    email: authPayload.email,
+    email: loginEmail,
     password: authPayload.password,
     email_confirm: true,
     user_metadata: {
-      username: authPayload.username,
+      username: String(newStudentId),
       role: "student",
     },
   });
@@ -126,33 +173,30 @@ export const createStudent = async (authPayload, profilePayload, extras = {}) =>
 
   const { data: userProfile, error: userError } = await UserModel.findByAuthId(authData.user.id);
   if (userError) {
+    // Roll back: drop the users row (trigger-created) then the auth user.
+    await supabaseAdmin.from("users").delete().eq("auth_id", authData.user.id);
     await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
     throw new Error("Failed to retrieve user profile after creation.");
   }
 
   const { data, error } = await StudentModel.create({
     ...profilePayload,
+    student_id: newStudentId,
     user_id: userProfile.user_id,
   });
 
   if (error) {
+    // Roll back the trigger-created users row too, so no orphan blocks retries.
+    await supabaseAdmin.from("users").delete().eq("user_id", userProfile.user_id);
     await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
     throw new Error(error.message);
   }
 
-  // If created from diagnostic flow, reassign email/username to use the student_id
-  // so the student logs in with their ID number: {student_id}@lca.edu
-  if (profilePayload.source === "diagnostic" && data?.student_id) {
-    const idEmail = `${data.student_id}@lca.edu`;
-    await supabaseAdmin.auth.admin.updateUserById(authData.user.id, {
-      email: idEmail,
-      email_confirm: true,
-    });
-    await supabaseAdmin
-      .from("users")
-      .update({ email: idEmail, username: String(data.student_id) })
-      .eq("user_id", userProfile.user_id);
-  }
+  // Keep the users row consistent: name-based email + student-ID username.
+  await supabaseAdmin
+    .from("users")
+    .update({ email: loginEmail, username: String(newStudentId) })
+    .eq("user_id", userProfile.user_id);
 
   // Optionally mark the student's user account inactive at creation
   if (extras.is_active === false) {
@@ -176,12 +220,14 @@ export const createStudent = async (authPayload, profilePayload, extras = {}) =>
     });
     if (pcError) {
       await StudentModel.remove(data.student_id);
+      await supabaseAdmin.from("users").delete().eq("user_id", userProfile.user_id);
       await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
       throw new Error(`Failed to save parent/guardian contact: ${pcError.message}`);
     }
   }
 
-  return data;
+  // Surface the generated login email so the UI can show the real credentials.
+  return { ...data, login_email: loginEmail };
 };
 
 export const updateStudent = async (student_id, payload) => {
