@@ -74,11 +74,6 @@ export default function Login() {
 
           <div className="relative z-10">
             <div className="mt-6 flex items-center justify-center gap-2">
-              <div className="h-1 w-12 bg-secondary rounded-full" />
-              <span className="text-secondary-fixed text-sm font-label font-semibold tracking-wider">
-                Founded 2007
-              </span>
-              <div className="h-1 w-12 bg-secondary rounded-full" />
             </div>
           </div>
         </div>
