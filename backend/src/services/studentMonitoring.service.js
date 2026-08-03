@@ -535,6 +535,7 @@ export const getStudentSummary = async (student_id) => {
       full_name:       `${student.first_name} ${student.last_name}`,
       grade_level:     gradeLabel,
       gender:          student.gender ?? null,
+      date_of_birth:   student.date_of_birth ?? null,
       contact_number:  student.contact_number ?? null,
       enrollment_date: student.enrollment_date ?? null,
       address:         student.address ?? null,

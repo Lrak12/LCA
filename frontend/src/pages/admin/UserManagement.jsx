@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import AdminLayout from "../../components/AdminLayout.jsx";
 import { fetchUsers, setUserActive, createUser, updateUser } from "../../api/admin.js";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
+import { isPhMobile, PH_MOBILE_HINT } from "../../utils/phone.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 const PAGE_SIZE = 10;
@@ -139,7 +140,7 @@ function AddUserModal({ onClose, onCreated }) {
     if (!form.last_name.trim())           return setError("Last name is required.");
     if (!form.email.trim())               return setError("Email address is required.");
     if (!form.role)                       return setError("Please select a role.");
-    if (!form.contact_number.trim())      return setError("Contact number is required.");
+    if (form.contact_number.trim() && !isPhMobile(form.contact_number)) return setError(PH_MOBILE_HINT);
     if (form.password.length < 6)         return setError("Password must be at least 6 characters.");
     if (form.password !== form.confirm)   return setError("Passwords do not match.");
 
@@ -152,7 +153,7 @@ function AddUserModal({ onClose, onCreated }) {
         email:          form.email.trim(),
         password:       form.password,
         is_active:      form.status === "active",
-        contact_number: form.contact_number.trim(),
+        contact_number: form.contact_number.trim() || null,
       });
       onCreated(res.data);                            // parent adds it to the table
     } catch (err) {
@@ -217,8 +218,8 @@ function AddUserModal({ onClose, onCreated }) {
                 {CREATE_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
               </select>
             </LabeledInput>
-            <LabeledInput label="Contact Number" required icon="call">
-              <input type="tel" required value={form.contact_number} onChange={set("contact_number")} placeholder="Enter contact number" className={withIcon} />
+            <LabeledInput label="Contact Number" icon="call">
+              <input type="tel" value={form.contact_number} onChange={set("contact_number")} placeholder="Enter contact number" className={withIcon} />
             </LabeledInput>
           </div>
 

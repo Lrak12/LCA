@@ -10,6 +10,7 @@ import { fetchAccount, updateAccount, changeAccountPassword } from "../../api/ad
 import UserPasswordResets from "./UserPasswordResets.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
+import { isPhMobile, PH_MOBILE_HINT } from "../../utils/phone.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
@@ -105,7 +106,7 @@ export default function AccountSettings() {
     setError("");
     if (!profile.full_name.trim()) return setError("Full name is required.");
     if (!profile.email.trim())     return setError("Email address is required.");
-    if (!profile.contact_number.trim()) return setError("Contact number is required.");
+    if (profile.contact_number.trim() && !isPhMobile(profile.contact_number)) return setError(PH_MOBILE_HINT);
     setSavingProfile(true);
     try {
       const parts = profile.full_name.trim().split(/\s+/);
@@ -218,7 +219,7 @@ export default function AccountSettings() {
                         <label className="block text-[13px] font-semibold text-on-surface mb-1.5">
                           Contact Number <span className="font-normal text-outline">(not saved yet)</span>
                         </label>
-                        <input required value={profile.contact_number} onChange={(e) => setProfile((p) => ({ ...p, contact_number: e.target.value }))} className={INPUT_CLS} placeholder="0917 123 4567" />
+                        <input value={profile.contact_number} onChange={(e) => setProfile((p) => ({ ...p, contact_number: e.target.value }))} className={INPUT_CLS} placeholder="0917 123 4567" />
                       </div>
                       {/* Save Changes -> saveProfile() */}
                       <button onClick={saveProfile} disabled={savingProfile}

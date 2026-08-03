@@ -12,3 +12,4 @@ export const addEmployee        = (data) => client.post("/employees", data);
 export const fetchSupervisors     = () => client.get("/employees/supervisors");
 export const fetchSupervisorStats = () => client.get("/employees/supervisors/stats");
 export const addSupervisor        = (data) => client.post("/employees", data);
+export const updateSupervisor     = (id, data) => client.put(`/employees/supervisors/${id}`, data);

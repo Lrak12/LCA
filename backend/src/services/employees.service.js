@@ -217,3 +217,75 @@ export const createEmployee = async ({
 
   return { user_id: user.user_id, first_name, last_name, role, email };
 };
+
+// Update an existing supervisor (teacher): profile fields, account status, email,
+// and grade-level assignments. Password/username are not editable here.
+export const updateSupervisor = async (teacher_id, {
+  first_name,
+  last_name,
+  email,
+  contact_number,
+  is_active,
+  grade_level_ids = [],
+}) => {
+  const id = Number(teacher_id);
+
+  // Load the teacher + its linked user (for status/email + auth email sync)
+  const { data: teacher, error: teacherErr } = await supabaseAdmin
+    .from("teacher")
+    .select("teacher_id, user_id, users(auth_id, email)")
+    .eq("teacher_id", id)
+    .single();
+  if (teacherErr || !teacher) throw new Error(teacherErr?.message ?? `Supervisor ${id} not found`);
+
+  // 1. Profile fields on the teacher row
+  const { error: profileErr } = await supabaseAdmin
+    .from("teacher")
+    .update({
+      first_name,
+      last_name,
+      contact_number: contact_number?.trim() || null,
+    })
+    .eq("teacher_id", id);
+  if (profileErr) throw new Error(profileErr.message);
+
+  // 2. Linked users row: account status + email (only when they change)
+  const emailChanged = email && email !== teacher.users?.email;
+  const userUpdate = {};
+  if (typeof is_active === "boolean") userUpdate.is_active = is_active;
+  if (emailChanged) userUpdate.email = email;
+  if (Object.keys(userUpdate).length) {
+    const { error: userErr } = await supabaseAdmin
+      .from("users")
+      .update(userUpdate)
+      .eq("user_id", teacher.user_id);
+    if (userErr) throw new Error(userErr.message);
+  }
+
+  // 2b. Keep Supabase Auth in sync when the email changed
+  if (emailChanged && teacher.users?.auth_id) {
+    const { error: authErr } = await supabaseAdmin.auth.admin.updateUserById(
+      teacher.users.auth_id,
+      { email },
+    );
+    if (authErr) throw new Error(authErr.message);
+  }
+
+  // 3. Reassign grade levels: clear this teacher's current ones, then set the selected.
+  //    (grade_level.teacher_id holds a single supervisor per grade level.)
+  const { error: clearErr } = await supabaseAdmin
+    .from("grade_level")
+    .update({ teacher_id: null })
+    .eq("teacher_id", id);
+  if (clearErr) throw new Error(clearErr.message);
+
+  if (grade_level_ids.length) {
+    const { error: assignErr } = await supabaseAdmin
+      .from("grade_level")
+      .update({ teacher_id: id })
+      .in("gl_id", grade_level_ids);
+    if (assignErr) throw new Error(assignErr.message);
+  }
+
+  return { teacher_id: id, first_name, last_name, email, is_active };
+};

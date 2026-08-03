@@ -10,6 +10,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import PrincipalLayout from "../../components/PrincipalLayout.jsx";
+import { isPhMobile, PH_MOBILE_HINT } from "../../utils/phone.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
 import { fetchAccount, updateAccount, changeAccountPassword, fetchSupportRequests, submitSupportRequest } from "../../api/settings.js";
@@ -123,7 +124,7 @@ export default function Settings() {
     setError(""); setOkMsg("");
     if (!form.first_name.trim() || !form.last_name.trim()) { setError("First and last name are required."); return; }
     if (!form.email.trim()) { setError("Email address is required."); return; }
-    if (!form.contact_number.trim()) { setError("Contact number is required."); return; }
+    if (form.contact_number.trim() && !isPhMobile(form.contact_number)) { setError(PH_MOBILE_HINT); return; }
 
     const wantsPwd = pwd.current || pwd.new || pwd.confirm; // only touch the password if any field is filled
     if (wantsPwd) {
@@ -243,7 +244,7 @@ export default function Settings() {
                       </div>
                       <div>
                         <label className={labelClass}>Contact Number</label>
-                        <input className={inputClass} required value={form.contact_number} onChange={(e) => set("contact_number", e.target.value)} />
+                        <input className={inputClass} value={form.contact_number} onChange={(e) => set("contact_number", e.target.value)} />
                       </div>
 
                       <div className="pt-6 mt-2 border-t border-outline-variant/15">

@@ -7,9 +7,10 @@
 //   grade-level picker uses api/sections.js fetchAllSections (see SchoolSections.jsx chain).
 import { useState, useEffect, useMemo, useRef } from "react";
 import PrincipalLayout from "../../components/PrincipalLayout.jsx";
-import { fetchSupervisors, fetchSupervisorStats, addSupervisor } from "../../api/employees.js";
+import { fetchSupervisors, fetchSupervisorStats, addSupervisor, updateSupervisor } from "../../api/employees.js";
 import { fetchAllSections } from "../../api/sections.js";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
+import { isPhMobile, PH_MOBILE_HINT } from "../../utils/phone.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
@@ -95,9 +96,21 @@ function GradeLevelSelect({ options, selected, onChange, loading }) {
 
 // Rendered by <Employees> (showModal). onClose = () => setShowModal(false);
 // onSuccess = () => { setLoading(true); setReloadKey(k=>k+1) } which refetches the list.
-function AddSupervisorModal({ onClose, onSuccess }) {
-  const [form, setForm]       = useState(defaultForm);
-  const [gradeIds, setGradeIds] = useState([]);        // selected grade-level ids
+// `supervisor` is null for Add, or an existing supervisor row for Edit (prefills the
+// form; password/username are hidden and profile changes go through updateSupervisor).
+function AddSupervisorModal({ supervisor, onClose, onSuccess }) {
+  const isEdit = Boolean(supervisor);
+  const [form, setForm]       = useState(() => supervisor ? {
+    first_name:      supervisor.first_name ?? "",
+    last_name:       supervisor.last_name ?? "",
+    contact_number:  supervisor.contact_number ?? "",
+    email:           supervisor.email ?? "",
+    username:        "",
+    password:        "",
+    confirm_password: "",
+    account_status:  supervisor.is_active ? "active" : "inactive",
+  } : defaultForm);
+  const [gradeIds, setGradeIds] = useState(() => supervisor?.gradeLevelDetails?.map((d) => d.gl_id) ?? []); // selected grade-level ids
   const [levels, setLevels]   = useState([]);          // grade-level options for the picker
   const [levelsLoading, setLevelsLoading] = useState(true);
   const [showPw, setShowPw]   = useState(false);
@@ -122,34 +135,56 @@ function AddSupervisorModal({ onClose, onSuccess }) {
     loadLevels();
   }, []);
 
-  // validate then create the supervisor account (role fixed to "teacher")
+  // validate then create/update the supervisor account (role fixed to "teacher")
   const handleSubmit = async () => {
-    if (!form.first_name || !form.last_name || !form.email || !form.username || !form.password || !form.contact_number.trim()) {
+    if (!form.first_name || !form.last_name || !form.email) {
       setError("Please fill in all required fields.");
       return;
     }
-    if (form.password !== form.confirm_password) {
-      setError("Passwords do not match.");
-      return;
+    if (!isEdit) {                                     // password/username are create-only
+      if (!form.username || !form.password) {
+        setError("Please fill in all required fields.");
+        return;
+      }
+      if (form.password !== form.confirm_password) {
+        setError("Passwords do not match.");
+        return;
+      }
     }
     if (!gradeIds.length) {
       setError("Please assign at least one grade level.");
       return;
     }
+    // Contact number is optional, but must be a valid PH mobile number when provided.
+    if (form.contact_number.trim() && !isPhMobile(form.contact_number)) {
+      setError(PH_MOBILE_HINT);
+      return;
+    }
     setSaving(true);
     setError("");
     try {
-      await addSupervisor({                            // POST new supervisor + grade assignments
-        first_name:     form.first_name,
-        last_name:      form.last_name,
-        contact_number: form.contact_number,
-        email:          form.email,
-        username:       form.username,
-        password:       form.password,
-        role:           "teacher",                     // supervisors are teacher-role accounts
-        is_active:      form.account_status === "active",
-        grade_level_ids: gradeIds,
-      });
+      if (isEdit) {
+        await updateSupervisor(supervisor.id, {         // PUT profile + status + grade assignments
+          first_name:     form.first_name,
+          last_name:      form.last_name,
+          contact_number: form.contact_number,
+          email:          form.email,
+          is_active:      form.account_status === "active",
+          grade_level_ids: gradeIds,
+        });
+      } else {
+        await addSupervisor({                          // POST new supervisor + grade assignments
+          first_name:     form.first_name,
+          last_name:      form.last_name,
+          contact_number: form.contact_number,
+          email:          form.email,
+          username:       form.username,
+          password:       form.password,
+          role:           "teacher",                   // supervisors are teacher-role accounts
+          is_active:      form.account_status === "active",
+          grade_level_ids: gradeIds,
+        });
+      }
       onSuccess();                                     // parent reloads the list
       onClose();
     } catch (err) {
@@ -171,8 +206,8 @@ function AddSupervisorModal({ onClose, onSuccess }) {
         {/* Header */}
         <div className="px-4 sm:px-8 pt-7 pb-5 flex items-start justify-between gap-4 sticky top-0 bg-white">
           <div>
-            <h2 className="font-headline text-2xl font-extrabold text-primary">Add Supervisor</h2>
-            <p className="text-sm text-on-surface-variant mt-1">Create a new supervisor account and assign grade levels.</p>
+            <h2 className="font-headline text-2xl font-extrabold text-primary">{isEdit ? "Edit Supervisor" : "Add Supervisor"}</h2>
+            <p className="text-sm text-on-surface-variant mt-1">{isEdit ? "Update this supervisor's account and grade levels." : "Create a new supervisor account and assign grade levels."}</p>
           </div>
           <button
             onClick={onClose}
@@ -203,8 +238,8 @@ function AddSupervisorModal({ onClose, onSuccess }) {
                 <input className={inputClass} required placeholder="Enter last name" value={form.last_name} onChange={(e) => set("last_name", e.target.value)} />
               </div>
               <div>
-                <label className={labelClass}>Contact Number {reqMark}</label>
-                <input className={inputClass} required placeholder="Enter contact number" value={form.contact_number} onChange={(e) => set("contact_number", e.target.value)} />
+                <label className={labelClass}>Contact Number</label>
+                <input className={inputClass} placeholder="Enter contact number" value={form.contact_number} onChange={(e) => set("contact_number", e.target.value)} />
               </div>
             </div>
           </section>
@@ -218,46 +253,50 @@ function AddSupervisorModal({ onClose, onSuccess }) {
                   <label className={labelClass}>Email Address {reqMark}</label>
                   <input className={inputClass} required type="email" placeholder="Enter email address" value={form.email} onChange={(e) => set("email", e.target.value)} />
                 </div>
-                <div>
-                  <label className={labelClass}>Username {reqMark}</label>
-                  <input className={inputClass} required placeholder="Enter username" value={form.username} onChange={(e) => set("username", e.target.value)} />
-                </div>
+                {!isEdit && (
+                  <div>
+                    <label className={labelClass}>Username {reqMark}</label>
+                    <input className={inputClass} required placeholder="Enter username" value={form.username} onChange={(e) => set("username", e.target.value)} />
+                  </div>
+                )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className={labelClass}>Password {reqMark}</label>
-                  <div className="relative">
-                    <input
-                      className={`${inputClass} pr-11`}
-                      required
-                      type={showPw ? "text" : "password"}
-                      placeholder="Enter password"
-                      value={form.password}
-                      onChange={(e) => set("password", e.target.value)}
-                    />
-                    <button type="button" onClick={() => setShowPw((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary">
-                      <span className="material-symbols-outlined text-lg">{showPw ? "visibility_off" : "visibility"}</span>
-                    </button>
+              {!isEdit && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className={labelClass}>Password {reqMark}</label>
+                    <div className="relative">
+                      <input
+                        className={`${inputClass} pr-11`}
+                        required
+                        type={showPw ? "text" : "password"}
+                        placeholder="Enter password"
+                        value={form.password}
+                        onChange={(e) => set("password", e.target.value)}
+                      />
+                      <button type="button" onClick={() => setShowPw((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary">
+                        <span className="material-symbols-outlined text-lg">{showPw ? "visibility_off" : "visibility"}</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Confirm Password {reqMark}</label>
+                    <div className="relative">
+                      <input
+                        className={`${inputClass} pr-11`}
+                        required
+                        type={showConfirm ? "text" : "password"}
+                        placeholder="Confirm password"
+                        value={form.confirm_password}
+                        onChange={(e) => set("confirm_password", e.target.value)}
+                      />
+                      <button type="button" onClick={() => setShowConfirm((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary">
+                        <span className="material-symbols-outlined text-lg">{showConfirm ? "visibility_off" : "visibility"}</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
-                <div>
-                  <label className={labelClass}>Confirm Password {reqMark}</label>
-                  <div className="relative">
-                    <input
-                      className={`${inputClass} pr-11`}
-                      required
-                      type={showConfirm ? "text" : "password"}
-                      placeholder="Confirm password"
-                      value={form.confirm_password}
-                      onChange={(e) => set("confirm_password", e.target.value)}
-                    />
-                    <button type="button" onClick={() => setShowConfirm((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary">
-                      <span className="material-symbols-outlined text-lg">{showConfirm ? "visibility_off" : "visibility"}</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
+              )}
 
               <div>
                 <label className={labelClass}>Account Status {reqMark}</label>
@@ -296,7 +335,9 @@ function AddSupervisorModal({ onClose, onSuccess }) {
           >
             {saving
               ? <><span className="material-symbols-outlined text-base animate-spin">progress_activity</span> Saving...</>
-              : <><span className="material-symbols-outlined text-base">person_add</span> Create Supervisor</>
+              : isEdit
+                ? <><span className="material-symbols-outlined text-base">save</span> Update Supervisor</>
+                : <><span className="material-symbols-outlined text-base">person_add</span> Create Supervisor</>
             }
           </button>
         </div>
@@ -470,6 +511,7 @@ export default function Employees() {
   const [statusFilter, setStatusFilter] = useState("all"); // all/active/inactive
   const [page,        setPage]        = useState(1);
   const [showModal,   setShowModal]   = useState(false); // Add Supervisor modal open?
+  const [editSup,     setEditSup]     = useState(null);  // supervisor being edited (opens the modal in edit mode)
   const [viewSup,     setViewSup]     = useState(null);  // supervisor open in View Details
   const [reloadKey,   setReloadKey]   = useState(0);     // bump to refetch after adding
   const perPage = 8;
@@ -545,14 +587,20 @@ export default function Employees() {
     <PrincipalLayout schoolYearLabel={schoolYearLabel}>
       <main className="p-4 sm:p-8 max-w-full mx-auto w-full">
 
-        {showModal && (
+        {(showModal || editSup) && (
           <AddSupervisorModal
-            onClose={() => setShowModal(false)}
+            supervisor={editSup}
+            onClose={() => { setShowModal(false); setEditSup(null); }}
             onSuccess={() => { setLoading(true); setReloadKey((k) => k + 1); }}
           />
         )}
         {viewSup && (
-          <ViewDetailsModal supervisor={viewSup} year={year} onClose={() => setViewSup(null)} />
+          <ViewDetailsModal
+            supervisor={viewSup}
+            year={year}
+            onClose={() => setViewSup(null)}
+            onEdit={(sup) => { setViewSup(null); setEditSup(sup); }}
+          />
         )}
 
         {/* Page header */}

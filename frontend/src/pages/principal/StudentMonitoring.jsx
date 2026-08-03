@@ -12,6 +12,7 @@ import StudentSummaryModal from "../../components/StudentSummaryModal.jsx";
 import { fetchStudentMonitoring, fetchPaceAnalytics } from "../../api/studentMonitoring.js";
 import { importStudentsCSV, createStudent } from "../../api/student.js";
 import { fetchAllSections } from "../../api/sections.js";
+import { isPhMobile, PH_MOBILE_HINT } from "../../utils/phone.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
@@ -20,7 +21,7 @@ const PAGE_SIZE = 6;
 const TABS = [
   { id: "records",       label: "Student Records"        },
   { id: "progress",      label: "Student Progress"       },
-  { id: "recommendations", label: "Recommendations"      },
+  { id: "recommendations", label: "Projected PACE Plan"   },
   // Hidden for panel view — tab content/handlers remain below, just no nav entry.
   // { id: "analytics",     label: "PACE Analytics & Rankings" },
 ];
@@ -756,7 +757,7 @@ function RecommendationsTab({ students, loading, onView }) {
               ) : pageRows.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-5 py-12 text-center text-sm text-on-surface-variant">
-                    No students with recommendations yet.
+                    No students with Projected plan yet.
                   </td>
                 </tr>
               ) : (
@@ -1064,13 +1065,11 @@ function AddStudentModal({ onClose, onSuccess }) {
       ["Gender", form.gender],
       ["Birth Date", form.date_of_birth],
       ["Grade Level", form.gl_id],
-      ["Contact Number", form.contact_number.trim()],
       ["Enrollment Date", form.enrollment_date],
       ["Home Address", form.address.trim()],
       ["Parent/Guardian First Name", form.p_first.trim()],
       ["Parent/Guardian Last Name", form.p_last.trim()],
       ["Relationship to Student", form.relationship],
-      ["Parent/Guardian Contact Number", form.p_contact.trim()],
     ];
     return required.filter(([, v]) => !v).map(([label]) => label);
   };
@@ -1082,6 +1081,9 @@ function AddStudentModal({ onClose, onSuccess }) {
       setError(`Please fill the required field(s): ${missing.join(", ")}.`);
       return;
     }
+    // Contact numbers are optional, but must be a valid PH mobile number when provided.
+    if (form.contact_number.trim() && !isPhMobile(form.contact_number)) { setError(PH_MOBILE_HINT); return; }
+    if (form.p_contact.trim() && !isPhMobile(form.p_contact)) { setError(PH_MOBILE_HINT); return; }
     setSaving(true);
     try {
       // Mirror the CSV-import credential convention: password = DOB digits,
@@ -1181,8 +1183,8 @@ function AddStudentModal({ onClose, onSuccess }) {
                   {levels.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
                 </select>
               </Field>
-              <Field label="Contact Number" required hint="Enter a valid mobile or landline number.">
-                <input className={inputClass} required value={form.contact_number} onChange={(e) => set("contact_number", e.target.value)} placeholder="Enter contact number" />
+              <Field label="Contact Number" hint="Optional — PH mobile number, e.g. 09171234567.">
+                <input className={inputClass} value={form.contact_number} onChange={(e) => set("contact_number", e.target.value)} placeholder="Enter contact number" />
               </Field>
               <Field label="Enrollment Date" required>
                 <input type="date" className={inputClass} value={form.enrollment_date} onChange={(e) => set("enrollment_date", e.target.value)} />
@@ -1215,8 +1217,8 @@ function AddStudentModal({ onClose, onSuccess }) {
                 </select>
               </Field>
 
-              <Field label="Parent / Guardian Contact Number" required hint="Enter a valid mobile or landline number.">
-                <input className={inputClass} required value={form.p_contact} onChange={(e) => set("p_contact", e.target.value)} placeholder="Enter contact number" />
+              <Field label="Parent / Guardian Contact Number" hint="Optional — PH mobile number, e.g. 09171234567.">
+                <input className={inputClass} value={form.p_contact} onChange={(e) => set("p_contact", e.target.value)} placeholder="Enter contact number" />
               </Field>
               <Field label="Parent / Guardian Email" span={2} hint="Optional: used for communication and notifications.">
                 <input className={inputClass} value={form.p_email} onChange={(e) => set("p_email", e.target.value)} placeholder="Enter email address (optional)" />

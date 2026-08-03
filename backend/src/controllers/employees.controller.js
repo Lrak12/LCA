@@ -28,3 +28,8 @@ export const createEmployee = async (req, res, next) => {
     res.status(201).json({ success: true, data });
   } catch (err) { next(err); }
 };
+
+export const updateSupervisor = asyncHandler(async (req, res) => {
+  const data = await EmployeesService.updateSupervisor(req.params.id, req.body);
+  sendSuccess(res, data);
+});

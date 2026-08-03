@@ -9,6 +9,7 @@ import {
   applySettings,
   DEFAULT_SETTINGS,
 } from "../../utils/accessibility.js";
+import { isPhMobile, PH_MOBILE_HINT } from "../../utils/phone.js";
 import {
   fetchTeacherAccount,
   updateTeacherAccount,
@@ -335,7 +336,7 @@ export default function AccountSettings() {
     if (!firstName.trim()) return flash("error", "First name is required.");
     if (!lastName.trim())  return flash("error", "Last name is required.");
     if (!email.trim())     return flash("error", "Email address is required.");
-    if (!contact.trim())   return flash("error", "Contact number is required.");
+    if (contact.trim() && !isPhMobile(contact)) return flash("error", PH_MOBILE_HINT);
     // Password change is optional; validate only if any field is filled.
     const wantsPwChange = currentPw || newPw || confirmPw;
     if (wantsPwChange) {
@@ -447,7 +448,7 @@ export default function AccountSettings() {
                   </div>
                   <div className="sm:col-span-2">
                     <label className={labelCls}>Contact Number</label>
-                    <input type="tel" required value={contact} onChange={(e) => setContact(e.target.value)} className={inputCls} />
+                    <input type="tel" value={contact} onChange={(e) => setContact(e.target.value)} className={inputCls} />
                   </div>
                 </div>
 

@@ -5,7 +5,7 @@
 // Backend chain (frontend api/diagnosticAssessments.js -> routes/assessment.routes.js):
 //   create: POST /assessments/diagnostic     -> controllers/assessment.controller.js > createDiagnostic (~line 50) -> services/assessment.service.js > createDiagnostic (~line 26)
 //   update: PUT  /assessments/diagnostic/:id  -> controllers/assessment.controller.js > updateDiagnostic (~line 55) -> services/assessment.service.js > updateDiagnostic (~line 43)
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createDiagnostic, updateDiagnostic } from "../../api/diagnosticAssessments.js";
 
 // the score sheet rows: each PACE page-range and its minimum passing score
@@ -19,6 +19,10 @@ const PACE_ROWS = [
   { page: 8,  range: "1073 – 1084", min: 8  },
   { page: 10, range: "1085 – 1096", min: 18 },
 ];
+
+// first / last PACE number parsed from a "1001 – 1012" range string
+const rangeStart = (range) => Number(String(range).split(/[–-]/)[0].trim());
+const rangeEnd   = (range) => Number(String(range).split(/[–-]/)[1].trim());
 
 // age in whole years from a date of birth
 const calcAge = (dob) => {
@@ -39,12 +43,29 @@ const formatDOB = (dob) => {
 export default function SocialScienceDiagnosticModal({ subject, student, existing, onClose, onSaved }) {
   const [scores,    setScores]    = useState(() => Object.fromEntries(PACE_ROWS.map((r) => [r.page, ""]))); // page -> score
   const [startPace, setStartPace] = useState(existing?.start_pace != null ? String(existing.start_pace) : ""); // ready-to-advance PACE
+  const [manual,    setManual]    = useState(existing?.start_pace != null); // true once the supervisor edits the field by hand
   const [saving,    setSaving]    = useState(false);
   const [error,     setError]     = useState("");
 
   const setScore = (page, val) => setScores((prev) => ({ ...prev, [page]: val })); // update one page's score
 
   const totalScore = Object.values(scores).reduce((sum, v) => sum + (Number(v) || 0), 0); // sum of all page scores
+
+  // ACE rule: predict the ready-to-advance PACE from the scores. The first level scored
+  // below its minimum is the performance level, so the field becomes that level's first
+  // PACE. If every level meets its minimum, the student is ready for the PACE after the
+  // last level. Auto-fills as scores change, but stops once the supervisor types by hand.
+  useEffect(() => {
+    if (manual) return;
+    const below = PACE_ROWS.find((r) => scores[r.page] !== "" && Number(scores[r.page]) < r.min);
+    let next = "";
+    if (below) {
+      next = String(rangeStart(below.range));
+    } else if (PACE_ROWS.every((r) => scores[r.page] !== "")) {
+      next = String(rangeEnd(PACE_ROWS[PACE_ROWS.length - 1].range) + 1);
+    }
+    setStartPace(next);
+  }, [scores, manual]);
 
   // create or update this student's diagnostic row for the given subject
   const handleSave = async () => {
@@ -203,7 +224,7 @@ export default function SocialScienceDiagnosticModal({ subject, student, existin
                 <input
                   type="text"
                   value={startPace}
-                  onChange={(e) => setStartPace(e.target.value)}
+                  onChange={(e) => { setManual(true); setStartPace(e.target.value); }}
                   placeholder="0000"
                   maxLength={4}
                   className="w-36 text-center text-4xl font-extrabold font-headline tracking-tight text-primary border-b-2 border-primary bg-transparent focus:outline-none placeholder:text-on-surface-variant/30"

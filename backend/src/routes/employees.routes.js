@@ -10,6 +10,7 @@ router.get("/stats",              requireRole("principal"), EmployeesController.
 router.get("/supervisors",        requireRole("principal"), EmployeesController.getSupervisors);
 router.get("/supervisors/stats",  requireRole("principal"), EmployeesController.getSupervisorStats);
 router.post("/", requireRole("principal"), EmployeesController.createEmployee);
+router.put("/supervisors/:id", requireRole("principal"), EmployeesController.updateSupervisor);
 
 
 export default router;

@@ -139,6 +139,7 @@ export default function StudentSummaryModal({ studentId, onClose }) {
                   <Field label="Enrollment Date">{formatDate(s.enrollment_date)}</Field>
                   <Field label="Gender">{s.gender ?? "—"}</Field>
                   <Field label="Address">{s.address ?? "—"}</Field>
+                  <Field label="Date of Birth">{formatDate(s.date_of_birth)}</Field>
                   <Field label="Contact Number">{s.contact_number ?? "—"}</Field>
                 </div>
                 <div className="mt-4 pt-4 border-t border-outline-variant/20 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">

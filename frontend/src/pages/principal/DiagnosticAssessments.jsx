@@ -10,6 +10,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import PrincipalLayout from "../../components/PrincipalLayout.jsx";
 import { fetchDiagnostics } from "../../api/diagnosticAssessments.js";
+import { isPhMobile, PH_MOBILE_HINT } from "../../utils/phone.js";
 import { createStudent, fetchAllStudents } from "../../api/student.js";
 import { fetchAllSections } from "../../api/sections.js";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
@@ -72,17 +73,18 @@ function NewStudentModal({ onClose, onCreated }) {
       ["Gender", form.gender],
       ["Grade Level", form.gl_id],
       ["Enrollment Date", form.enrollment_date],
-      ["Contact Number", form.contact_number.trim()],
       ["Home Address", form.address.trim()],
       ["Parent/Guardian First Name", form.p_first.trim()],
       ["Parent/Guardian Last Name", form.p_last.trim()],
       ["Relationship to Student", form.relationship],
-      ["Parent/Guardian Contact Number", form.p_contact.trim()],
     ].filter(([, v]) => !v).map(([label]) => label);
     if (missing.length) {
       setError(`Please fill the required field(s): ${missing.join(", ")}.`);
       return;
     }
+    // Contact numbers are optional, but must be a valid PH mobile number when provided.
+    if (form.contact_number.trim() && !isPhMobile(form.contact_number)) { setError(PH_MOBILE_HINT); return; }
+    if (form.p_contact.trim() && !isPhMobile(form.p_contact)) { setError(PH_MOBILE_HINT); return; }
     setSaving(true);
     setError("");
     try {
@@ -311,7 +313,7 @@ function NewStudentModal({ onClose, onCreated }) {
                 +63
               </span>
               <input
-                type="tel" required value={form.contact_number} onChange={(e) => set("contact_number", e.target.value)}
+                type="tel" value={form.contact_number} onChange={(e) => set("contact_number", e.target.value)}
                 placeholder="912 345 6789"
                 className="flex-1 border border-outline-variant rounded-r-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               />
@@ -361,7 +363,7 @@ function NewStudentModal({ onClose, onCreated }) {
                 <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Contact Number</label>
                 <div className="flex items-stretch border border-outline-variant rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-primary">
                   <span className="inline-flex items-center px-3 shrink-0 border-r border-outline-variant bg-surface-container-low text-sm text-on-surface-variant font-semibold">+63</span>
-                  <input type="tel" required value={form.p_contact} onChange={(e) => set("p_contact", e.target.value)}
+                  <input type="tel" value={form.p_contact} onChange={(e) => set("p_contact", e.target.value)}
                     placeholder="912 345 6789"
                     className="flex-1 min-w-0 px-3 py-2.5 text-sm focus:outline-none" />
                 </div>
