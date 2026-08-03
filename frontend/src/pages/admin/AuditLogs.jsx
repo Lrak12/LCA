@@ -139,8 +139,17 @@ export default function AuditLogs() {
                   onChange={setD("search")}
                   onKeyDown={(e) => e.key === "Enter" && onFilter()}
                   placeholder="Search user, action, or module…"
-                  className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-outline-variant/30 rounded-lg text-sm text-on-surface placeholder:text-outline focus:ring-2 focus:ring-primary/20 focus:outline-none"
+                  className="w-full pl-10 pr-10 py-2.5 bg-white border border-outline-variant/30 rounded-lg text-sm text-on-surface placeholder:text-outline focus:ring-2 focus:ring-primary/20 focus:outline-none"
                 />
+                {/* clear (×) -> empty the box, re-apply filters + reset paging */}
+                {draft.search && (
+                  <button
+                    type="button"
+                    onClick={() => { const next = { ...draft, search: "" }; setDraft(next); setApplied(next); setPage(1); }}
+                    aria-label="Clear search"
+                    className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1 text-base text-on-surface-variant hover:text-on-surface cursor-pointer leading-none"
+                  >close</button>
+                )}
               </div>
             </div>
             {/* user dropdown (options come from the API's distinct users) */}

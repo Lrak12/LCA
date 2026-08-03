@@ -570,8 +570,17 @@ export default function UserManagement() {
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Search by name, email, role, or status…"
-              className="w-full pl-11 pr-4 py-2.5 bg-surface-container-high border-none rounded-lg focus:ring-2 focus:ring-primary/20 focus:outline-none text-sm text-on-surface placeholder:text-outline"
+              className="w-full pl-11 pr-10 py-2.5 bg-surface-container-high border-none rounded-lg focus:ring-2 focus:ring-primary/20 focus:outline-none text-sm text-on-surface placeholder:text-outline"
             />
+            {/* clear (×) -> empty the box + reset paging + refetch */}
+            {searchInput && (
+              <button
+                type="button"
+                onClick={() => { setSearchInput(""); setSearch(""); setPage(1); }}
+                aria-label="Clear search"
+                className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1 text-base text-on-surface-variant hover:text-on-surface cursor-pointer leading-none"
+              >close</button>
+            )}
           </div>
           {/* role filter -> setRole + setPage(1) -> load() */}
           <div className="relative">

@@ -214,7 +214,12 @@ export default function PaceTestScheduling() {
           <div className="relative flex-1 min-w-[220px]">
             <span className="material-symbols-outlined absolute left-3 inset-y-0 flex items-center text-on-surface-variant text-base">search</span>
             <input type="text" placeholder="Search student name..." value={search} onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2.5 text-sm bg-white border border-outline-variant/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30 shadow-sm" />
+              className="w-full pl-9 pr-9 py-2.5 text-sm bg-white border border-outline-variant/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30 shadow-sm" />
+            {/* clear (×) -> empty the box */}
+            {search && (
+              <button type="button" onClick={() => setSearch("")} aria-label="Clear search"
+                className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-base text-on-surface-variant hover:text-on-surface cursor-pointer leading-none">close</button>
+            )}
           </div>
           <select value={subject} onChange={(e) => setSubject(e.target.value)}
             className="appearance-none text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl px-4 py-2.5 pr-8 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer">

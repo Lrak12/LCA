@@ -200,7 +200,16 @@ export default function UserPasswordResets({ embedded = false }) {
             <div className="relative">
               <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1 text-outline text-lg">search</span>
               <input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search by name, email, or user ID…"
-                className="w-56 pl-9 pr-3 py-2 bg-surface-container-high border-none rounded-lg text-sm text-on-surface placeholder:text-outline focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+                className="w-56 pl-9 pr-9 py-2 bg-surface-container-high border-none rounded-lg text-sm text-on-surface placeholder:text-outline focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+              {/* clear (×) -> empty the box + reset paging + refetch */}
+              {searchInput && (
+                <button
+                  type="button"
+                  onClick={() => { setSearchInput(""); setSearch(""); setPage(1); }}
+                  aria-label="Clear search"
+                  className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1 text-base text-outline hover:text-on-surface cursor-pointer leading-none"
+                >close</button>
+              )}
             </div>
           </div>
         </div>

@@ -454,7 +454,16 @@ function UserAccessTab({ setBanner }) {
       <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-4 flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[220px]">
           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1 text-outline text-lg">search</span>
-          <input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search by name or email…" className={`${inputCls} pl-10`} />
+          <input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search by name or email…" className={`${inputCls} pl-10 pr-10`} />
+          {/* clear (×) -> empty the box + reset paging + refetch */}
+          {searchInput && (
+            <button
+              type="button"
+              onClick={() => { setSearchInput(""); setSearch(""); setPage(1); }}
+              aria-label="Clear search"
+              className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1 text-base text-outline hover:text-on-surface cursor-pointer leading-none"
+            >close</button>
+          )}
         </div>
         <select value={role} onChange={(e) => { setRole(e.target.value); setPage(1); }} className={`${inputCls} w-auto cursor-pointer`}>
           {ROLE_FILTERS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}

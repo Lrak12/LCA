@@ -394,8 +394,17 @@ export default function AssignPace() {
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setShowDrop(true); }}
                 onFocus={() => search && setShowDrop(true)}
-                className="w-full border border-gray-200 rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 bg-white"
+                className="w-full border border-gray-200 rounded-xl pl-9 pr-9 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 bg-white"
               />
+              {/* clear (×) -> empty the box + close the dropdown */}
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => { setSearch(""); setShowDrop(false); }}
+                  aria-label="Clear search"
+                  className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-base text-gray-400 hover:text-on-surface cursor-pointer leading-none z-10"
+                >close</button>
+              )}
               {showDrop && filtered.length > 0 && (
                 <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-20 max-h-52 overflow-y-auto">
                   {filtered.slice(0, 8).map((s) => (

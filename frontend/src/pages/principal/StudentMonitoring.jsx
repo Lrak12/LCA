@@ -1434,8 +1434,17 @@ export default function StudentMonitoring() {
                   placeholder="Search by name or ID..."
                   value={search}
                   onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                  className="w-full pl-9 pr-4 py-2.5 text-sm bg-white border border-outline-variant/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30 shadow-sm"
+                  className="w-full pl-9 pr-9 py-2.5 text-sm bg-white border border-outline-variant/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30 shadow-sm"
                 />
+                {/* clear (×) -> empty the box + reset to page 1 */}
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => { setSearch(""); setPage(1); }}
+                    aria-label="Clear search"
+                    className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1 text-base text-on-surface-variant hover:text-on-surface cursor-pointer leading-none"
+                  >close</button>
+                )}
               </div>
 
               {/* Grade level filter */}

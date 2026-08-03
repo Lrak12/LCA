@@ -403,8 +403,17 @@ export default function Attendance() {
                   placeholder="Search students..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-sm bg-surface-container-lowest border border-outline-variant/20 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  className="w-full pl-9 pr-9 py-2 text-sm bg-surface-container-lowest border border-outline-variant/20 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
                 />
+                {/* clear (×) -> empty the box */}
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch("")}
+                    aria-label="Clear search"
+                    className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1 text-base text-on-surface-variant hover:text-on-surface cursor-pointer leading-none"
+                  >close</button>
+                )}
               </div>
               <button
                 onClick={markAllPresent}

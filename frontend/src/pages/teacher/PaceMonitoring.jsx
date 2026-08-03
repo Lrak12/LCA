@@ -830,7 +830,7 @@ export default function PaceMonitoring() {
         {/* ── Returning Student Placement ─────────────────────────────── */}
         <div className="flex justify-end mb-6">
           <button
-            onClick={() => navigate("/teacher/pace/returning-placement")}
+            /*onClick={() => navigate("/teacher/pace/returning-placement")}*/
             className="flex items-center gap-2 px-5 py-2.5 bg-[#0d1b2e] text-white text-sm font-bold rounded-xl hover:opacity-90 transition-opacity whitespace-nowrap shadow-sm"
           >
             <span className="material-symbols-outlined text-base">add</span>
@@ -876,8 +876,17 @@ export default function PaceMonitoring() {
                 placeholder="Search student name..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-9 pr-4 py-2.5 text-sm bg-white border border-outline-variant/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30 shadow-sm"
+                className="w-full pl-9 pr-9 py-2.5 text-sm bg-white border border-outline-variant/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30 shadow-sm"
               />
+              {/* clear (×) -> empty the box */}
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  aria-label="Clear search"
+                  className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1 text-base text-on-surface-variant hover:text-on-surface cursor-pointer leading-none"
+                >close</button>
+              )}
             </div>
           )}
 

@@ -612,8 +612,17 @@ export default function Employees() {
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(1); }}
               placeholder="Search by supervisor name or ID..."
-              className="w-full pl-12 pr-4 py-3 bg-surface-container-lowest border border-outline-variant/20 rounded-xl focus:ring-2 focus:ring-primary/20 focus:outline-none text-sm font-body"
+              className="w-full pl-12 pr-11 py-3 bg-surface-container-lowest border border-outline-variant/20 rounded-xl focus:ring-2 focus:ring-primary/20 focus:outline-none text-sm font-body"
             />
+            {/* clear (×) -> empty the box + reset to page 1 */}
+            {search && (
+              <button
+                type="button"
+                onClick={() => { setSearch(""); setPage(1); }}
+                aria-label="Clear search"
+                className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1 text-base text-on-surface-variant hover:text-on-surface cursor-pointer leading-none"
+              >close</button>
+            )}
           </div>
           {/* status filter -> setStatusFilter + page 1 */}
         <select

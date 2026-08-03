@@ -1386,7 +1386,11 @@ export const importStudents = async (rows) => {
         throw triggerErr;
       }
 
+      // Assign the school-format ID (YYNN): YY = enrollment year, NN = increment.
+      const newStudentId = await generateNextStudentId(enrollment_date);
+
       const { error: studentError } = await supabaseAdmin.from("student").insert({
+        student_id: newStudentId,
         user_id: userProfile.user_id,
         first_name,
         last_name,
@@ -1399,6 +1403,7 @@ export const importStudents = async (rows) => {
       });
 
       if (studentError) {
+        await supabaseAdmin.from("users").delete().eq("user_id", userProfile.user_id);
         await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
         throw new Error(studentError.message);
       }
