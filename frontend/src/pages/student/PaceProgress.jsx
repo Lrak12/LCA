@@ -79,10 +79,10 @@ const StatCard = ({ icon, iconBg, iconColor, label, value, badge, badgeColor, da
 
 // ─── Subject colors ───────────────────────────────────────────────────────────
 const subjectColors = {
-  Mathematics: { text: "text-blue-600"  },
-  English:     { text: "text-rose-600"  },
-  Science:     { text: "text-green-600" },
-  default:     { text: "text-amber-600" },
+  Mathematics: { text: "text-black-600"  },
+  English:     { text: "text-black-600"  },
+  Science:     { text: "text-black-600" },
+  default:     { text: "text-black-600" },
 };
 
 const subjectColor = (subject) =>
@@ -143,7 +143,7 @@ const ProgressBar = ({ value }) => (
 
 // ─── Table Headers ────────────────────────────────────────────────────────────
 const TH = ({ children }) => (
-  <th className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant pb-3 text-left">
+  <th className="text-[13px] font-extrabold tracking-widest uppercase text-on-surface-variant pb-3 text-left">
     {children}
   </th>
 );
@@ -409,8 +409,7 @@ export default function PaceProgress() {
               <select
                 value={quarterFilter}
                 onChange={(e) => setQuarterFilter(e.target.value)}
-                className="text-sm font-bold text-on-surface bg-white border border-outline-variant/30 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary/20"
-              >
+                className="text-sm font-bold text-on-surface bg-white border border-outline-variant/30 rounded-lg px-3 py-1.5 pr-8 focus:outline-none focus:ring-2 focus:ring-primary/20">
                 <option value="all">All Quarters</option>
                 <option value="1">1st Quarter</option>
                 <option value="2">2nd Quarter</option>

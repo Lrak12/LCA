@@ -70,17 +70,17 @@ function GradeLevelCard({ level, onManageStudents, onAssignSupervisor, onView })
       <div className="p-5 flex-1">
         {/* Grade label + student count */}
         <div className="flex items-start justify-between mb-5">
-          <span className="text-[10px] font-extrabold tracking-widest uppercase bg-surface-container-high text-on-surface-variant px-2.5 py-1 rounded-full">
+          <span className="text-[15px] font-extrabold tracking-widest uppercase bg-surface-container-high text-on-surface-variant px-2.5 py-1 rounded-full">
             {level.grade}
           </span>
           <div className="text-right leading-none">
             <p className="font-headline text-2xl font-extrabold text-on-surface">{level.students}</p>
-            <p className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mt-1">Students</p>
+            <p className="text-[15px] font-extrabold tracking-widest uppercase text-on-surface-variant mt-1">Students</p>
           </div>
         </div>
 
         {/* Assigned supervisor */}
-        <p className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-2">
+        <p className="text-[15px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-2">
           Assigned Supervisor
         </p>
         <div className="flex items-center justify-between gap-2">
@@ -93,7 +93,7 @@ function GradeLevelCard({ level, onManageStudents, onAssignSupervisor, onView })
             <span className="text-sm text-on-surface-variant">No supervisor assigned</span>
           )}
           {headline && (
-            <span className="text-[10px] font-extrabold uppercase tracking-wide bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full shrink-0">
+            <span className="text-[15px] font-extrabold uppercase tracking-wide bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full shrink-0">
               Assigned
             </span>
           )}

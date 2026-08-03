@@ -853,7 +853,7 @@ export default function PaceMonitoring() {
             <div className="relative shrink-0 min-w-[220px]">
               <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1 text-base text-on-surface-variant pointer-events-none"style={fillStyle}>person</span>
               <select value={selectedStudentId ?? ""} onChange={(e) => setSelectedStudentId(e.target.value ? parseInt(e.target.value, 10) : null)} disabled={loading || !studentList.length} 
-                className="w-full pl-9 pr-10 py-2.5 text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30 appearance-none cursor-pointer shadow-sm disabled:opacity-60"
+                className="w-full pl-9 pr-10 py-2.5 text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer shadow-sm disabled:opacity-60"
                 style={{ WebkitAppearance: "none", MozAppearance: "none", appearance: "none"}}
               >
                 {studentList.length === 0
@@ -894,7 +894,7 @@ export default function PaceMonitoring() {
             <select
               value={quarter}
               onChange={(e) => setQuarter(e.target.value)}
-              className="appearance-none text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl px-4 py-2.5 pr-8 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer"
+              className="text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl px-4 py-2.5 pr-8 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer"
             >
               {QUARTER_KEYS.map((q) => (
                 <option key={q} value={q}>{QUARTER_LABELS[q]}</option>

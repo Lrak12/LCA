@@ -672,7 +672,7 @@ export default function DiagnosticAssessments() {
                   <thead>
                     <tr className="bg-surface-container-lowest border-b border-outline-variant/20">
                       {["Student ID", "Student Name", "Grade Level", "Placement Basis", "Actions"].map((h) => (
-                        <th key={h} className={`px-6 py-3.5 text-[10px] font-extrabold text-on-surface-variant uppercase tracking-widest whitespace-nowrap ${h === "Actions" ? "text-right" : "text-left"}`}>
+                        <th key={h} className={`px-6 py-3.5 text-[13px] font-extrabold text-on-surface-variant uppercase tracking-widest whitespace-nowrap ${h === "Actions" ? "text-right" : "text-left"}`}>
                           {h}
                         </th>
                       ))}

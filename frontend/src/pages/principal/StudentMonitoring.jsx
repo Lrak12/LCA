@@ -1504,7 +1504,7 @@ export default function StudentMonitoring() {
                       {["#", "Student ID", "Name", "Grade Level", "PACE Status", "Actions"].map((h) => (
                         <th
                           key={h}
-                          className={`text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant px-5 py-4 whitespace-nowrap ${
+                          className={`text-[13px] font-extrabold tracking-widest uppercase text-on-surface-variant px-5 py-4 whitespace-nowrap ${
                             h === "PACE Status" || h === "Actions" ? "text-center" : "text-left"
                           }`}
                         >
