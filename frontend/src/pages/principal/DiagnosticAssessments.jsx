@@ -306,7 +306,7 @@ function NewStudentModal({ onClose, onCreated }) {
                 +63
               </span>
               <input
-                type="tel" value={form.contact_number} onChange={(e) => set("contact_number", e.target.value)}
+                type="tel" required value={form.contact_number} onChange={(e) => set("contact_number", e.target.value)}
                 placeholder="912 345 6789"
                 className="flex-1 border border-outline-variant rounded-r-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               />
@@ -356,7 +356,7 @@ function NewStudentModal({ onClose, onCreated }) {
                 <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Contact Number</label>
                 <div className="flex items-stretch border border-outline-variant rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-primary">
                   <span className="inline-flex items-center px-3 shrink-0 border-r border-outline-variant bg-surface-container-low text-sm text-on-surface-variant font-semibold">+63</span>
-                  <input type="tel" value={form.p_contact} onChange={(e) => set("p_contact", e.target.value)}
+                  <input type="tel" required value={form.p_contact} onChange={(e) => set("p_contact", e.target.value)}
                     placeholder="912 345 6789"
                     className="flex-1 min-w-0 px-3 py-2.5 text-sm focus:outline-none" />
                 </div>

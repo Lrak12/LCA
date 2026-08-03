@@ -327,6 +327,7 @@ export default function Settings() {
   };
 
   const handleSave = async () => {
+    if (!contact.trim()) return flash("error", "Contact number is required.");
     const wantsPwChange = currentPw || newPw || confirmPw;
     if (wantsPwChange) {
       if (!currentPw)          return flash("error", "Enter your current password to change it.");
@@ -437,7 +438,7 @@ export default function Settings() {
                   </div>
                   <div className="sm:col-span-2">
                     <label className={labelCls}>Contact Number</label>
-                    <input type="tel" value={contact} onChange={(e) => setContact(e.target.value)} className={inputCls} />
+                    <input type="tel" required value={contact} onChange={(e) => setContact(e.target.value)} className={inputCls} />
                   </div>
                 </div>
 

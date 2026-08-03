@@ -102,8 +102,9 @@ export default function AccountSettings() {
 
   // save profile: split the single name field back into first/last, PUT, then sync auth context
   const saveProfile = async () => {
-    setSavingProfile(true);
     setError("");
+    if (!profile.contact_number.trim()) return setError("Contact number is required.");
+    setSavingProfile(true);
     try {
       const parts = profile.full_name.trim().split(/\s+/);
       const last_name  = parts.length > 1 ? parts.pop() : ""; // last token is the surname
@@ -215,7 +216,7 @@ export default function AccountSettings() {
                         <label className="block text-[13px] font-semibold text-on-surface mb-1.5">
                           Contact Number <span className="font-normal text-outline">(not saved yet)</span>
                         </label>
-                        <input value={profile.contact_number} onChange={(e) => setProfile((p) => ({ ...p, contact_number: e.target.value }))} className={INPUT_CLS} placeholder="0917 123 4567" />
+                        <input required value={profile.contact_number} onChange={(e) => setProfile((p) => ({ ...p, contact_number: e.target.value }))} className={INPUT_CLS} placeholder="0917 123 4567" />
                       </div>
                       {/* Save Changes -> saveProfile() */}
                       <button onClick={saveProfile} disabled={savingProfile}

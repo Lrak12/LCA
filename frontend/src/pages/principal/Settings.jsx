@@ -122,6 +122,7 @@ export default function Settings() {
   const handleSave = async () => {
     setError(""); setOkMsg("");
     if (!form.first_name.trim() || !form.last_name.trim()) { setError("First and last name are required."); return; }
+    if (!form.contact_number.trim()) { setError("Contact number is required."); return; }
 
     const wantsPwd = pwd.current || pwd.new || pwd.confirm; // only touch the password if any field is filled
     if (wantsPwd) {
@@ -241,7 +242,7 @@ export default function Settings() {
                       </div>
                       <div>
                         <label className={labelClass}>Contact Number</label>
-                        <input className={inputClass} value={form.contact_number} onChange={(e) => set("contact_number", e.target.value)} />
+                        <input className={inputClass} required value={form.contact_number} onChange={(e) => set("contact_number", e.target.value)} />
                       </div>
 
                       <div className="pt-6 mt-2 border-t border-outline-variant/15">

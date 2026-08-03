@@ -124,7 +124,7 @@ function AddSupervisorModal({ onClose, onSuccess }) {
 
   // validate then create the supervisor account (role fixed to "teacher")
   const handleSubmit = async () => {
-    if (!form.first_name || !form.last_name || !form.email || !form.username || !form.password) {
+    if (!form.first_name || !form.last_name || !form.email || !form.username || !form.password || !form.contact_number.trim()) {
       setError("Please fill in all required fields.");
       return;
     }
@@ -200,7 +200,7 @@ function AddSupervisorModal({ onClose, onSuccess }) {
               </div>
               <div>
                 <label className={labelClass}>Contact Number {reqMark}</label>
-                <input className={inputClass} placeholder="Enter contact number" value={form.contact_number} onChange={(e) => set("contact_number", e.target.value)} />
+                <input className={inputClass} required placeholder="Enter contact number" value={form.contact_number} onChange={(e) => set("contact_number", e.target.value)} />
               </div>
             </div>
           </section>

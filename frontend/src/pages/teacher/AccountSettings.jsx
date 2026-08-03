@@ -332,6 +332,7 @@ export default function AccountSettings() {
   };
 
   const handleSave = async () => {
+    if (!contact.trim()) return flash("error", "Contact number is required.");
     // Password change is optional; validate only if any field is filled.
     const wantsPwChange = currentPw || newPw || confirmPw;
     if (wantsPwChange) {
@@ -443,7 +444,7 @@ export default function AccountSettings() {
                   </div>
                   <div className="sm:col-span-2">
                     <label className={labelCls}>Contact Number</label>
-                    <input type="tel" value={contact} onChange={(e) => setContact(e.target.value)} className={inputCls} />
+                    <input type="tel" required value={contact} onChange={(e) => setContact(e.target.value)} className={inputCls} />
                   </div>
                 </div>
 

@@ -1182,7 +1182,7 @@ function AddStudentModal({ onClose, onSuccess }) {
                 </select>
               </Field>
               <Field label="Contact Number" required hint="Enter a valid mobile or landline number.">
-                <input className={inputClass} value={form.contact_number} onChange={(e) => set("contact_number", e.target.value)} placeholder="Enter contact number" />
+                <input className={inputClass} required value={form.contact_number} onChange={(e) => set("contact_number", e.target.value)} placeholder="Enter contact number" />
               </Field>
               <Field label="Enrollment Date" required>
                 <input type="date" className={inputClass} value={form.enrollment_date} onChange={(e) => set("enrollment_date", e.target.value)} />
@@ -1216,7 +1216,7 @@ function AddStudentModal({ onClose, onSuccess }) {
               </Field>
 
               <Field label="Parent / Guardian Contact Number" required hint="Enter a valid mobile or landline number.">
-                <input className={inputClass} value={form.p_contact} onChange={(e) => set("p_contact", e.target.value)} placeholder="Enter contact number" />
+                <input className={inputClass} required value={form.p_contact} onChange={(e) => set("p_contact", e.target.value)} placeholder="Enter contact number" />
               </Field>
               <Field label="Parent / Guardian Email" span={2} hint="Optional: used for communication and notifications.">
                 <input className={inputClass} value={form.p_email} onChange={(e) => set("p_email", e.target.value)} placeholder="Enter email address (optional)" />

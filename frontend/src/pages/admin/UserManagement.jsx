@@ -136,6 +136,7 @@ function AddUserModal({ onClose, onCreated }) {
     setError("");
     // client-side validation before hitting the API
     if (!form.role)                       return setError("Please select a role.");
+    if (!form.contact_number.trim())      return setError("Contact number is required.");
     if (form.password.length < 6)         return setError("Password must be at least 6 characters.");
     if (form.password !== form.confirm)   return setError("Passwords do not match.");
 
@@ -148,7 +149,7 @@ function AddUserModal({ onClose, onCreated }) {
         email:          form.email.trim(),
         password:       form.password,
         is_active:      form.status === "active",
-        contact_number: form.contact_number.trim() || null,
+        contact_number: form.contact_number.trim(),
       });
       onCreated(res.data);                            // parent adds it to the table
     } catch (err) {
@@ -214,7 +215,7 @@ function AddUserModal({ onClose, onCreated }) {
               </select>
             </LabeledInput>
             <LabeledInput label="Contact Number" required icon="call">
-              <input type="tel" value={form.contact_number} onChange={set("contact_number")} placeholder="Enter contact number" className={withIcon} />
+              <input type="tel" required value={form.contact_number} onChange={set("contact_number")} placeholder="Enter contact number" className={withIcon} />
             </LabeledInput>
           </div>
 
