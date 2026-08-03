@@ -332,7 +332,10 @@ export default function AccountSettings() {
   };
 
   const handleSave = async () => {
-    if (!contact.trim()) return flash("error", "Contact number is required.");
+    if (!firstName.trim()) return flash("error", "First name is required.");
+    if (!lastName.trim())  return flash("error", "Last name is required.");
+    if (!email.trim())     return flash("error", "Email address is required.");
+    if (!contact.trim())   return flash("error", "Contact number is required.");
     // Password change is optional; validate only if any field is filled.
     const wantsPwChange = currentPw || newPw || confirmPw;
     if (wantsPwChange) {
@@ -432,15 +435,15 @@ export default function AccountSettings() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className={labelCls}>First Name</label>
-                    <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} className={inputCls} />
+                    <input type="text" required value={firstName} onChange={(e) => setFirstName(e.target.value)} className={inputCls} />
                   </div>
                   <div>
                     <label className={labelCls}>Last Name</label>
-                    <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} className={inputCls} />
+                    <input type="text" required value={lastName} onChange={(e) => setLastName(e.target.value)} className={inputCls} />
                   </div>
                   <div className="sm:col-span-2">
                     <label className={labelCls}>Email Address</label>
-                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
+                    <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
                   </div>
                   <div className="sm:col-span-2">
                     <label className={labelCls}>Contact Number</label>

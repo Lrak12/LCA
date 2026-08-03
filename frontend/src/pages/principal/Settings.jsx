@@ -122,6 +122,7 @@ export default function Settings() {
   const handleSave = async () => {
     setError(""); setOkMsg("");
     if (!form.first_name.trim() || !form.last_name.trim()) { setError("First and last name are required."); return; }
+    if (!form.email.trim()) { setError("Email address is required."); return; }
     if (!form.contact_number.trim()) { setError("Contact number is required."); return; }
 
     const wantsPwd = pwd.current || pwd.new || pwd.confirm; // only touch the password if any field is filled
@@ -229,16 +230,16 @@ export default function Settings() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <div>
                           <label className={labelClass}>First Name</label>
-                          <input className={inputClass} value={form.first_name} onChange={(e) => set("first_name", e.target.value)} />
+                          <input className={inputClass} required value={form.first_name} onChange={(e) => set("first_name", e.target.value)} />
                         </div>
                         <div>
                           <label className={labelClass}>Last Name</label>
-                          <input className={inputClass} value={form.last_name} onChange={(e) => set("last_name", e.target.value)} />
+                          <input className={inputClass} required value={form.last_name} onChange={(e) => set("last_name", e.target.value)} />
                         </div>
                       </div>
                       <div>
                         <label className={labelClass}>Email Address</label>
-                        <input className={inputClass} value={form.email} onChange={(e) => set("email", e.target.value)} />
+                        <input className={inputClass} required value={form.email} onChange={(e) => set("email", e.target.value)} />
                       </div>
                       <div>
                         <label className={labelClass}>Contact Number</label>

@@ -103,6 +103,8 @@ export default function AccountSettings() {
   // save profile: split the single name field back into first/last, PUT, then sync auth context
   const saveProfile = async () => {
     setError("");
+    if (!profile.full_name.trim()) return setError("Full name is required.");
+    if (!profile.email.trim())     return setError("Email address is required.");
     if (!profile.contact_number.trim()) return setError("Contact number is required.");
     setSavingProfile(true);
     try {
@@ -206,11 +208,11 @@ export default function AccountSettings() {
                     <div className="space-y-4">
                       <div>
                         <label className="block text-[13px] font-semibold text-on-surface mb-1.5">Full Name</label>
-                        <input value={profile.full_name} onChange={(e) => setProfile((p) => ({ ...p, full_name: e.target.value }))} className={INPUT_CLS} placeholder="Your name" />
+                        <input required value={profile.full_name} onChange={(e) => setProfile((p) => ({ ...p, full_name: e.target.value }))} className={INPUT_CLS} placeholder="Your name" />
                       </div>
                       <div>
                         <label className="block text-[13px] font-semibold text-on-surface mb-1.5">Email Address</label>
-                        <input type="email" value={profile.email} onChange={(e) => setProfile((p) => ({ ...p, email: e.target.value }))} className={INPUT_CLS} placeholder="name@lca.edu.ph" />
+                        <input type="email" required value={profile.email} onChange={(e) => setProfile((p) => ({ ...p, email: e.target.value }))} className={INPUT_CLS} placeholder="name@lca.edu.ph" />
                       </div>
                       <div>
                         <label className="block text-[13px] font-semibold text-on-surface mb-1.5">

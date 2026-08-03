@@ -132,6 +132,10 @@ function AddSupervisorModal({ onClose, onSuccess }) {
       setError("Passwords do not match.");
       return;
     }
+    if (!gradeIds.length) {
+      setError("Please assign at least one grade level.");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -192,11 +196,11 @@ function AddSupervisorModal({ onClose, onSuccess }) {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label className={labelClass}>First Name {reqMark}</label>
-                <input className={inputClass} placeholder="Enter first name" value={form.first_name} onChange={(e) => set("first_name", e.target.value)} />
+                <input className={inputClass} required placeholder="Enter first name" value={form.first_name} onChange={(e) => set("first_name", e.target.value)} />
               </div>
               <div>
                 <label className={labelClass}>Last Name {reqMark}</label>
-                <input className={inputClass} placeholder="Enter last name" value={form.last_name} onChange={(e) => set("last_name", e.target.value)} />
+                <input className={inputClass} required placeholder="Enter last name" value={form.last_name} onChange={(e) => set("last_name", e.target.value)} />
               </div>
               <div>
                 <label className={labelClass}>Contact Number {reqMark}</label>
@@ -212,11 +216,11 @@ function AddSupervisorModal({ onClose, onSuccess }) {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Email Address {reqMark}</label>
-                  <input className={inputClass} type="email" placeholder="Enter email address" value={form.email} onChange={(e) => set("email", e.target.value)} />
+                  <input className={inputClass} required type="email" placeholder="Enter email address" value={form.email} onChange={(e) => set("email", e.target.value)} />
                 </div>
                 <div>
                   <label className={labelClass}>Username {reqMark}</label>
-                  <input className={inputClass} placeholder="Enter username" value={form.username} onChange={(e) => set("username", e.target.value)} />
+                  <input className={inputClass} required placeholder="Enter username" value={form.username} onChange={(e) => set("username", e.target.value)} />
                 </div>
               </div>
 
@@ -226,6 +230,7 @@ function AddSupervisorModal({ onClose, onSuccess }) {
                   <div className="relative">
                     <input
                       className={`${inputClass} pr-11`}
+                      required
                       type={showPw ? "text" : "password"}
                       placeholder="Enter password"
                       value={form.password}
@@ -241,6 +246,7 @@ function AddSupervisorModal({ onClose, onSuccess }) {
                   <div className="relative">
                     <input
                       className={`${inputClass} pr-11`}
+                      required
                       type={showConfirm ? "text" : "password"}
                       placeholder="Confirm password"
                       value={form.confirm_password}

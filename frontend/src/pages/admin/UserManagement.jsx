@@ -135,6 +135,9 @@ function AddUserModal({ onClose, onCreated }) {
     e.preventDefault();
     setError("");
     // client-side validation before hitting the API
+    if (!form.first_name.trim())          return setError("First name is required.");
+    if (!form.last_name.trim())           return setError("Last name is required.");
+    if (!form.email.trim())               return setError("Email address is required.");
     if (!form.role)                       return setError("Please select a role.");
     if (!form.contact_number.trim())      return setError("Contact number is required.");
     if (form.password.length < 6)         return setError("Password must be at least 6 characters.");
