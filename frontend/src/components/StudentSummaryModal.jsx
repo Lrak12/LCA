@@ -8,6 +8,7 @@
 import { useState, useEffect } from "react";
 import { fetchStudentSummary } from "../api/studentMonitoring.js";
 import StudentProfileModal from "./StudentProfileModal.jsx";
+import EditStudentModal from "./EditStudentModal.jsx";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
@@ -26,11 +27,14 @@ const Field = ({ label, children }) => (
   </div>
 );
 
-const Section = ({ icon, title, children }) => (
+const Section = ({ icon, title, action, children }) => (
   <section className="border border-outline-variant/30 rounded-2xl p-5">
-    <div className="flex items-center gap-2 mb-4">
-      <span className="material-symbols-outlined text-primary text-xl" style={fillStyle}>{icon}</span>
-      <h3 className="font-bold text-primary">{title}</h3>
+    <div className="flex items-center justify-between gap-2 mb-4">
+      <div className="flex items-center gap-2">
+        <span className="material-symbols-outlined text-primary text-xl" style={fillStyle}>{icon}</span>
+        <h3 className="font-bold text-primary">{title}</h3>
+      </div>
+      {action}
     </div>
     {children}
   </section>
@@ -59,11 +63,13 @@ const SkeletonLine = ({ className = "" }) => (
 // Shows student info, PACE progress summary, projected plan, and ranking.
 // "View Full Plan" opens StudentProfileModal (the per-subject grade grid).
 // `studentId` = the row's id (set by the page's setSelectedStudent); onClose = () => setSelectedStudent(null).
-export default function StudentSummaryModal({ studentId, onClose }) {
+export default function StudentSummaryModal({ studentId, onClose, onUpdated }) {
   const [data, setData]       = useState(null);    // getStudentSummary payload
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState("");
   const [showFullPlan, setShowFullPlan] = useState(false); // is the nested full-plan modal open?
+  const [editing, setEditing] = useState(false);   // is the Edit Information modal open?
+  const [reloadKey, setReloadKey] = useState(0);   // bump to refetch after an edit
 
   // fetch this student's summary; `cancelled` guards setState after unmount
   useEffect(() => {
@@ -82,7 +88,7 @@ export default function StudentSummaryModal({ studentId, onClose }) {
     };
     load();
     return () => { cancelled = true; };
-  }, [studentId]);
+  }, [studentId, reloadKey]);
 
   const s    = data?.student;          // identity fields
   const pace = data?.paceSummary;      // counts + completion rate + status + points
@@ -131,7 +137,20 @@ export default function StudentSummaryModal({ studentId, onClose }) {
           ) : !data ? null : (
             <>
               {/* Student Information */}
-              <Section icon="person" title="Student Information">
+              <Section
+                icon="person"
+                title="Student Information"
+                action={
+                  /* Edit Information -> setEditing(true) opens <EditStudentModal> */
+                  <button
+                    onClick={() => setEditing(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-outline-variant/40 text-xs font-bold text-primary hover:bg-surface-container-low transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-sm">edit</span>
+                    Edit Information
+                  </button>
+                }
+              >
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
                   <Field label="Student ID">{s.student_id}</Field>
                   <Field label="Grade Level">{s.grade_level}</Field>
@@ -238,6 +257,15 @@ export default function StudentSummaryModal({ studentId, onClose }) {
         <StudentProfileModal
           student={{ student_id: s.student_id }}
           onClose={() => setShowFullPlan(false)}
+        />
+      )}
+
+      {/* Edit Information modal: on save, refetch the summary + notify the page to reload its list */}
+      {editing && s && (
+        <EditStudentModal
+          student={s}
+          onClose={() => setEditing(false)}
+          onSaved={() => { setEditing(false); setReloadKey((k) => k + 1); onUpdated?.(); }}
         />
       )}
     </div>

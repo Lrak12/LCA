@@ -1656,6 +1656,7 @@ export default function StudentMonitoring() {
         <StudentSummaryModal
           studentId={selectedStudent.student_id}
           onClose={() => setSelectedStudent(null)}
+          onUpdated={reload}
         />
       )}
 

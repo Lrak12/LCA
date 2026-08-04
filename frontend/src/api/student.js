@@ -3,6 +3,8 @@ import client from "./client.js";
 export const fetchAllStudents          = () => client.get("/students");
 export const createStudent             = (payload) => client.post("/students", payload);
 export const importStudentsCSV         = (students) => client.post("/students/import", { students });
+// Principal edit of a student's info (PUT /students/:id, requireRole principal)
+export const updateStudentInfo         = (id, data) => client.put(`/students/${id}`, data);
 
 export const fetchStudentDashboard     = () => client.get("/student/dashboard");
 export const fetchStudentPace          = () => client.get("/student/pace");

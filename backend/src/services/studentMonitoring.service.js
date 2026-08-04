@@ -532,6 +532,8 @@ export const getStudentSummary = async (student_id) => {
   return {
     student: {
       student_id:      student.student_id,
+      first_name:      student.first_name ?? "",
+      last_name:       student.last_name ?? "",
       full_name:       `${student.first_name} ${student.last_name}`,
       grade_level:     gradeLabel,
       gender:          student.gender ?? null,
