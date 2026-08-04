@@ -1,9 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import {
-  fetchStudentAcademicRecord,
-  saveSupervisorNote,
-  markReadyForNext,
-} from "../api/teacher.js";
+import {fetchStudentAcademicRecord,saveSupervisorNote,markReadyForNext,} from "../api/teacher.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 const fmtDate = (iso) => {
@@ -153,7 +149,7 @@ export default function StudentAcademicRecordModal({ studentId, onClose }) {
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-bold text-on-surface-variant">Quarter:</span>
                         <select value={quarter} onChange={(e) => setQuarter(e.target.value)}
-                          className="text-sm font-bold border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary/20">
+                          className="border border-gray-200 rounded-lg pl-2 pr-8 py-1 text-xs font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer bg-white">
                           <option value="all">All Quarters</option>
                           {[1, 2, 3, 4].map((q) => <option key={q} value={q}>{QLABEL[q - 1]}</option>)}
                         </select>

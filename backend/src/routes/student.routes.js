@@ -11,6 +11,8 @@ router.use(authenticate);
 router.get("/account",                   requireRole("student"), AccountController.getAccount);
 router.put("/account",                   requireRole("student"), AccountController.updateAccount);
 router.post("/account/password",         requireRole("student"), AccountController.changePassword);
+router.post("/account/email/request-code", requireRole("student"), AccountController.requestEmailChange);
+router.post("/account/email/verify",       requireRole("student"), AccountController.verifyEmailChange);
 router.get("/account/support-requests",  requireRole("student"), AccountController.getSupportRequests);
 router.post("/account/support-requests", requireRole("student"), AccountController.createSupportRequest);
 router.get("/dashboard", requireRole("student"), StudentController.getDashboard);

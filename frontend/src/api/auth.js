@@ -12,6 +12,10 @@ export const getMeRequest = () =>
 export const resetPasswordRequest = (id_number, new_password) =>
   client.post("/auth/reset-password", { id_number, new_password });
 
+// Complete a reset started from a Supabase recovery-email link (token from the URL).
+export const resetPasswordWithToken = (access_token, new_password) =>
+  client.post("/auth/reset-with-token", { access_token, new_password });
+
 export const forgotPasswordRequest = (id_number) =>
   client.post("/auth/forgot-password", { id_number });
 

@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { resetPasswordRequest } from "../api/auth.js";
+import { resetPasswordRequest, resetPasswordWithToken } from "../api/auth.js";
 
 export default function ResetPassword() {
   const navigate = useNavigate();
@@ -12,15 +12,40 @@ export default function ResetPassword() {
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState("");
   const [done, setDone]           = useState(false);
+  // When arriving from a Supabase reset-email link, the recovery token rides in the URL
+  // hash (#access_token=…&type=recovery). If present we switch to token mode: the token
+  // identifies the user, so no ID number is asked.
+  const [recoveryToken, setRecoveryToken] = useState(null);
+
+  useEffect(() => {
+    const hash = window.location.hash?.startsWith("#") ? window.location.hash.slice(1) : "";
+    if (!hash) return;
+    const params = new URLSearchParams(hash);
+    if (params.get("error_description")) {
+      setError(params.get("error_description").replace(/\+/g, " "));
+      return;
+    }
+    if (params.get("type") === "recovery" && params.get("access_token")) {
+      setRecoveryToken(params.get("access_token"));
+      // strip the token out of the address bar so it isn't left in history
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, []);
+
+  const tokenMode = Boolean(recoveryToken);
 
   const submit = async (e) => {
     e.preventDefault();
     setError("");
-    if (password.length < 6)      return setError("Password must be at least 6 characters.");
-    if (password !== confirm)     return setError("Passwords do not match.");
+    if (password.length < 6)  return setError("Password must be at least 6 characters.");
+    if (password !== confirm) return setError("Passwords do not match.");
     setLoading(true);
     try {
-      await resetPasswordRequest(idNumber.trim(), password);
+      if (tokenMode) {
+        await resetPasswordWithToken(recoveryToken, password);
+      } else {
+        await resetPasswordRequest(idNumber.trim(), password);
+      }
       setDone(true);
     } catch (err) {
       setError(err.message ?? "Could not reset password.");
@@ -38,7 +63,9 @@ export default function ResetPassword() {
           <span className="material-symbols-outlined text-primary text-4xl">lock_reset</span>
           <div>
             <h1 className="text-primary font-headline font-extrabold text-2xl tracking-tight">Reset Password</h1>
-            <p className="text-on-surface-variant text-sm">Verify your ID number to set a new password.</p>
+            <p className="text-on-surface-variant text-sm">
+              {tokenMode ? "Set a new password for your account." : "Verify your ID number to set a new password."}
+            </p>
           </div>
         </div>
 
@@ -63,11 +90,13 @@ export default function ResetPassword() {
               </div>
             )}
 
-            <div className="space-y-2">
-              <label htmlFor="id" className="block text-sm font-medium text-on-surface font-label">ID Number</label>
-              <input id="id" type="text" inputMode="numeric" pattern="[0-9]*" value={idNumber}
-                onChange={(e) => setIdNumber(e.target.value)} placeholder="Your school ID number" required className={field} />
-            </div>
+            {!tokenMode && (
+              <div className="space-y-2">
+                <label htmlFor="id" className="block text-sm font-medium text-on-surface font-label">ID Number</label>
+                <input id="id" type="text" inputMode="numeric" pattern="[0-9]*" value={idNumber}
+                  onChange={(e) => setIdNumber(e.target.value)} placeholder="Your school ID number" required className={field} />
+              </div>
+            )}
 
             <div className="space-y-2">
               <label htmlFor="pw" className="block text-sm font-medium text-on-surface font-label">New Password</label>

@@ -40,6 +40,17 @@ export const getEmployees = async () => {
 // (grade_level.teacher_id) and the distinct PACE subjects supervised, derived from
 // the PACEs taken by students in those grade levels.
 export const getSupervisors = async () => {
+  // Scope grade-level assignments to the active school year so the list matches
+  // the grade-level picker (getAllGradeLevels also filters by the active sy_id).
+  // Without this, supervisors could show/prefill grade levels from other school
+  // years that aren't offered as options — the edit modal can't uncheck them, so
+  // updates re-submit the stale ids and the assignment appears not to change.
+  const { data: activeSy } = await supabaseAdmin
+    .from("school_year")
+    .select("sy_id")
+    .eq("is_active", true)
+    .single();
+
   const [
     { data: teachers },
     { data: gradeLevels },
@@ -50,7 +61,10 @@ export const getSupervisors = async () => {
       .from("teacher")
       .select("teacher_id, first_name, last_name, contact_number, user_id, users(email, is_active)")
       .order("last_name"),
-    supabaseAdmin.from("grade_level").select("gl_id, level_name, teacher_id"),
+    supabaseAdmin
+      .from("grade_level")
+      .select("gl_id, level_name, teacher_id")
+      .eq("sy_id", activeSy?.sy_id ?? -1),
     supabaseAdmin.from("student").select("student_id, gl_id"),
     supabaseAdmin.from("student_pace").select("student_id, pace_module(subject)"),
   ]);

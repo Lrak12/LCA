@@ -33,6 +33,19 @@ const BASIS_STYLES = {
 const BASIS_OPTIONS = Object.keys(BASIS_STYLES);
 const DEFAULT_BASIS = "Diagnostic Assessment";
 
+// Render a student's name as "Last, First" (falls back to whatever parts exist).
+const lastFirst = (s) => {
+  const last  = (s.last_name  ?? "").trim();
+  const first = (s.first_name ?? "").trim();
+  if (last && first) return `${last}, ${first}`;
+  return last || first || "—";
+};
+
+// Compare two students by "last name, first name" for A→Z / Z→A sorting.
+const compareByName = (a, b, dir) =>
+  (`${a.last_name ?? ""} ${a.first_name ?? ""}`)
+    .localeCompare(`${b.last_name ?? ""} ${b.first_name ?? ""}`, undefined, { sensitivity: "base" }) * dir;
+
 // ─── New Student Modal ────────────────────────────────────────────────────────
 // Enroll a brand-new student for diagnostic testing; on success shows an auto-generated
 // login-credentials card, then routes into the diagnostic recording flow.
@@ -452,6 +465,7 @@ export default function DiagnosticAssessments() {
   const [search,      setSearch]      = useState("");
   const [gradeFilter, setGradeFilter] = useState("");
   const [basisFilter, setBasisFilter] = useState("");
+  const [nameSort,    setNameSort]    = useState("asc"); // "asc" | "desc": Name column A→Z / Z→A
   const [page,        setPage]        = useState(1);
   const [openMenu,    setOpenMenu]    = useState(null); // student_id of open kebab
   const [showModal,   setShowModal]   = useState(false); // New Student modal open?
@@ -505,11 +519,14 @@ export default function DiagnosticAssessments() {
     return matchSearch && matchGrade && matchBasis;
   });
 
-  // paginate the filtered rows
-  const totalPages   = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  // sort the filtered rows by "last name, first name" (A→Z or Z→A)
+  const sorted = [...filtered].sort((a, b) => compareByName(a, b, nameSort === "desc" ? -1 : 1));
+
+  // paginate the sorted rows
+  const totalPages   = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
   const currentPage  = Math.min(page, totalPages);
   const startIndex   = (currentPage - 1) * PAGE_SIZE;
-  const pageRows     = filtered.slice(startIndex, startIndex + PAGE_SIZE);
+  const pageRows     = sorted.slice(startIndex, startIndex + PAGE_SIZE);
 
   // Stats (computable; "Accepted" is a placeholder until an acceptance workflow exists)
   const totalRecords  = diagnosticStudents.length;
@@ -580,8 +597,9 @@ export default function DiagnosticAssessments() {
         {/* Filter bar */}
         <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-4 mb-6 flex items-end gap-4 flex-wrap">
           <div className="relative flex-1 min-w-[220px]">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1 text-on-surface-variant text-base">search</span>
+            <span className="material-symbols-outlined absolute left-3 top-1/2  text-on-surface-variant text-base">search</span>
             {/* search -> setSearch + page 1 (client-side filter) */}
+            <label className="block text-[13px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1.5">Student Name or ID</label>
             <input
               type="text"
               placeholder="Search student name or ID…"
@@ -601,7 +619,7 @@ export default function DiagnosticAssessments() {
           </div>
           {/* grade filter -> setGradeFilter + page 1 */}
           <div>
-            <label className="block text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1.5">Grade Level</label>
+            <label className="block text-[13px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1.5">Grade Level</label>
             <select
               value={gradeFilter}
               onChange={(e) => { setGradeFilter(e.target.value); setPage(1); }}
@@ -612,7 +630,7 @@ export default function DiagnosticAssessments() {
             </select>
           </div>
           <div>
-            <label className="block text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1.5">Placement Basis</label>
+            <label className="block text-[13px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1.5">Placement Basis</label>
             <select
               value={basisFilter}
               onChange={(e) => { setBasisFilter(e.target.value); setPage(1); }}
@@ -673,7 +691,22 @@ export default function DiagnosticAssessments() {
                     <tr className="bg-surface-container-lowest border-b border-outline-variant/20">
                       {["Student ID", "Student Name", "Grade Level", "Placement Basis", "Actions"].map((h) => (
                         <th key={h} className={`px-6 py-3.5 text-[13px] font-extrabold text-on-surface-variant uppercase tracking-widest whitespace-nowrap ${h === "Actions" ? "text-right" : "text-left"}`}>
-                          {h}
+                          {h === "Student Name" ? (
+                            // Clickable header: toggles A→Z / Z→A by last name, first name
+                            <button
+                              type="button"
+                              onClick={() => setNameSort((d) => (d === "asc" ? "desc" : "asc"))}
+                              className="inline-flex items-center gap-1 font-extrabold tracking-widest uppercase hover:text-primary transition-colors"
+                              title="Sort by name"
+                            >
+                              {h}
+                              <span className="material-symbols-outlined text-sm leading-none">
+                                {nameSort === "asc" ? "arrow_upward" : "arrow_downward"}
+                              </span>
+                            </button>
+                          ) : (
+                            h
+                          )}
                         </th>
                       ))}
                     </tr>
@@ -684,7 +717,7 @@ export default function DiagnosticAssessments() {
                       return (
                         <tr key={s.student_id} className="hover:bg-surface-container-lowest transition-colors">
                           <td className="px-6 py-4 font-bold text-on-surface whitespace-nowrap">{s.student_id}</td>
-                          <td className="px-6 py-4 font-bold text-on-surface whitespace-nowrap">{s.first_name} {s.last_name}</td>
+                          <td className="px-6 py-4 font-bold text-on-surface whitespace-nowrap">{lastFirst(s)}</td>
                           <td className="px-6 py-4 text-on-surface-variant whitespace-nowrap">{s.grade_level?.level_name ?? "—"}</td>
                           <td className="px-6 py-4">
                             <span className={`px-3 py-1 rounded-full text-[11px] font-bold whitespace-nowrap ${BASIS_STYLES[basis]}`}>

@@ -1,4 +1,4 @@
-import { supabaseAdmin } from "../config/supabase.js";
+import { supabase, supabaseAdmin } from "../config/supabase.js";
 
 // Role profile tables. The role-table primary key doubles as the login "school ID".
 const ROLE_SOURCES = [
@@ -293,11 +293,13 @@ export const createUser = async ({
     }
   }
 
-  // create the Supabase Auth user (this fires the handle_new_user trigger)
+  // Create the Supabase Auth user UNCONFIRMED (this fires the handle_new_user trigger).
+  // email_confirm:false keeps the account unverified so that — with "Confirm email" ON in
+  // the Supabase dashboard — sign-in is blocked until the user clicks the activation link.
   const { data: authData, error: authErr } = await supabaseAdmin.auth.admin.createUser({
     email,
     password,
-    email_confirm: true,                             // no confirmation email; account is usable immediately
+    email_confirm: false,
     user_metadata: { username: username || email.split("@")[0], role },
   });
   if (authErr) throw new Error(authErr.message);
@@ -312,6 +314,17 @@ export const createUser = async ({
   // wait for the trigger to create the matching public.users row
   const user_id = await waitForUserRow(authId);
   if (!user_id) await rollback("User profile was not created by the trigger. Please try again.");
+
+  // Send the activation email (Supabase-native: dashboard SMTP + the "Confirm signup"
+  // template). Sent before the profile insert so a send failure rolls back cleanly and the
+  // admin can retry rather than leaving an un-activatable account behind.
+  const activationRedirect = `${process.env.FRONTEND_URL || "http://localhost:5173"}/login`;
+  const { error: mailErr } = await supabase.auth.resend({
+    type: "signup",
+    email,
+    options: { emailRedirectTo: activationRedirect },
+  });
+  if (mailErr) await rollback(`Account not created — activation email could not be sent: ${mailErr.message}`);
 
   // insert the role-profile row (admin gets the reserved admin_id; others store contact_number)
   const { table, pk } = STAFF_PROFILE[role];

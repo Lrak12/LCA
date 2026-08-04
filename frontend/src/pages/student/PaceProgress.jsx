@@ -158,6 +158,9 @@ export default function PaceProgress() {
   const [error, setError]     = useState("");
   const [submittingId, setSubmittingId] = useState(null);
   const [notice, setNotice]   = useState("");
+  const [viewReq, setViewReq] = useState(null); // request shown in the View Request modal
+  const [viewSchedule, setViewSchedule] = useState(null); // scheduled test shown in the View Schedule modal
+  const [viewSelfTest, setViewSelfTest] = useState(null); // PACE shown in the Go to Self-Test modal
   const [quarterFilter, setQuarterFilter] = useState("all"); // "all" | "1".."4"
   const [selectedPace, setSelectedPace]   = useState({});     // subject → paceNo
 
@@ -313,9 +316,22 @@ export default function PaceProgress() {
         {/* ── Next PACE Test ───────────────────────────────────────── */}
         {!loading && nextPaceTest && (
           <article className="bg-white rounded-2xl p-6 shadow-sm border border-outline-variant/20 mb-6">
-            <div className="flex items-center gap-2 mb-5">
-              <span className="material-symbols-outlined text-primary text-lg" style={fillStyle}>event_upcoming</span>
-              <h3 className="font-headline text-base font-extrabold text-primary">Next PACE Test</h3>
+            <div className="flex items-center justify-between gap-3 mb-5">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-lg" style={fillStyle}>event_upcoming</span>
+                <h3 className="font-headline text-base font-extrabold text-primary">Next PACE Test</h3>
+              </div>
+              <button
+                onClick={() => setViewSelfTest({
+                  subject:   nextPaceTest.subject,
+                  paceNo:    nextPaceTest.paceNo,
+                  selfTests: nextPaceTest.selfTests ?? [],
+                })}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-outline-variant/40 text-xs font-bold text-on-surface hover:bg-surface-container-low transition-colors"
+              >
+                <span className="material-symbols-outlined text-sm">edit_note</span>
+                Go to Self-Test
+              </button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-y-5 gap-x-6 items-start">
               <NextTestField label="PACE" value={`${nextPaceTest.subject} ${nextPaceTest.paceNo ?? ""}`.trim()} />
@@ -562,7 +578,7 @@ export default function PaceProgress() {
                             </button>
                           ) : info.action === "self-test" ? (
                             <button
-                              onClick={() => navigate("/student/assessments")}
+                              onClick={() => setViewSelfTest(req)}
                               className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-outline-variant/40 text-xs font-bold text-on-surface hover:bg-surface-container-low transition-colors"
                             >
                               <span className="material-symbols-outlined text-sm">edit_note</span>
@@ -570,14 +586,17 @@ export default function PaceProgress() {
                             </button>
                           ) : info.action === "view-schedule" ? (
                             <button
-                              onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+                              onClick={() => setViewSchedule(req)}
                               className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-outline-variant/40 text-xs font-bold text-on-surface hover:bg-surface-container-low transition-colors"
                             >
                               <span className="material-symbols-outlined text-sm">visibility</span>
                               View Schedule
                             </button>
                           ) : (
-                            <button className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-outline-variant/40 text-xs font-bold text-on-surface-variant">
+                            <button
+                              onClick={() => setViewReq(req)}
+                              className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-outline-variant/40 text-xs font-bold text-on-surface hover:bg-surface-container-low transition-colors"
+                            >
                               <span className="material-symbols-outlined text-sm">visibility</span>
                               View Request
                             </button>
@@ -591,6 +610,216 @@ export default function PaceProgress() {
             </div>
           )}
         </article>
+
+        {/* View Request modal — details of a pending PACE-test request */}
+        {viewReq && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+            onClick={(e) => e.target === e.currentTarget && setViewReq(null)}
+          >
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+              {/* Header */}
+              <div className="px-6 pt-6 pb-4 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-primary">open_in_new</span>
+                  <h2 className="font-headline text-lg font-extrabold text-on-surface">View Request</h2>
+                </div>
+                <button onClick={() => setViewReq(null)} className="p-1 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-colors">
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+
+              {/* Details */}
+              <div className="px-6 pb-2 grid grid-cols-2 gap-x-6 gap-y-6">
+                <div>
+                  <p className="text-[11px] font-extrabold tracking-widest uppercase text-on-surface-variant">Subject</p>
+                  <p className="text-base font-bold text-on-surface mt-1.5">{viewReq.subject}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-extrabold tracking-widest uppercase text-on-surface-variant">PACE Number</p>
+                  <p className="text-base font-bold text-on-surface mt-1.5">{viewReq.paceNo ?? "—"}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-extrabold tracking-widest uppercase text-on-surface-variant">Request Date</p>
+                  <p className="text-base font-bold text-on-surface mt-1.5">{viewReq.requestedDate ?? "—"}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-extrabold tracking-widest uppercase text-on-surface-variant">Status</p>
+                  <span className="inline-block mt-1.5 text-[11px] font-extrabold tracking-widest uppercase bg-amber-100 text-amber-700 px-3 py-1 rounded-full">
+                    Pending Approval
+                  </span>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="px-6 py-5 flex justify-end">
+                <button onClick={() => setViewReq(null)} className="px-6 py-2.5 rounded-xl border border-outline-variant/40 text-sm font-bold text-on-surface hover:bg-surface-container-low transition-colors">
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* View Schedule modal — details of a scheduled PACE test */}
+        {viewSchedule && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+            onClick={(e) => e.target === e.currentTarget && setViewSchedule(null)}
+          >
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+              {/* Header */}
+              <div className="px-6 pt-6 pb-4 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-primary">calendar_month</span>
+                  <h2 className="font-headline text-lg font-extrabold text-on-surface">View Schedule</h2>
+                </div>
+                <button onClick={() => setViewSchedule(null)} className="p-1 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-colors">
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+
+              {/* Details */}
+              <div className="px-6 pb-2 grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-6">
+                <div>
+                  <p className="text-[11px] font-extrabold tracking-widest uppercase text-on-surface-variant">Subject</p>
+                  <p className="text-base font-bold text-on-surface mt-1.5">{viewSchedule.subject}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-extrabold tracking-widest uppercase text-on-surface-variant">PACE Number</p>
+                  <p className="text-base font-bold text-on-surface mt-1.5">{viewSchedule.paceNo ?? "—"}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-extrabold tracking-widest uppercase text-on-surface-variant">Test Type</p>
+                  <p className="text-base font-bold text-on-surface mt-1.5">{viewSchedule.testType ?? "PACE Test"}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-extrabold tracking-widest uppercase text-on-surface-variant">Date &amp; Time</p>
+                  <p className="text-base font-bold text-on-surface mt-1.5">
+                    {viewSchedule.scheduledDate ?? "—"}
+                    {viewSchedule.scheduledTime && (
+                      <><br /><span className="text-sm">{viewSchedule.scheduledTime}</span></>
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-extrabold tracking-widest uppercase text-on-surface-variant">Duration</p>
+                  <p className="text-base font-bold text-on-surface mt-1.5">1 hour</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-extrabold tracking-widest uppercase text-on-surface-variant">Test Location</p>
+                  <p className="text-base font-bold text-on-surface mt-1.5">{viewSchedule.location ?? "—"}</p>
+                </div>
+                <div className="col-span-2 sm:col-span-3">
+                  <p className="text-[11px] font-extrabold tracking-widest uppercase text-on-surface-variant">Supervisor</p>
+                  <p className="text-base font-bold text-on-surface mt-1.5">{viewSchedule.supervisor ?? "—"}</p>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="px-6 py-5 flex justify-end">
+                <button onClick={() => setViewSchedule(null)} className="px-6 py-2.5 rounded-xl border border-outline-variant/40 text-sm font-bold text-on-surface hover:bg-surface-container-low transition-colors">
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Go to Self-Test modal — self-test progress + attempt results for a PACE */}
+        {viewSelfTest && (() => {
+          const required  = 3; // target number of self-tests per PACE
+          const attempts  = viewSelfTest.selfTests ?? [];
+          const completed = attempts.length;
+          const progress  = Math.round((Math.min(completed, required) / required) * 100);
+          const slots     = Array.from({ length: Math.max(required, completed) });
+          return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+            onClick={(e) => e.target === e.currentTarget && setViewSelfTest(null)}
+          >
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+              {/* Header */}
+              <div className="px-6 pt-6 pb-4 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-primary">open_in_new</span>
+                  <h2 className="font-headline text-lg font-extrabold text-on-surface">Go to Self-Test</h2>
+                </div>
+                <button onClick={() => setViewSelfTest(null)} className="p-1 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-colors">
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+
+              {/* Details */}
+              <div className="px-6 pb-2 grid grid-cols-3 gap-x-6 gap-y-6">
+                <div>
+                  <p className="text-[11px] font-extrabold tracking-widest uppercase text-on-surface-variant">Subject</p>
+                  <p className="text-base font-bold text-on-surface mt-1.5">{viewSelfTest.subject}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-extrabold tracking-widest uppercase text-on-surface-variant">PACE Number</p>
+                  <p className="text-base font-bold text-on-surface mt-1.5">{viewSelfTest.paceNo ?? "—"}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-extrabold tracking-widest uppercase text-on-surface-variant">Required Self-Tests</p>
+                  <p className="text-base font-bold text-on-surface mt-1.5">{required}</p>
+                </div>
+                <div className="col-span-3">
+                  <p className="text-[11px] font-extrabold tracking-widest uppercase text-on-surface-variant">Completed</p>
+                  <p className="text-base font-bold text-on-surface mt-1.5">{completed} / {required}</p>
+                </div>
+              </div>
+
+              {/* Overall progress */}
+              <div className="px-6 pt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[11px] font-extrabold tracking-widest uppercase text-on-surface-variant">Overall Progress</p>
+                  <span className="text-sm font-extrabold text-on-surface">{progress}%</span>
+                </div>
+                <div className="h-2 bg-surface-container-high rounded-full overflow-hidden">
+                  <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${progress}%` }} />
+                </div>
+              </div>
+
+              {/* Self-test list */}
+              <div className="px-6 pt-5">
+                <p className="text-[11px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-2">Self-Test List</p>
+                <div className="space-y-2">
+                  {slots.map((_, i) => {
+                    const st = attempts[i];
+                    return (
+                      <div key={i} className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl bg-surface-container-lowest border border-outline-variant/20">
+                        <span className="text-sm font-bold text-on-surface">Self-Test {i + 1}</span>
+                        {st ? (
+                          <div className="flex items-center gap-3">
+                            <span className={`text-xs font-extrabold tracking-wide uppercase ${st.passed ? "text-green-600" : "text-red-500"}`}>
+                              {st.passed ? "Passed" : "Failed"}
+                            </span>
+                            <span className="text-sm font-bold text-on-surface">{st.score}%</span>
+                            {st.date && <span className="text-xs text-on-surface-variant">{st.date}</span>}
+                          </div>
+                        ) : (
+                          <span className="text-xs font-extrabold tracking-wide uppercase text-red-500">Not Taken</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="px-6 py-5 flex justify-end gap-3">
+                <button onClick={() => navigate("/student/assessments")} className="px-6 py-2.5 rounded-xl bg-primary text-sm font-bold text-white hover:opacity-90 transition-opacity">
+                  Go to Self-Test
+                </button>
+                <button onClick={() => setViewSelfTest(null)} className="px-6 py-2.5 rounded-xl border border-outline-variant/40 text-sm font-bold text-on-surface hover:bg-surface-container-low transition-colors">
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+          );
+        })()}
 
       </main>
     </StudentLayout>

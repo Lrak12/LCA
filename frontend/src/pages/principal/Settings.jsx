@@ -272,7 +272,7 @@ export default function Settings() {
               <h3 className="text-sm font-extrabold text-on-surface tracking-wide mb-4">Preferences Overview</h3>
 
               <div className="space-y-3">
-                <button className="w-full flex items-center gap-3 rounded-xl px-3 py-3 hover:bg-surface-container-low transition-colors text-left">
+                <div className="w-full flex items-center gap-3 rounded-xl px-3 py-3">
                   <div className="w-9 h-9 rounded-xl bg-primary text-white flex items-center justify-center shrink-0">
                     <span className="material-symbols-outlined text-base" style={fillStyle}>dark_mode</span>
                   </div>
@@ -280,17 +280,15 @@ export default function Settings() {
                     <p className="text-sm font-bold text-on-surface">Appearance</p>
                     <p className="text-[11px] text-on-surface-variant">Light Theme</p>
                   </div>
-                  <span className="material-symbols-outlined text-base text-on-surface-variant">chevron_right</span>
-                </button>
+                </div>
 
-                <button className="w-full flex items-center gap-3 rounded-xl px-3 py-3 hover:bg-surface-container-low transition-colors text-left">
+                <div className="w-full flex items-center gap-3 rounded-xl px-3 py-3">
                   <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 text-sm font-extrabold">Aあ</div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-on-surface">Language</p>
                     <p className="text-[11px] text-on-surface-variant">English (US)</p>
                   </div>
-                  <span className="material-symbols-outlined text-base text-on-surface-variant">chevron_right</span>
-                </button>
+                </div>
               </div>
 
               {/* Log Out -> handleLogout() (logout() then navigate to /login) */}

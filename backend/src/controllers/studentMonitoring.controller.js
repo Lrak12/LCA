@@ -29,3 +29,9 @@ export const getStudentSummary = asyncHandler(async (req, res) => {
   sendSuccess(res, data);
 });
 
+// wide-CSV export: every student's profile + grades + summaries ({ headers, rows })
+export const exportRecords = asyncHandler(async (req, res) => {
+  const data = await StudentMonitoringService.exportStudentRecords();
+  sendSuccess(res, data);
+});
+

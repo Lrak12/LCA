@@ -26,13 +26,13 @@ const subjectStyles = {
 const subjectStyle = (subject) => subjectStyles[subject] ?? subjectStyles.default;
 
 const TH = ({ children }) => (
-  <th className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant pb-3 text-left">
+  <th className="text-[13px] font-extrabold tracking-widest uppercase text-on-surface-variant pb-3 text-left">
     {children}
   </th>
 );
 
 const PassBadge = ({ passed }) => (
-  <span className={`text-[10px] font-extrabold tracking-widest uppercase px-3 py-1.5 rounded-full ${passed ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
+  <span className={`text-[13px] font-extrabold tracking-widest uppercase px-3 py-1.5 rounded-full ${passed ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
     {passed ? "Passed" : "Failed"}
   </span>
 );

@@ -9,6 +9,7 @@ const router = Router();
 router.use(authenticate);
 router.get("/",                    requireRole("principal", "teacher"), StudentMonitoringController.getOverview);        // list + stats
 router.get("/pace-analytics",      requireRole("principal", "teacher"), StudentMonitoringController.getPaceAnalytics);   // analytics tab
+router.get("/export",              requireRole("principal", "teacher"), StudentMonitoringController.exportRecords);     // wide-CSV records export
 router.get("/:student_id/profile", requireRole("principal", "teacher"), StudentMonitoringController.getStudentProfile); // View Full Plan
 router.get("/:student_id/summary", requireRole("principal", "teacher"), StudentMonitoringController.getStudentSummary); // View Student Details
 

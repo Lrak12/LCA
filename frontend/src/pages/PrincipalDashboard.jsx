@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchDashboardStats } from "../api/dashboard.js";
 import PrincipalLayout from "../components/PrincipalLayout.jsx";
-
+import { useAuth } from "../context/AuthContext.jsx";
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
 const statCards = [
@@ -65,7 +65,7 @@ export default function PrincipalDashboard() {
   const [stats,   setStats]   = useState(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState("");
-
+  const { user }        = useAuth(); //to get principal name
   useEffect(() => {
     const load = async () => {
       try {
@@ -85,8 +85,8 @@ export default function PrincipalDashboard() {
   const today    = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
   const schoolYearLabel = stats?.schoolYear?.year_label ?? "—";
-  const notifications   = stats?.recentAnnouncements ?? [];   // shown in the notifications panel
-
+  const notifications   = stats?.recentAnnouncements ?? [];   // shown in the notifications panel]
+  const firstName = user?.first_name ?? user?.username ?? "Admin"; // greeting name
   return (
     <PrincipalLayout schoolYearLabel={loading ? "..." : schoolYearLabel}>
       <main className="p-4 sm:p-8 max-w-full mx-auto w-full">
@@ -102,7 +102,7 @@ export default function PrincipalDashboard() {
         <header className="mb-10 flex justify-between items-start gap-4">
           <div className="max-w-2xl">
             <h2 className="text-4xl font-extrabold text-primary font-headline tracking-tight mb-2">
-              {greeting}, Principal.
+              {greeting}, {firstName}.
             </h2>
             <p className="text-on-surface-variant text-lg leading-relaxed">
               Here's an overview of the school's key information and quick access to important tasks.

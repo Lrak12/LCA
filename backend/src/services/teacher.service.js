@@ -671,7 +671,7 @@ const ON_TRACK_MARK = 50;   // completion % threshold for "On Track"
 
 // Backs the Records + Progress tabs. Returns { stats, students(page), totalStudents,
 // totalPages, gradeLevels, subjects }. Filters run before paging so counts are right.
-export const getStudentMonitoringOverview = async (user_id, { grade, search, paceStatus, assessStatus, subject, page = 1 } = {}) => {
+export const getStudentMonitoringOverview = async (user_id, { grade, search, paceStatus, assessStatus, subject, sort = "asc", page = 1 } = {}) => {
   const empty = {
     stats: { totalStudents: 0, assessed: 0, scheduledToTake: 0, notAssessed: 0,
              paceCompletionRate: 0, avgPaceProgress: 0, needingAttention: 0,
@@ -742,7 +742,7 @@ export const getStudentMonitoringOverview = async (user_id, { grade, search, pac
 
     return {
       id:               s.student_id,
-      name:             `${s.first_name} ${s.last_name}`.trim(),
+      name:             `${s.last_name ?? ""}, ${s.first_name ?? ""}`.trim(),
       gradeLevel:       s.grade_level?.level_name ?? "—",
       gender:           s.gender ?? "—",
       ongoingPace:      ongoing?.pace_module?.module_number != null ? `PACE ${ongoing.pace_module.module_number}` : "—",
@@ -798,6 +798,10 @@ export const getStudentMonitoringOverview = async (user_id, { grade, search, pac
     const q = search.toLowerCase();
     allRows = allRows.filter((r) => r.name.toLowerCase().includes(q) || String(r.id).includes(q));
   }
+
+  // Sort by name ("Last, First") ascending/descending across the full filtered list.
+  const sortDir = sort === "desc" ? -1 : 1;
+  allRows = [...allRows].sort((a, b) => a.name.localeCompare(b.name) * sortDir);
 
   const filteredTotal = allRows.length;
   const pageRows = allRows.slice((page - 1) * SM_PAGE_SIZE, page * SM_PAGE_SIZE);
@@ -1260,7 +1264,7 @@ export const getPaceMonitoring = async (user_id, { student_id } = {}) => {
 
   const { data: students } = await supabaseAdmin
     .from("student")
-    .select("student_id, first_name, last_name, grade_level(level_name)")
+    .select("student_id, first_name, last_name, users(is_active), grade_level(level_name)")
     .in("gl_id", glIds)
     .order("last_name");
   if (!students?.length) return empty;
@@ -1283,13 +1287,16 @@ export const getPaceMonitoring = async (user_id, { student_id } = {}) => {
     .order("quarter")
     .order("subject");
 
-  // Returning students: those with any completed PACE history (prior progress)
-  const { data: completedSp } = await supabaseAdmin
-    .from("student_pace")
-    .select("student_id")
-    .in("student_id", studentIds)
-    .eq("status", "Completed");
-  const returningSet = new Set((completedSp ?? []).map((r) => r.student_id));
+  // New vs Returning classification. Intended production rule: a student becomes
+  // "Returning" once their account has been DISABLED for a set number of months (they
+  // left and came back). Enforcing that waiting period needs a "deactivated_at"
+  // timestamp on the users table, which we don't track yet — so for TESTING this is
+  // INSTANT: any currently-disabled account (is_active = false) counts as returning;
+  // active accounts are New. Add the timestamp + a month threshold to enforce the real
+  // waiting period later.
+  const returningSet = new Set(
+    (students ?? []).filter((s) => s.users?.is_active === false).map((s) => s.student_id),
+  );
 
   // Index: projByStudent[student_id][quarter][subject] = row
   const projByStudent = {};
@@ -3140,6 +3147,35 @@ export const bulkSavePaceTestResults = async (user_id, records) => {
     } else {
       const { error: insErr } = await PaceTestModel.create(payload);
       if (insErr) { errors.push(`Student ${studentId}: insert failed — ${insErr.message}`); continue; }
+    }
+
+    // Keep student_pace.status in sync with the recorded score — mirrors the
+    // single-record recordPaceTest (~2787). Without this, bulk-recorded scores
+    // never flip the PACE to Completed/In Progress, so the Student Profile and
+    // Academic Recording views show stale completed/ongoing counts.
+    if (payload.passed) {
+      // Passing the PACE test COMPLETES the PACE (+ computes completion status/points).
+      const { data: sp } = await supabaseAdmin
+        .from("student_pace")
+        .select("end_date, extension_count, completion_date")
+        .eq("sp_id", spId)
+        .maybeSingle();
+      const completionDate = sp?.completion_date || payload.date_taken || new Date().toISOString().split("T")[0];
+      const { completion_status, points_earned } = _computePaceCompletion({
+        end_date: sp?.end_date, completion_date: completionDate, extension_count: sp?.extension_count ?? 0, passed: true,
+      });
+      await supabaseAdmin
+        .from("student_pace")
+        .update({ status: "Completed", completion_date: completionDate, completion_status, points_earned, ready_for_next: true })
+        .eq("sp_id", spId);
+    } else {
+      // A recorded-but-not-passed attempt means the PACE is being worked on (ongoing),
+      // not untouched — reflect that, but never downgrade an already-completed PACE.
+      await supabaseAdmin
+        .from("student_pace")
+        .update({ status: "In Progress" })
+        .eq("sp_id", spId)
+        .neq("status", "Completed");
     }
 
     saved++;

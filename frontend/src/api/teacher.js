@@ -37,6 +37,9 @@ export const fetchPaceAnalyticsReport = (params = {}) =>
 export const fetchTeacherAccount         = ()     => client.get("/teacher/account");
 export const updateTeacherAccount        = (data) => client.put("/teacher/account", data);
 export const changeTeacherPassword       = (data) => client.post("/teacher/account/password", data);
+// Email-change verification (code sent to the new address, then confirmed)
+export const requestTeacherEmailCode     = (newEmail) => client.post("/teacher/account/email/request-code", { newEmail });
+export const verifyTeacherEmailCode      = ({ newEmail, code }) => client.post("/teacher/account/email/verify", { newEmail, code });
 export const fetchTeacherSupportRequests = ()     => client.get("/teacher/account/support-requests");
 export const submitTeacherSupportRequest = (data) => client.post("/teacher/account/support-requests", data);
 

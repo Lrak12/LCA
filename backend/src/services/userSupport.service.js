@@ -1,4 +1,4 @@
-import { supabaseAdmin } from "../config/supabase.js";
+import { supabase, supabaseAdmin } from "../config/supabase.js";
 import { findUserBySchoolId } from "./auth.service.js";
 import * as NotificationService from "./notification.service.js";
 
@@ -467,21 +467,23 @@ const markResolved = async (sr_id, responseText) => {
 export const processPasswordReset = async (sr_id, action, note = "") => {
   const trimmed = String(note ?? "").trim();
 
-  if (action === "temp") {
+  if (action === "reset-email") {
     const { data: reqRow } = await supabaseAdmin
       .from(TABLE).select("sr_id, sender_user_id").eq("sr_id", sr_id).single();
     if (!reqRow) throw new Error("Request not found.");
 
     const { data: userRow } = await supabaseAdmin
-      .from("users").select("auth_id, email").eq("user_id", reqRow.sender_user_id).single();
-    if (!userRow?.auth_id) throw new Error("User account not found.");
+      .from("users").select("email").eq("user_id", reqRow.sender_user_id).single();
+    if (!userRow?.email) throw new Error("User account not found.");
 
-    const tempPassword = genTempPassword();
-    const { error } = await supabaseAdmin.auth.admin.updateUserById(userRow.auth_id, { password: tempPassword });
+    // Ask Supabase to email the user a password-reset link (uses the SMTP + "Reset
+    // Password" template configured in the dashboard). The link lands on our reset page.
+    const redirectTo = `${process.env.FRONTEND_URL || "http://localhost:5173"}/reset-password`;
+    const { error } = await supabase.auth.resetPasswordForEmail(userRow.email, { redirectTo });
     if (error) throw new Error(error.message);
 
-    const request = await markResolved(sr_id, trimmed || "Temporary password sent to registered email.");
-    return { request, tempPassword, email: userRow.email };
+    const request = await markResolved(sr_id, trimmed || "Password reset link sent to registered email.");
+    return { request, email: userRow.email, emailed: true };
   }
 
   if (action === "link") {

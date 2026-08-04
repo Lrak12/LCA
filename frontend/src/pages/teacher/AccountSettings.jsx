@@ -10,12 +10,15 @@ import {
   DEFAULT_SETTINGS,
 } from "../../utils/accessibility.js";
 import { isPhMobile, PH_MOBILE_HINT } from "../../utils/phone.js";
+import EmailChangeModal from "../../components/EmailChangeModal.jsx";
 import {
   fetchTeacherAccount,
   updateTeacherAccount,
   changeTeacherPassword,
   submitTeacherSupportRequest,
   fetchTeacherSupportRequests,
+  requestTeacherEmailCode,
+  verifyTeacherEmailCode,
 } from "../../api/teacher.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
@@ -132,7 +135,6 @@ const PrefRow = ({ iconBg, icon, title, sub, subColor }) => (
       <p className="text-sm font-bold text-on-surface leading-tight">{title}</p>
       <p className={`text-[11px] ${subColor ?? "text-on-surface-variant"}`}>{sub}</p>
     </div>
-    <span className="material-symbols-outlined text-on-surface-variant text-lg">chevron_right</span>
   </div>
 );
 
@@ -261,6 +263,7 @@ export default function AccountSettings() {
   const [currentPw, setCurrentPw] = useState("");
   const [newPw,     setNewPw]     = useState("");
   const [confirmPw, setConfirmPw] = useState("");
+  const [showEmailModal, setShowEmailModal] = useState(false); // verified email-change flow
 
   // Accessibility state — loaded from localStorage
   const [textSize,       setTextSize]       = useState(DEFAULT_SETTINGS.textSize);
@@ -444,8 +447,24 @@ export default function AccountSettings() {
                   </div>
                   <div className="sm:col-span-2">
                     <label className={labelCls}>Email Address</label>
-                    <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
+                    <div className="flex items-center gap-2">
+                      <input type="email" value={email} disabled className={`${inputCls} bg-surface-container-low text-on-surface-variant cursor-not-allowed`} />
+                      <button type="button" onClick={() => setShowEmailModal(true)}
+                        className="shrink-0 px-4 py-2.5 rounded-lg border border-outline-variant/40 text-sm font-bold text-primary hover:bg-surface-container-low transition-colors whitespace-nowrap">
+                        Change
+                      </button>
+                    </div>
+                    <p className="text-xs text-on-surface-variant mt-1">Changing your email sends a verification code to the new address.</p>
                   </div>
+                  {showEmailModal && (
+                    <EmailChangeModal
+                      currentEmail={email}
+                      requestCode={(newEmail) => requestTeacherEmailCode(newEmail)}
+                      verifyCode={async (code, newEmail) => { const res = await verifyTeacherEmailCode({ newEmail, code }); return res?.data?.email; }}
+                      onChanged={(newEmail) => { setEmail(newEmail); setLoaded((p) => (p ? { ...p, email: newEmail } : p)); }}
+                      onClose={() => setShowEmailModal(false)}
+                    />
+                  )}
                   <div className="sm:col-span-2">
                     <label className={labelCls}>Contact Number</label>
                     <input type="tel" value={contact} onChange={(e) => setContact(e.target.value)} className={inputCls} />

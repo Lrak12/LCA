@@ -9,7 +9,8 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import PrincipalLayout from "../../components/PrincipalLayout.jsx";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
 import StudentSummaryModal from "../../components/StudentSummaryModal.jsx";
-import { fetchStudentMonitoring, fetchPaceAnalytics } from "../../api/studentMonitoring.js";
+import ProjectedPacePlanModal from "./ProjectedPacePlanModal.jsx";
+import { fetchStudentMonitoring, fetchPaceAnalytics, fetchStudentProfile, exportStudentRecords } from "../../api/studentMonitoring.js";
 import { importStudentsCSV, createStudent } from "../../api/student.js";
 import { fetchAllSections } from "../../api/sections.js";
 import { isPhMobile, PH_MOBILE_HINT } from "../../utils/phone.js";
@@ -25,6 +26,19 @@ const TABS = [
   // Hidden for panel view — tab content/handlers remain below, just no nav entry.
   // { id: "analytics",     label: "PACE Analytics & Rankings" },
 ];
+
+// Render a student's name as "Last, First" (falls back to whatever parts exist).
+const lastFirst = (s) => {
+  const last  = (s.last_name  ?? "").trim();
+  const first = (s.first_name ?? "").trim();
+  if (last && first) return `${last}, ${first}`;
+  return last || first || s.full_name || "—";
+};
+
+// Compare two students by "last name, first name" for A→Z / Z→A sorting.
+const compareByName = (a, b, dir) =>
+  (`${a.last_name ?? ""} ${a.first_name ?? ""}`)
+    .localeCompare(`${b.last_name ?? ""} ${b.first_name ?? ""}`, undefined, { sensitivity: "base" }) * dir;
 
 // Derive a simple PACE status label from a student's pace counts
 const paceStatusOf = (s) => {
@@ -93,23 +107,6 @@ const downloadTemplate = () => {
   URL.revokeObjectURL(url);
 };
 //update supervisor assign pace add start and end date
-const exportCSV = (students) => {
-  const headers = ["student_id", "first_name", "last_name", "gender", "date_of_birth", "address", "contact_number", "enrollment_date"];
-  const rows = students.map((s) =>
-    headers.map((h) => {
-      const val = s[h] ?? "";
-      return String(val).includes(",") ? `"${val}"` : val;
-    }).join(",")
-  );
-  const content = [headers.join(","), ...rows].join("\n");
-  const blob = new Blob([content], { type: "text/csv" });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement("a");
-  a.href = url;
-  a.download = `students_export_${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-};
 
 // ─── Import Modal (copied from the Students page) ─────────────────────────────
 // CSV import: upload > preview > import > result. Parses client-side, then POSTs
@@ -580,7 +577,7 @@ function StudentProgressTab({ students, loading }) {
                     <tr key={s.student_id} className="hover:bg-surface-container-lowest transition-colors">
                       <td className="px-5 py-5 text-sm font-bold text-on-surface-variant">{startIndex + idx + 1}</td>
                       <td className="px-5 py-5 text-sm font-medium text-on-surface-variant whitespace-nowrap">ID {s.student_id}</td>
-                      <td className="px-5 py-5 text-sm font-bold text-on-surface">{s.full_name ?? `${s.first_name} ${s.last_name}`}</td>
+                      <td className="px-5 py-5 text-sm font-bold text-on-surface">{lastFirst(s)}</td>
                       <td className="px-5 py-5 text-sm text-on-surface">{s.completedPaces}</td>
                       <td className="px-5 py-5 text-sm text-on-surface">{s.totalPaces}</td>
                       <td className="px-5 py-5">
@@ -765,7 +762,7 @@ function RecommendationsTab({ students, loading, onView }) {
                   <tr key={s.student_id} className="hover:bg-surface-container-lowest transition-colors">
                     <td className="px-5 py-5 text-sm font-bold text-on-surface-variant">{startIndex + idx + 1}</td>
                     <td className="px-5 py-5 text-sm font-medium text-on-surface-variant whitespace-nowrap">ID {s.student_id}</td>
-                    <td className="px-5 py-5 text-sm font-bold text-on-surface">{s.full_name ?? `${s.first_name} ${s.last_name}`}</td>
+                    <td className="px-5 py-5 text-sm font-bold text-on-surface">{lastFirst(s)}</td>
                     <td className="px-5 py-5 text-sm text-on-surface whitespace-nowrap">{s.recommendation.currentPaceLabel}</td>
                     <td className="px-5 py-5 text-sm text-on-surface min-w-[180px]">{s.recommendation.projectedPaceLabel}</td>
                     <td className="px-5 py-5 text-sm text-on-surface-variant">{s.recommendation.basis}</td>
@@ -1278,11 +1275,16 @@ export default function StudentMonitoring() {
   const [search,          setSearch]          = useState("");
   const [gradeLevel,      setGradeLevel]      = useState("");
   const [status,          setStatus]          = useState("");
+  const [nameSort,        setNameSort]        = useState("asc"); // "asc" | "desc": Name column A→Z / Z→A
   const [page,            setPage]            = useState(1);
   const [selectedStudent, setSelectedStudent] = useState(null);
+  const [planStudent,     setPlanStudent]     = useState(null);  // Projected PACE Plan tab: student whose editable plan modal is open
+  const [planProjection,  setPlanProjection]  = useState(null);  // that student's saved projection (subjectPaces), for seeding the grid
+  const [planLoading,     setPlanLoading]     = useState(false);
   const [showImport,      setShowImport]      = useState(false);
   const [showAdd,         setShowAdd]         = useState(false);
   const [reloadKey,       setReloadKey]       = useState(0);
+  const [exporting,       setExporting]       = useState(false);
 
   // Trigger a refresh (e.g. after a CSV import) by bumping the reload key
   const reload = () => { setLoading(true); setReloadKey((k) => k + 1); };
@@ -1300,6 +1302,20 @@ export default function StudentMonitoring() {
     };
     load();
   }, [reloadKey]);
+
+  // When a student's Projected PACE Plan is opened, load their saved projection so the
+  // editable grid is seeded with the real plan (not defaults).
+  useEffect(() => {
+    if (!planStudent) { setPlanProjection(null); return; }
+    let cancelled = false;
+    setPlanLoading(true);
+    setPlanProjection(null);
+    fetchStudentProfile(planStudent.student_id)
+      .then((res) => { if (!cancelled) setPlanProjection(res.data?.subjectPaces ?? {}); })
+      .catch(() => { if (!cancelled) setPlanProjection({}); }) // fall back to defaults on error
+      .finally(() => { if (!cancelled) setPlanLoading(false); });
+    return () => { cancelled = true; };
+  }, [planStudent]);
 
   // Unique grade levels from real data for the filter dropdown
   const gradeLevels = useMemo(() => {
@@ -1323,10 +1339,16 @@ export default function StudentMonitoring() {
     return matchSearch && matchGradeLevel && matchStatus;
   }), [students, search, gradeLevel, status]);
 
-  const totalPages   = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  // Sort the filtered rows by "last name, first name" (A→Z or Z→A).
+  const sorted = useMemo(
+    () => [...filtered].sort((a, b) => compareByName(a, b, nameSort === "desc" ? -1 : 1)),
+    [filtered, nameSort],
+  );
+
+  const totalPages   = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
   const currentPage  = Math.min(page, totalPages);
   const startIndex   = (currentPage - 1) * PAGE_SIZE;
-  const pageStudents = filtered.slice(startIndex, startIndex + PAGE_SIZE);
+  const pageStudents = sorted.slice(startIndex, startIndex + PAGE_SIZE);
 
   const buildPages = () => {
     if (totalPages <= 5) return Array.from({ length: totalPages }, (_, i) => i + 1);
@@ -1337,6 +1359,32 @@ export default function StudentMonitoring() {
   };
 
   const resetFilters = () => { setSearch(""); setGradeLevel(""); setStatus(""); setPage(1); };
+
+  // Full-records export: backend returns { headers, rows } (profile + grades +
+  // summaries for EVERY student); build the wide CSV client-side and download it.
+  const handleExportRecords = async () => {
+    setExporting(true);
+    try {
+      const res = await exportStudentRecords();
+      const { headers = [], rows = [] } = res.data ?? {};
+      const esc = (v) => {
+        const s = v == null ? "" : String(v);
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const content = [headers.map(esc).join(","), ...rows.map((r) => r.map(esc).join(","))].join("\n");
+      const blob = new Blob([content], { type: "text/csv" });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href = url;
+      a.download = `student_records_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err.response?.data?.message ?? err.message ?? "Export failed.");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <PrincipalLayout schoolYearLabel={schoolYearLabel}>
@@ -1369,12 +1417,12 @@ export default function StudentMonitoring() {
               Add Student moved to Diagnostic Assessment > "Create New Student Assessment". */}
           <div className="flex items-center gap-3 shrink-0">
             <button
-              onClick={() => exportCSV(students)}
-              disabled={students.length === 0}
+              onClick={handleExportRecords}
+              disabled={students.length === 0 || exporting}
               className="flex items-center gap-2 bg-white border border-outline-variant/30 text-on-surface font-bold text-sm px-5 py-3 rounded-xl hover:bg-surface-container-low transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
             >
               <span className="material-symbols-outlined text-lg" style={fillStyle}>download</span>
-              Export CSV
+              {exporting ? "Exporting…" : "Export CSV"}
             </button>
             <button
               onClick={() => setShowImport(true)}
@@ -1420,7 +1468,7 @@ export default function StudentMonitoring() {
         {activeTab === "progress" ? (
           <StudentProgressTab students={students} loading={loading} />
         ) : activeTab === "recommendations" ? (
-          <RecommendationsTab students={students} loading={loading} onView={setSelectedStudent} />
+          <RecommendationsTab students={students} loading={loading} onView={setPlanStudent} />
         ) : activeTab === "analytics" ? (
           <PaceAnalyticsTab />
         ) : activeTab !== "records" ? (
@@ -1508,7 +1556,22 @@ export default function StudentMonitoring() {
                             h === "PACE Status" || h === "Actions" ? "text-center" : "text-left"
                           }`}
                         >
-                          {h}
+                          {h === "Name" ? (
+                            // Clickable header: toggles A→Z / Z→A by last name, first name
+                            <button
+                              type="button"
+                              onClick={() => setNameSort((d) => (d === "asc" ? "desc" : "asc"))}
+                              className="inline-flex items-center gap-1 font-extrabold tracking-widest uppercase hover:text-primary transition-colors"
+                              title="Sort by name"
+                            >
+                              {h}
+                              <span className="material-symbols-outlined text-sm leading-none">
+                                {nameSort === "asc" ? "arrow_upward" : "arrow_downward"}
+                              </span>
+                            </button>
+                          ) : (
+                            h
+                          )}
                         </th>
                       ))}
                     </tr>
@@ -1527,7 +1590,7 @@ export default function StudentMonitoring() {
                         <tr key={s.student_id} className="hover:bg-surface-container-lowest transition-colors">
                           <td className="px-5 py-5 text-sm font-bold text-on-surface-variant">{startIndex + idx + 1}</td>
                           <td className="px-5 py-5 text-sm font-medium text-on-surface-variant whitespace-nowrap">ID {s.student_id}</td>
-                          <td className="px-5 py-5 text-sm font-bold text-on-surface">{s.full_name ?? `${s.first_name} ${s.last_name}`}</td>
+                          <td className="px-5 py-5 text-sm font-bold text-on-surface">{lastFirst(s)}</td>
                           <td className="px-5 py-5 text-sm text-on-surface whitespace-nowrap">{s.grade_level ?? "—"}</td>
                           <td className="px-5 py-5 text-center"><PaceStatusBadge status={paceStatusOf(s)} /></td>
                           {/* View Details -> setSelectedStudent(s) opens <StudentSummaryModal> */}
@@ -1593,6 +1656,21 @@ export default function StudentMonitoring() {
         <StudentSummaryModal
           studentId={selectedStudent.student_id}
           onClose={() => setSelectedStudent(null)}
+        />
+      )}
+
+      {/* Projected PACE Plan tab > View Details: editable plan grid seeded from the
+          student's saved projection. Save persists via generateProjection, then reloads. */}
+      {planStudent && !planLoading && planProjection && (
+        <ProjectedPacePlanModal
+          student={planStudent}
+          studentId={planStudent.student_id}
+          initialProjection={planProjection}
+          hideBackToRecommendation
+          schoolYearLabel={schoolYearLabel}
+          onBack={() => setPlanStudent(null)}
+          onCancel={() => setPlanStudent(null)}
+          onSaved={() => { setPlanStudent(null); reload(); }}
         />
       )}
     </PrincipalLayout>

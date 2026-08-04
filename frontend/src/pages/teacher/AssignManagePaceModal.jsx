@@ -236,7 +236,7 @@ export default function AssignManagePaceModal({ studentId, onClose, onSaved }) {
                       <td className="px-3 py-3">
                         {r.paces.length > 1 ? (
                           <select value={sel.paceNumber ?? ""} onChange={(e) => setSelPace((m) => ({ ...m, [r.subject]: Number(e.target.value) }))}
-                            className="border border-gray-200 rounded-lg px-2 py-1 text-xs font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20">
+                            className="border border-gray-200 rounded-lg pl-2 pr-8 py-1 text-xs font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer bg-white">
                             {r.paces.map((p) => (
                               <option key={p.paceNumber} value={p.paceNumber}>PACE {p.paceNumber}{p.quarter ? ` · Q${p.quarter}` : ""}</option>
                             ))}

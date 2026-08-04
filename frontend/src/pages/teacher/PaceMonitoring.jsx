@@ -28,12 +28,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import TeacherLayout from "../../components/TeacherLayout.jsx";
 import AssignManagePaceModal from "./AssignManagePaceModal.jsx";
-import {
-  fetchTeacherPaceMonitoring,
-  updatePaceCell,
-  updatePaceCellStatus,
-  assignStudentPace,
-} from "../../api/teacher.js";
+import {fetchTeacherPaceMonitoring,updatePaceCell,updatePaceCellStatus,assignStudentPace,} from "../../api/teacher.js";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };

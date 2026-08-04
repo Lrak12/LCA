@@ -77,3 +77,35 @@ export const findAttendanceByStudentAndYear = (student_id, startDate, endDate) =
     .gte("date_recorded", startDate)
     .lte("date_recorded", endDate);
 
+// ── Bulk queries for the principal "Export Records" (wide CSV) ────────────────
+
+// Every student with the full profile columns the export needs (incl. enrollment_date).
+export const findAllStudentsForExport = () =>
+  supabaseAdmin
+    .from("student")
+    .select("student_id, first_name, last_name, date_of_birth, gender, address, contact_number, enrollment_date, grade_level(level_name)")
+    .order("last_name", { ascending: true });
+
+// Self-test scores for the given student_pace ids (all scored attempts).
+export const findSelfTestResultsBySpIds = (spIds) =>
+  supabaseAdmin
+    .from("self_test_result")
+    .select("sp_id, score")
+    .in("sp_id", spIds)
+    .not("score", "is", null);
+
+// Every student's quarterly PACE projection for the active school year (quarter → pace_start).
+export const findAllPaceProjections = (sy_id) =>
+  supabaseAdmin
+    .from("pace_quarterly_projection")
+    .select("student_id, subject, quarter, pace_start")
+    .eq("sy_id", sy_id);
+
+// All attendance rows in the active school-year date range (present/absent/tardy per student).
+export const findAllAttendanceInRange = (startDate, endDate) =>
+  supabaseAdmin
+    .from("attendance")
+    .select("student_id, status")
+    .gte("date_recorded", startDate)
+    .lte("date_recorded", endDate);
+

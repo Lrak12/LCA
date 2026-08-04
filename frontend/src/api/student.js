@@ -20,5 +20,8 @@ export const changeStudentPassword     = (data) => client.put("/student/settings
 export const fetchStudentAccount          = () => client.get("/student/account");
 export const updateStudentAccount         = (data) => client.put("/student/account", data);
 export const changeStudentAccountPassword = (data) => client.post("/student/account/password", data);
+// Email-change verification (code sent to the new address, then confirmed)
+export const requestStudentEmailCode      = (newEmail) => client.post("/student/account/email/request-code", { newEmail });
+export const verifyStudentEmailCode       = ({ newEmail, code }) => client.post("/student/account/email/verify", { newEmail, code });
 export const fetchStudentSupportRequests  = () => client.get("/student/account/support-requests");
 export const submitStudentSupportRequest  = (data) => client.post("/student/account/support-requests", data);

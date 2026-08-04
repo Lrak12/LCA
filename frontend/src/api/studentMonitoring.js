@@ -17,3 +17,7 @@ export const fetchPaceAnalytics = () =>
 export const fetchStudentSummary = (student_id) =>
   client.get(`/student-monitoring/${student_id}/summary`);
 
+// wide-CSV export of every student's records + grades ({ headers, rows })
+export const exportStudentRecords = () =>
+  client.get("/student-monitoring/export");
+

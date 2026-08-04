@@ -775,3 +775,159 @@ export const getStudentProfile = async (student_id) => {
   };
 };
 
+// ── Export Student Records (principal → wide CSV) ─────────────────────────────
+// Assembles ONE flat row per student for a wide CSV: profile + PACE/attendance
+// summaries + per-subject-per-quarter PACE and self-test averages. Returns
+// { headers, rows } aligned by index (the frontend joins them into the CSV).
+//
+// Grade columns are driven by the active school year's quarterly projections —
+// the same basis as the per-student grade grid — so a subject a student has no
+// projection for shows blank cells. Check-ups are intentionally excluded.
+export const exportStudentRecords = async () => {
+  const { data: sy } = await findActiveSchoolYear();
+  const syStart = sy?.start_date ?? "1900-01-01";
+  const syEnd   = sy?.end_date   ?? "2100-12-31";
+
+  const [
+    { data: students = [] },
+    { data: paces = [] },
+    { data: projections = [] },
+    { data: attendance = [] },
+  ] = await Promise.all([
+    StudentMonitoringModel.findAllStudentsForExport(),
+    StudentMonitoringModel.findStudentPaces(),
+    sy?.sy_id ? StudentMonitoringModel.findAllPaceProjections(sy.sy_id) : Promise.resolve({ data: [] }),
+    StudentMonitoringModel.findAllAttendanceInRange(syStart, syEnd),
+  ]);
+
+  // Scores for every student_pace (one batch each)
+  const allSpIds = (paces ?? []).map((p) => p.sp_id).filter(Boolean);
+  let paceTests = [], selfTests = [];
+  if (allSpIds.length) {
+    const [pt, st] = await Promise.all([
+      StudentMonitoringModel.findPaceTestResultsBySpIds(allSpIds),
+      StudentMonitoringModel.findSelfTestResultsBySpIds(allSpIds),
+    ]);
+    paceTests = pt.data ?? [];
+    selfTests = st.data ?? [];
+  }
+
+  const paceScoreBySp = buildLatestScoreMap(paceTests); // latest PACE score per sp_id
+  // Average self-test score per sp_id (a PACE can have several attempts)
+  const selfAgg = new Map();
+  (selfTests ?? []).forEach((r) => {
+    if (typeof r.score !== "number") return;
+    const a = selfAgg.get(r.sp_id) ?? { sum: 0, n: 0 };
+    a.sum += r.score; a.n += 1; selfAgg.set(r.sp_id, a);
+  });
+  const selfAvgBySp = (sp_id) => {
+    const a = selfAgg.get(sp_id);
+    return a && a.n ? a.sum / a.n : null;
+  };
+
+  // Group paces by student + a `student|subject|module` → sp_id lookup
+  const pacesByStudent = new Map();
+  const spByStudentKey = new Map();
+  (paces ?? []).forEach((p) => {
+    const list = pacesByStudent.get(p.student_id) ?? [];
+    list.push(p);
+    pacesByStudent.set(p.student_id, list);
+    const subject = p.pace_module?.subject, num = p.pace_module?.module_number;
+    if (subject && num != null) spByStudentKey.set(`${p.student_id}|${subject}|${num}`, p.sp_id);
+  });
+
+  // Projections by student → subject → quarter → pace_start, and the subject union
+  const projByStudent = new Map();
+  const subjectSet = new Set();
+  (projections ?? []).forEach((r) => {
+    subjectSet.add(r.subject);
+    if (!projByStudent.has(r.student_id)) projByStudent.set(r.student_id, new Map());
+    const byS = projByStudent.get(r.student_id);
+    if (!byS.has(r.subject)) byS.set(r.subject, new Map());
+    byS.get(r.subject).set(r.quarter, r.pace_start);
+  });
+  const subjects = [...subjectSet].sort();
+
+  // Attendance grouped by student
+  const attByStudent = new Map();
+  (attendance ?? []).forEach((r) => {
+    const a = attByStudent.get(r.student_id) ?? { present: 0, absent: 0, tardy: 0, total: 0 };
+    a.total += 1;
+    if (r.status === "Present") a.present += 1;
+    else if (r.status === "Absent") a.absent += 1;
+    else if (r.status === "Late" || r.status === "Tardy") a.tardy += 1;
+    attByStudent.set(r.student_id, a);
+  });
+
+  const avg = (arr) => (arr.length ? round2(arr.reduce((a, b) => a + b, 0) / arr.length) : null);
+
+  // ── Headers ────────────────────────────────────────────────────────────────
+  const headers = [
+    "student_id", "first_name", "last_name", "gender", "date_of_birth",
+    "address", "contact_number", "enrollment_date", "grade_level",
+    "overall_average_score", "paces_completed", "paces_in_progress",
+    "paces_assigned", "paces_total", "completion_pct",
+    "attendance_present", "attendance_absent", "attendance_tardy",
+    "attendance_total", "attendance_present_pct",
+  ];
+  subjects.forEach((s) => {
+    headers.push(`${s} PACE Avg`);
+    for (let q = 1; q <= 4; q++) headers.push(`${s} Q${q} PACE`);
+    for (let q = 1; q <= 4; q++) headers.push(`${s} Q${q} Self-Test`);
+  });
+
+  // ── Rows (one per student) ───────────────────────────────────────────────────
+  const rows = (students ?? []).map((stu) => {
+    const sid = stu.student_id;
+    const sp  = pacesByStudent.get(sid) ?? [];
+    const completed  = sp.filter((p) => p.status === "Completed").length;
+    const inProgress = sp.filter((p) => p.status === "In Progress").length;
+    const assigned   = sp.filter((p) => p.status === "Assigned").length;
+    const totalP     = sp.length;
+    const completionPct = totalP ? Math.round((completed / totalP) * 100) : 0;
+
+    const myScores = sp.map((p) => paceScoreBySp.get(p.sp_id)).filter((v) => typeof v === "number");
+    const overallAvg = avg(myScores);
+
+    const att = attByStudent.get(sid) ?? { present: 0, absent: 0, tardy: 0, total: 0 };
+    const attPresentPct = att.total ? Math.round((att.present / att.total) * 10000) / 100 : 0;
+
+    const row = [
+      sid, stu.first_name ?? "", stu.last_name ?? "", stu.gender ?? "",
+      stu.date_of_birth ?? "", stu.address ?? "", stu.contact_number ?? "",
+      stu.enrollment_date ?? "", stu.grade_level?.level_name ?? "",
+      overallAvg ?? "", completed, inProgress, assigned, totalP, completionPct,
+      att.present, att.absent, att.tardy, att.total, attPresentPct,
+    ];
+
+    const proj = projByStudent.get(sid);
+    subjects.forEach((s) => {
+      const subjPaceScores = [];
+      const quarterPace = [];
+      const quarterSelf = [];
+      for (let q = 1; q <= 4; q++) {
+        const start = proj?.get(s)?.get(q);
+        if (start == null) { quarterPace.push(""); quarterSelf.push(""); continue; }
+        const pScores = [], sScores = [];
+        for (let i = 0; i < 3; i++) {
+          const spId = spByStudentKey.get(`${sid}|${s}|${start + i}`);
+          if (spId == null) continue;
+          const pv = paceScoreBySp.get(spId);
+          if (typeof pv === "number") { pScores.push(pv); subjPaceScores.push(pv); }
+          const sv = selfAvgBySp(spId);
+          if (typeof sv === "number") sScores.push(sv);
+        }
+        quarterPace.push(pScores.length ? avg(pScores) : "");
+        quarterSelf.push(sScores.length ? avg(sScores) : "");
+      }
+      row.push(subjPaceScores.length ? avg(subjPaceScores) : "");
+      row.push(...quarterPace);
+      row.push(...quarterSelf);
+    });
+
+    return row;
+  });
+
+  return { headers, rows, subjects };
+};
+

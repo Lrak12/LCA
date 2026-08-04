@@ -11,6 +11,7 @@ import { useSchoolYear } from "../../hooks/useSchoolYear.js";
 import { fetchAllSections, enrollStudentsInLevel, assignTeacherToSection } from "../../api/sections.js";
 import { fetchAllStudents } from "../../api/student.js";
 import { fetchAllTeachers } from "../../api/teacher.js";
+import AddGradeLevelModal from "../../components/AddGradeLevelModal.jsx";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
@@ -70,17 +71,17 @@ function GradeLevelCard({ level, onManageStudents, onAssignSupervisor, onView })
       <div className="p-5 flex-1">
         {/* Grade label + student count */}
         <div className="flex items-start justify-between mb-5">
-          <span className="text-[15px] font-extrabold tracking-widest uppercase bg-surface-container-high text-on-surface-variant px-2.5 py-1 rounded-full">
+          <span className="text-[13px] font-extrabold tracking-widest uppercase bg-surface-container-high text-on-surface-variant px-2.5 py-1 rounded-full">
             {level.grade}
           </span>
           <div className="text-right leading-none">
             <p className="font-headline text-2xl font-extrabold text-on-surface">{level.students}</p>
-            <p className="text-[15px] font-extrabold tracking-widest uppercase text-on-surface-variant mt-1">Students</p>
+            <p className="text-[13px] font-extrabold tracking-widest uppercase text-on-surface-variant mt-1">Students</p>
           </div>
         </div>
 
         {/* Assigned supervisor */}
-        <p className="text-[15px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-2">
+        <p className="text-[13px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-2">
           Assigned Supervisor
         </p>
         <div className="flex items-center justify-between gap-2">
@@ -93,7 +94,7 @@ function GradeLevelCard({ level, onManageStudents, onAssignSupervisor, onView })
             <span className="text-sm text-on-surface-variant">No supervisor assigned</span>
           )}
           {headline && (
-            <span className="text-[15px] font-extrabold uppercase tracking-wide bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full shrink-0">
+            <span className="text-[13px] font-extrabold uppercase tracking-wide bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full shrink-0">
               Assigned
             </span>
           )}
@@ -626,6 +627,7 @@ export default function SchoolSections() {
   const [enrollTarget,  setEnrollTarget]  = useState(null);  // level whose Enroll modal is open
   const [assignTarget,  setAssignTarget]  = useState(null);  // level whose Assign modal is open
   const [viewTarget,    setViewTarget]    = useState(null);  // level whose View modal is open
+  const [showAdd,       setShowAdd]       = useState(false);  // Add Grade Level modal open?
 
   // load all grade levels for the active school year
   const loadLevels = useCallback(() => {
@@ -656,17 +658,29 @@ export default function SchoolSections() {
   // totals shown in the stat cards
   const totalStudents = levels.reduce((a, l) => a + l.students, 0);
   const totalTeachers = levels.reduce((a, l) => a + l.faculty.length, 0);
+  // next level_order for a new grade level (places it after the current highest)
+  const nextOrder = levels.length ? Math.max(...levels.map((l) => l.level_order ?? 0)) + 1 : 1;
 
   return (
     <PrincipalLayout schoolYearLabel={schoolYearLabel}>
       <main className="p-4 sm:p-8 max-w-full">
 
         {/* Header */}
-        <div className="mb-8">
-          <h2 className="font-headline text-3xl font-extrabold text-primary">School Grade Levels</h2>
-          <p className="text-on-surface-variant mt-1 text-sm">
-            Manage grade levels, student assignments, and supervisor assignments for the active school year.
-          </p>
+        <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="font-headline text-3xl font-extrabold text-primary">School Grade Levels</h2>
+            <p className="text-on-surface-variant mt-1 text-sm">
+              Manage grade levels, student assignments, and supervisor assignments for the active school year.
+            </p>
+          </div>
+          {/* Add Grade Level -> setShowAdd(true) opens <AddGradeLevelModal> */}
+          <button
+            onClick={() => setShowAdd(true)}
+            className="flex items-center gap-2 shrink-0 px-5 py-3 rounded-xl bg-primary text-white text-sm font-bold hover:bg-primary/90 transition-colors shadow-sm"
+          >
+            <span className="material-symbols-outlined text-lg" style={fillStyle}>add</span>
+            Add Grade Level
+          </button>
         </div>
 
         {/* Stat Cards */}
@@ -706,8 +720,8 @@ export default function SchoolSections() {
           <div className="flex flex-col items-center justify-center py-24 gap-3">
             <span className="material-symbols-outlined text-on-surface-variant text-4xl">school</span>
             <p className="text-sm text-on-surface-variant text-center max-w-sm">
-              No grade levels found for the active school year. Add them in{" "}
-              <span className="text-primary font-bold">Settings → Academic Config</span>.
+              No grade levels found for the active school year. Use{" "}
+              <span className="text-primary font-bold">Add Grade Level</span> to create one.
             </p>
           </div>
         ) : (
@@ -745,6 +759,13 @@ export default function SchoolSections() {
         <ViewGradeModal
           level={viewTarget}
           onClose={() => setViewTarget(null)}
+        />
+      )}
+      {showAdd && (
+        <AddGradeLevelModal
+          nextOrder={nextOrder}
+          onClose={() => setShowAdd(false)}
+          onSuccess={() => { setShowAdd(false); loadLevels(); }}
         />
       )}
     </PrincipalLayout>

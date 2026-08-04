@@ -31,9 +31,31 @@ export const getAcademicConfig = async () => {
 };
 
 export const addGradeLevel = async ({ level_name, level_order, sy_id }) => {
+  if (!level_name || !String(level_name).trim()) {
+    throw new Error("Grade level name is required.");
+  }
+
+  // Default to the active school year when no sy_id is supplied.
+  let syId = sy_id;
+  if (syId == null) {
+    const { data: sy, error: syErr } = await supabaseAdmin
+      .from("school_year").select("sy_id").eq("is_active", true).single();
+    if (syErr) throw new Error("No active school year found.");
+    syId = sy.sy_id;
+  }
+
+  // Default level_order to the next slot for this school year (places it last).
+  let order = level_order;
+  if (order == null || order === "") {
+    const { data: rows } = await supabaseAdmin
+      .from("grade_level").select("level_order").eq("sy_id", syId)
+      .order("level_order", { ascending: false }).limit(1);
+    order = (rows?.[0]?.level_order ?? 0) + 1;
+  }
+
   const { data, error } = await supabaseAdmin
     .from("grade_level")
-    .insert({ level_name, level_order, sy_id })
+    .insert({ level_name: String(level_name).trim(), level_order: Number(order), sy_id: syId })
     .select()
     .single();
   if (error) throw new Error(error.message);

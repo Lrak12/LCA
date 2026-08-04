@@ -9,10 +9,9 @@
 import { useState, useEffect, useRef } from "react";
 import AdminLayout from "../../components/AdminLayout.jsx";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
-import {
-  fetchSchoolYears, createSchoolYear, updateSchoolYear, activateSchoolYear,
-  fetchUsers, setUserActive,
-} from "../../api/admin.js";
+import {fetchSchoolYears, createSchoolYear, updateSchoolYear, activateSchoolYear,fetchUsers, setUserActive,} from "../../api/admin.js";
+import { fetchAcademicConfig } from "../../api/settings.js";
+import AddGradeLevelModal from "../../components/AddGradeLevelModal.jsx";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 const USER_PAGE_SIZE = 8;
@@ -57,7 +56,7 @@ const syLabel = (label) => (label ? (/^sy\s/i.test(label) ? label : `SY ${label}
 const Skeleton = ({ className }) => <div className={`animate-pulse bg-surface-container-high rounded-lg ${className}`} />;
 
 const inputCls = "w-full bg-white border border-outline-variant/40 rounded-lg px-3.5 py-2.5 text-sm text-on-surface placeholder:text-outline focus:ring-2 focus:ring-primary/20 focus:outline-none";
-const labelCls = "block text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1.5";
+const labelCls = "block text-[15px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1.5";
 
 // ── Edit School Year modal ────────────────────────────────────────────────────
 // Small modal to rename a school year or adjust its start/end dates.
@@ -140,8 +139,31 @@ function SchoolYearTab({ setBanner }) {
   const [form, setForm]       = useState({ year_label: "", start_date: "", end_date: "" }); // create form
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId]   = useState(null);      // sy_id currently being activated
+  const [gradeLevels, setGradeLevels] = useState([]); // grade levels for the active year
+  const [glLoading, setGlLoading]     = useState(true);
+  const [showAddGl, setShowAddGl]     = useState(false); // Add Grade Level modal open?
 
   const reload = () => setReloadKey((k) => k + 1);
+
+  // (re)load the active year's grade levels alongside the school-year list
+  useEffect(() => {
+    const loadGl = async () => {
+      setGlLoading(true);
+      try {
+        const res = await fetchAcademicConfig();
+        setGradeLevels(res.data?.gradeLevels ?? []);
+      } catch {
+        setGradeLevels([]);
+      } finally {
+        setGlLoading(false);
+      }
+    };
+    loadGl();
+  }, [reloadKey]);
+
+  const nextGlOrder = gradeLevels.length
+    ? Math.max(...gradeLevels.map((g) => g.level_order ?? 0)) + 1
+    : 1;
 
   // (re)load the school year list whenever reloadKey changes
   useEffect(() => {
@@ -261,6 +283,46 @@ function SchoolYearTab({ setBanner }) {
         </form>
       </div>
 
+      {/* Grade Levels (active school year) */}
+      <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-6">
+        <div className="flex items-start justify-between gap-4 mb-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+              <span className="material-symbols-outlined" style={fillStyle}>inventory_2</span>
+            </div>
+            <div>
+              <h3 className="font-headline text-lg font-extrabold text-on-surface">Grade Levels</h3>
+              <p className="text-sm text-on-surface-variant">Grade levels for the active school year.</p>
+            </div>
+          </div>
+          {/* Add Grade Level -> setShowAddGl(true) opens <AddGradeLevelModal> */}
+          <button onClick={() => setShowAddGl(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-white text-sm font-bold hover:bg-primary/90 shrink-0">
+            <span className="material-symbols-outlined text-base">add</span> Add Grade Level
+          </button>
+        </div>
+        {glLoading ? (
+          <Skeleton className="h-10 w-full" />
+        ) : gradeLevels.length === 0 ? (
+          <p className="text-sm text-on-surface-variant">No grade levels yet. Use “Add Grade Level” to create one.</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {gradeLevels.map((g) => (
+              <span key={g.gl_id} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-container-high text-on-surface text-sm font-bold">
+                {g.level_name}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {showAddGl && (
+        <AddGradeLevelModal
+          nextOrder={nextGlOrder}
+          onClose={() => setShowAddGl(false)}
+          onSuccess={() => { setShowAddGl(false); setBanner("Grade level added."); reload(); }}
+        />
+      )}
+
       {/* School Year Records */}
       <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm overflow-hidden">
         <div className="px-6 pt-6 pb-3">
@@ -270,7 +332,7 @@ function SchoolYearTab({ setBanner }) {
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant bg-surface-container/30 border-y border-outline-variant/20">
+              <tr className="text-[15px] font-extrabold tracking-widest uppercase text-on-surface-variant bg-surface-container/30 border-y border-outline-variant/20">
                 <th className="px-6 py-3 text-left">School Year</th>
                 <th className="px-6 py-3 text-left">Start Date</th>
                 <th className="px-6 py-3 text-left">End Date</th>
@@ -444,7 +506,7 @@ function UserAccessTab({ setBanner }) {
             <div>
               <p className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant">{c.label}</p>
               {loading && !data ? <Skeleton className="h-7 w-12 mt-1" /> : <p className="font-headline text-2xl font-extrabold text-on-surface">{c.value ?? 0}</p>}
-              <p className="text-[11px] text-on-surface-variant">{c.sub}</p>
+              <p className="text-[13px] text-on-surface-variant">{c.sub}</p>
             </div>
           </div>
         ))}
@@ -487,7 +549,7 @@ function UserAccessTab({ setBanner }) {
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant bg-surface-container/30 border-y border-outline-variant/20">
+              <tr className="text-[15px] font-extrabold tracking-widest uppercase text-on-surface-variant bg-surface-container/30 border-y border-outline-variant/20">
                 <th className="px-6 py-3 text-left">Full Name</th>
                 <th className="px-6 py-3 text-left">Email</th>
                 <th className="px-6 py-3 text-left">Role</th>
@@ -516,14 +578,24 @@ function UserAccessTab({ setBanner }) {
                       </td>
                       {/* status dropdown -> setStatusEdits (pending edit for this row) */}
                       <td className="px-6 py-4">
-                        <select
-                          value={rowStatus(u)}
-                          onChange={(e) => setStatusEdits((m) => ({ ...m, [u.user_id]: e.target.value }))}
-                          className="border border-outline-variant/40 rounded-lg px-2 py-1 text-xs font-bold text-on-surface focus:ring-2 focus:ring-primary/20 focus:outline-none cursor-pointer"
-                        >
-                          <option value="active">Active</option>
-                          <option value="inactive">Inactive</option>
-                        </select>
+                        <div className="relative inline-block">
+                          <select
+                            value={rowStatus(u)}
+                            onChange={(e) =>
+                              setStatusEdits((m) => ({ ...m, [u.user_id]: e.target.value }))
+                            }
+                            className="appearance-none border border-outline-variant/40 rounded-lg pl-3 pr-9 py-1 text-xs font-bold text-on-surface focus:ring-2 focus:ring-primary/20 focus:outline-none cursor-pointer bg-white"
+                          >
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                          </select>
+
+                          <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center">
+                            <span className="material-symbols-outlined text-base">
+                              expand_more
+                            </span>
+                          </span>
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-xs text-on-surface-variant whitespace-nowrap">{fmtDateTime(u.last_login)}</td>
                       <td className="px-6 py-4">

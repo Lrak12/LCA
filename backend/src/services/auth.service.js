@@ -67,7 +67,13 @@ export const login = async (school_id, password) => {
     password,
   });
 
-  if (error) throw new Error("Invalid ID number or password.");
+  if (error) {
+    // Newly-created accounts stay unconfirmed until the user clicks the activation link.
+    if (error.code === "email_not_confirmed" || /not confirmed/i.test(error.message ?? "")) {
+      throw new Error("Please confirm your email address first. Check your inbox for the activation link we sent.");
+    }
+    throw new Error("Invalid ID number or password.");
+  }
 
   return {
     data,
@@ -102,6 +108,23 @@ export const resetPasswordBySchoolId = async (school_id, new_password) => {
   if (error) throw new Error(error.message);
 
   return { user_id: profile.user_id };
+};
+
+// Reset flow via a Supabase recovery link: the recovery access_token (carried in the
+// email link's redirect) identifies the user. Validate it, then set the new password.
+export const resetPasswordWithToken = async (access_token, new_password) => {
+  if (!access_token) throw new Error("Invalid or expired reset link.");
+  if (!new_password || String(new_password).length < 6) {
+    throw new Error("Password must be at least 6 characters.");
+  }
+  const { data, error } = await supabaseAdmin.auth.getUser(access_token);
+  if (error || !data?.user) throw new Error("Invalid or expired reset link.");
+
+  const { error: upErr } = await supabaseAdmin.auth.admin.updateUserById(data.user.id, {
+    password: new_password,
+  });
+  if (upErr) throw new Error(upErr.message);
+  return { user_id: data.user.id };
 };
 
 export const logout = async (token) => {

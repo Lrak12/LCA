@@ -60,6 +60,7 @@ export default function StudentMonitoring() {
   const [assessStatus, setAssessStatus] = useState("all");
   const [subject,      setSubject]      = useState("all");
   const [page,         setPage]         = useState(1);
+  const [sortDir,      setSortDir]      = useState("asc"); // name sort: "asc" | "desc"
   const [selected,     setSelected]     = useState(null);
 
   // one endpoint backs both Records and Progress; assessStatus is only sent on
@@ -68,7 +69,7 @@ export default function StudentMonitoring() {
     setLoading(true);
     setError("");
     fetchStudentMonitoringOverview({
-      grade, search, paceStatus,
+      grade, search, paceStatus, sort: sortDir,
       assessStatus: tab === "Student Records" ? assessStatus : "all",
       subject:      tab === "Student Progress" ? subject : "all",
       page,
@@ -76,10 +77,10 @@ export default function StudentMonitoring() {
       .then((res) => setData(res.data ?? null))
       .catch((err) => setError(err.response?.data?.message ?? err.message ?? "Failed to load."))
       .finally(() => setLoading(false));
-  }, [tab, grade, search, paceStatus, assessStatus, subject, page]);
+  }, [tab, grade, search, paceStatus, assessStatus, subject, sortDir, page]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setPage(1); }, [tab, grade, search, paceStatus, assessStatus, subject]); // back to page 1 on filter change
+  useEffect(() => { setPage(1); }, [tab, grade, search, paceStatus, assessStatus, subject, sortDir]); // back to page 1 on filter/sort change
 
   const stats       = data?.stats ?? {};
   const rows        = data?.students ?? [];
@@ -228,9 +229,16 @@ export default function StudentMonitoring() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-outline-variant/20 text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant">
+                    <tr className="border-b border-outline-variant/20 text-[13px] font-extrabold uppercase tracking-widest text-on-surface-variant">
                       <th className="px-4 py-3 text-left">Student ID</th>
-                      <th className="px-4 py-3 text-left">Student Name</th>
+                      <th className="px-4 py-3 text-left">
+                        {/* click to sort by name (Last, First) ascending/descending */}
+                        <button type="button" onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+                          className="inline-flex items-center gap-1 uppercase tracking-widest font-extrabold text-on-surface-variant hover:text-on-surface cursor-pointer">
+                          Student Name
+                          <span className="material-symbols-outlined text-sm leading-none">{sortDir === "asc" ? "arrow_upward" : "arrow_downward"}</span>
+                        </button>
+                      </th>
                       <th className="px-4 py-3 text-left">Grade Level</th>
                       <th className="px-4 py-3 text-center">Gender</th>
                       <th className="px-4 py-3 text-left">Ongoing Pace</th>
@@ -298,7 +306,7 @@ export default function StudentMonitoring() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-outline-variant/20 text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant">
+                    <tr className="border-b border-outline-variant/20 text-[13px] font-extrabold uppercase tracking-widest text-on-surface-variant">
                       <th className="px-4 py-3 text-left">Student ID</th>
                       <th className="px-4 py-3 text-left">Student Name</th>
                       <th className="px-4 py-3 text-left">Completion Rate</th>

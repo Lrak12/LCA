@@ -212,7 +212,7 @@ export default function PaceTestScheduling() {
         {/* Filters */}
         <div className="flex items-center gap-3 mb-6 flex-wrap">
           <div className="relative flex-1 min-w-[220px]">
-            <span className="material-symbols-outlined absolute left-3 inset-y-0 flex items-center text-on-surface-variant text-base">search</span>
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1 text-base text-on-surface-variant pointer-events-none">search</span>
             <input type="text" placeholder="Search student name..." value={search} onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-9 pr-9 py-2.5 text-sm bg-white border border-outline-variant/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30 shadow-sm" />
             {/* clear (×) -> empty the box */}
@@ -222,12 +222,12 @@ export default function PaceTestScheduling() {
             )}
           </div>
           <select value={subject} onChange={(e) => setSubject(e.target.value)}
-            className="appearance-none text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl px-4 py-2.5 pr-8 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer">
+            className=" text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl px-4 py-2.5 pr-8 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer">
             <option value="all">All Subjects</option>
             {subjects.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
           <select value={quarter} onChange={(e) => setQuarter(e.target.value)}
-            className="appearance-none text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl px-4 py-2.5 pr-8 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer">
+            className=" text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl px-4 py-2.5 pr-8 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer">
             {QUARTER_OPTS.map((q) => <option key={q.value} value={q.value}>{q.label}</option>)}
           </select>
         </div>

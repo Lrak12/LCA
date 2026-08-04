@@ -26,6 +26,19 @@ const formatSupervisorId = (id, year) =>
 const listOrDash = (arr, prefix = "") =>
   arr && arr.length ? arr.map((v) => `${prefix}${v}`).join(", ") : "—";
 
+// Render a supervisor's name as "Last, First" (falls back to whatever parts exist).
+const lastFirst = (s) => {
+  const last  = (s.last_name  ?? "").trim();
+  const first = (s.first_name ?? "").trim();
+  if (last && first) return `${last}, ${first}`;
+  return last || first || "—";
+};
+
+// Compare two people by "last name, first name" for A→Z / Z→A sorting.
+const compareByName = (a, b, dir) =>
+  (`${a.last_name ?? ""} ${a.first_name ?? ""}`)
+    .localeCompare(`${b.last_name ?? ""} ${b.first_name ?? ""}`, undefined, { sensitivity: "base" }) * dir;
+
 // ─── Add Supervisor Modal ─────────────────────────────────────────────────────
 const defaultForm = {                                // blank Add Supervisor form
   first_name: "",
@@ -509,6 +522,7 @@ export default function Employees() {
   const [error,       setError]       = useState("");
   const [search,      setSearch]      = useState("");   // name/ID search
   const [statusFilter, setStatusFilter] = useState("all"); // all/active/inactive
+  const [nameSort,    setNameSort]    = useState("asc");  // "asc" | "desc": Name column A→Z / Z→A
   const [page,        setPage]        = useState(1);
   const [showModal,   setShowModal]   = useState(false); // Add Supervisor modal open?
   const [editSup,     setEditSup]     = useState(null);  // supervisor being edited (opens the modal in edit mode)
@@ -551,8 +565,14 @@ export default function Employees() {
     return matchSearch && matchStatus;
   }), [supervisors, search, statusFilter, year]);
 
-  const totalPages = Math.ceil(filtered.length / perPage);
-  const paginated  = filtered.slice((page - 1) * perPage, page * perPage);
+  // sort the filtered rows by "last name, first name" (A→Z or Z→A)
+  const sorted = useMemo(
+    () => [...filtered].sort((a, b) => compareByName(a, b, nameSort === "desc" ? -1 : 1)),
+    [filtered, nameSort],
+  );
+
+  const totalPages = Math.ceil(sorted.length / perPage);
+  const paginated  = sorted.slice((page - 1) * perPage, page * perPage);
 
   // export the filtered supervisor list to a CSV download
   const handleExport = () => {
@@ -703,7 +723,20 @@ export default function Employees() {
               <thead>
                 <tr className="text-[13px] font-extrabold text-on-surface-variant uppercase tracking-widest bg-surface-container/30 border-b border-surface-container">
                   <th className="px-6 py-4">Supervisor ID</th>
-                  <th className="px-6 py-4">Supervisor Name</th>
+                  <th className="px-6 py-4">
+                    {/* Clickable header: toggles A→Z / Z→A by last name, first name */}
+                    <button
+                      type="button"
+                      onClick={() => setNameSort((d) => (d === "asc" ? "desc" : "asc"))}
+                      className="inline-flex items-center gap-1 font-extrabold tracking-widest uppercase hover:text-primary transition-colors"
+                      title="Sort by name"
+                    >
+                      Supervisor Name
+                      <span className="material-symbols-outlined text-sm leading-none">
+                        {nameSort === "asc" ? "arrow_upward" : "arrow_downward"}
+                      </span>
+                    </button>
+                  </th>
                   <th className="px-6 py-4">Contact Number</th>
                   <th className="px-6 py-4">Assigned Grade Levels</th>
                   <th className="px-6 py-4">PACE Modules Supervised</th>
@@ -734,7 +767,7 @@ export default function Employees() {
                         <span className="text-xs font-bold text-on-surface-variant font-mono">{formatSupervisorId(sup.teacher_id, year)}</span>
                       </td>
                       <td className="px-6 py-5">
-                        <p className="font-bold text-on-surface text-sm">{sup.first_name} {sup.last_name}</p>
+                        <p className="font-bold text-on-surface text-sm">{lastFirst(sup)}</p>
                       </td>
                       <td className="px-6 py-5">
                         <span className="text-sm text-on-surface-variant">{sup.contact_number ?? "—"}</span>

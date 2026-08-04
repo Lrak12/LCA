@@ -72,9 +72,62 @@ export default function StudentDiagnosticDetailModal({ student, onClose }) {
   }, [sid]);
 
   const gradeLevel   = student.grade_level?.level_name ?? profile?.student?.grade_level ?? "—";
-  const dateAssessed = diag.find((d) => d.test_date)?.test_date ?? null;   // first recorded test date
+  // First recorded diagnostic test date; falls back to the student's enrollment
+  // date when no diagnostic has been recorded yet (so the field is never blank).
+  const dateAssessed = diag.find((d) => d.test_date)?.test_date ?? student.enrollment_date ?? null;
   const subjectPaces = profile?.subjectPaces ?? {};                        // subject -> quarters -> paces (the projected plan)
   const planSubjects = Object.keys(subjectPaces);                          // plan table column headers
+
+  // Export = the student's Projected PACE Plan as a printable document (Save as PDF).
+  // Opens a standalone window with just the plan grid and triggers the print dialog,
+  // so it doesn't include the rest of the modal. Print (whole modal) is separate.
+  const handleExport = () => {
+    const esc = (v) => String(v ?? "")
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+    const head = planSubjects.map((s) => `<th>${esc(s)}</th>`).join("");
+    const body = QUARTER_LABELS.map((ql, qi) =>
+      [0, 1, 2].map((slot) => {
+        const qCell = slot === 0 ? `<td class="q" rowspan="3">${esc(ql)}</td>` : "";
+        const cells = planSubjects.map((sub) => `<td>${esc(subjectPaces[sub]?.quarters?.[qi]?.paces?.[slot] ?? "—")}</td>`).join("");
+        return `<tr>${qCell}${cells}</tr>`;
+      }).join(""),
+    ).join("");
+
+    const html = `<!doctype html><html><head><meta charset="utf-8">
+      <title>Projected PACE Plan - ${esc(fullName || sid)}</title>
+      <style>
+        body { font-family: Arial, Helvetica, sans-serif; color:#1a1a1a; padding:28px; }
+        h1 { font-size:20px; margin:0 0 2px; }
+        .sub { color:#555; font-size:12px; margin:0 0 18px; }
+        .meta { font-size:13px; margin-bottom:18px; }
+        .meta div { margin:2px 0; }
+        table { border-collapse:collapse; width:100%; font-size:12px; }
+        th, td { border:1px solid #ccc; padding:6px 10px; text-align:center; }
+        th { background:#f3f4f6; }
+        td.q { font-weight:bold; text-align:left; background:#fafafa; white-space:nowrap; }
+        @media print { body { padding:0; } }
+      </style></head>
+      <body>
+        <h1>Projected PACE Plan</h1>
+        <p class="sub">Projected PACE sequence for each subject for the entire school year.</p>
+        <div class="meta">
+          <div><strong>Student:</strong> ${esc(fullName || "—")} (ID: ${esc(sid)})</div>
+          <div><strong>Grade Level:</strong> ${esc(gradeLevel)}</div>
+          <div><strong>Date Assessed:</strong> ${esc(formatDate(dateAssessed))}</div>
+        </div>
+        ${planSubjects.length
+          ? `<table><thead><tr><th>Quarter</th>${head}</tr></thead><tbody>${body}</tbody></table>`
+          : `<p>No PACE projection recorded for this school year yet.</p>`}
+      </body></html>`;
+
+    const w = window.open("", "_blank");
+    if (!w) { setError("Please allow pop-ups to export the plan."); return; }
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 250);
+  };
 
   return (
     <div
@@ -227,15 +280,22 @@ export default function StudentDiagnosticDetailModal({ student, onClose }) {
                     </table>
                   </div>
                 )}
-                {/* Export / Print -> window.print() (browser print-to-PDF; no backend) */}
-                <div className="flex justify-end mt-4">
+                {/* Export -> CSV report (handleExport); Print -> window.print() (browser print-to-PDF) */}
+                <div className="flex justify-end gap-3 mt-4">
                   <button
+                    onClick={handleExport}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-outline-variant/40 text-sm font-bold text-primary hover:bg-surface-container-low transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-base">download</span>
+                    Export
+                  </button>
+                  {/*<button
                     onClick={() => window.print()}
                     className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-outline-variant/40 text-sm font-bold text-primary hover:bg-surface-container-low transition-colors"
                   >
-                    <span className="material-symbols-outlined text-base">print</span>
-                    Export / Print
-                  </button>
+                    <span className="material-symbols-outlined text-base">print</span> uncomment to para makita ang print button sa modal
+                    Print
+                  </button> */}
                 </div>
               </div>
             </div>

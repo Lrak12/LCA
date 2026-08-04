@@ -55,7 +55,7 @@ const StatCard = ({ icon, iconBg, iconColor, label, value, badge, badgeColor, da
       )}
     </div>
     <div>
-      <p className={`text-[10px] font-extrabold tracking-widest uppercase mb-1 ${dark ? "text-white/60" : "text-on-surface-variant"}`}>
+      <p className={`text-[13px] font-extrabold tracking-widest uppercase mb-1 ${dark ? "text-white/60" : "text-on-surface-variant"}`}>
         {label}
       </p>
       <p className={`font-headline text-4xl font-extrabold ${dark ? "text-white" : "text-primary"}`}>
@@ -315,7 +315,7 @@ export default function StudentDashboard() {
                 {/* Column headers */}
                 <div className="grid grid-cols-5 gap-4 mb-4 min-w-[440px]">
                   {["Subject", "Module", "Status", "Progress", "Latest Check-up Score"].map((h) => (
-                    <p key={h} className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant text-center">
+                    <p key={h} className="text-[13px] font-extrabold tracking-widest uppercase text-on-surface-variant text-center">
                       {h}
                     </p>
                   ))}

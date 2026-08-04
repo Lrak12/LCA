@@ -250,9 +250,9 @@ export const submitAttendance = asyncHandler(async (req, res) => {
 });
 
 export const getStudentMonitoringOverview = asyncHandler(async (req, res) => {
-  const { grade, search, paceStatus, assessStatus, subject, page } = req.query;
+  const { grade, search, paceStatus, assessStatus, subject, sort, page } = req.query;
   const data = await TeacherService.getStudentMonitoringOverview(req.user.user_id, {
-    grade, search, paceStatus, assessStatus, subject, page: page ? parseInt(page, 10) : 1,
+    grade, search, paceStatus, assessStatus, subject, sort, page: page ? parseInt(page, 10) : 1,
   });
   sendSuccess(res, data);
 });

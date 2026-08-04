@@ -24,6 +24,8 @@ router.get("/pace-analytics-report", requireRole("teacher"), TeacherController.g
 router.get("/account",                   requireRole("teacher"), AccountController.getAccount);
 router.put("/account",                   requireRole("teacher"), AccountController.updateAccount);
 router.post("/account/password",         requireRole("teacher"), AccountController.changePassword);
+router.post("/account/email/request-code", requireRole("teacher"), AccountController.requestEmailChange);
+router.post("/account/email/verify",       requireRole("teacher"), AccountController.verifyEmailChange);
 router.get("/account/support-requests",  requireRole("teacher"), AccountController.getSupportRequests);
 router.post("/account/support-requests", requireRole("teacher"), AccountController.createSupportRequest);
 router.get("/student-record",     requireRole("teacher"), TeacherController.getStudentAcademicRecord);

@@ -34,14 +34,18 @@ const formatDOB = (dob) => {
 export default function EnglishDiagnosticModal({ student, existing, onClose, onSaved }) {
   const [gaps,      setGaps]      = useState(() => parseGaps(existing?.learning_gaps)); // selected gap PACEs
   const [startPace, setStartPace] = useState(existing?.start_pace != null ? String(existing.start_pace) : ""); // ready-to-advance PACE
+  // ACE rule: start PACE auto-fills to the lowest missed PACE, unless overridden.
+  const [manual,    setManual]    = useState(existing?.start_pace != null); // true once the user types a PACE by hand
   const [saving,    setSaving]    = useState(false);
   const [error,     setError]     = useState("");
 
-  // add/remove a PACE from the learning-gaps set when its grid cell is clicked
+  // add/remove a PACE from the learning-gaps set when its grid cell is clicked;
+  // while not manually overridden, keep the start PACE = lowest selected gap
   const toggleGap = (pace) => {
     const next = new Set(gaps);
     next.has(pace) ? next.delete(pace) : next.add(pace);
     setGaps(next);
+    if (!manual) setStartPace(next.size ? String(Math.min(...next)) : "");
   };
 
   // gaps shown in the read-only textarea, sorted ascending
@@ -184,7 +188,7 @@ export default function EnglishDiagnosticModal({ student, existing, onClose, onS
                   <input
                     type="text"
                     value={startPace}
-                    onChange={(e) => setStartPace(e.target.value)}
+                    onChange={(e) => { setManual(true); setStartPace(e.target.value); }}
                     placeholder="0000"
                     maxLength={4}
                     className="w-full text-center text-4xl font-extrabold font-headline tracking-tight text-primary border-b-2 border-primary bg-transparent focus:outline-none placeholder:text-on-surface-variant/30"

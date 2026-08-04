@@ -1035,18 +1035,35 @@ export const getStudentPace = async (user_id) => {
 
   // Self-test eligibility per PACE: AVERAGE of attempts ≥ 90
   const selfReadyBySp = new Map();
+  const selfTestsBySp = new Map(); // sp_id → attempts[] (for the Go to Self-Test modal)
   if (allSpIds.length) {
     const { data: selfRows } = await supabaseAdmin
       .from("self_test_result")
-      .select("sp_id, score")
+      .select("sp_id, score, date_taken, passed, quarter")
       .in("sp_id", allSpIds);
     const acc = new Map();
     (selfRows ?? []).forEach((r) => {
       if (r.score == null) return;
       const a = acc.get(r.sp_id) ?? { sum: 0, n: 0 };
       a.sum += r.score; a.n += 1; acc.set(r.sp_id, a);
+      const list = selfTestsBySp.get(r.sp_id) ?? [];
+      list.push({
+        score:  r.score,
+        passed: r.passed ?? r.score >= 90, // 90 is the pass mark
+        date:   r.date_taken
+          ? new Date(r.date_taken).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" })
+          : null,
+        _ts:    r.date_taken ?? "",
+        quarter: r.quarter ?? null,
+      });
+      selfTestsBySp.set(r.sp_id, list);
     });
     acc.forEach((a, sp) => selfReadyBySp.set(sp, a.n ? a.sum / a.n >= 90 : false));
+    // Order each PACE's attempts oldest-first so they list as Self-Test 1, 2, 3…
+    selfTestsBySp.forEach((list) => {
+      list.sort((a, b) => String(a._ts).localeCompare(String(b._ts)));
+      list.forEach((s) => delete s._ts);
+    });
   }
 
   // PACE test rows incl. the request/schedule lifecycle columns
@@ -1116,14 +1133,25 @@ export const getStudentPace = async (user_id) => {
       scheduledDate = sdt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
       scheduledTime = sdt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
     }
+    // Date the student submitted the request (stamped into date_taken on submit).
+    const requestedDate = requested?.date_taken
+      ? new Date(requested.date_taken).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" })
+      : null;
     testRequests.push({
       sp_id:    cand.sp_id,
       subject:  cand.subject,
       paceNo:   cand.paceNo ?? "—",
       state:    scheduled ? "scheduled" : requested ? "requested" : "none",
       eligible: selfReadyBySp.get(cand.sp_id) ?? false,
+      selfTests: selfTestsBySp.get(cand.sp_id) ?? [], // attempts for the Go to Self-Test modal
       scheduledDate,
       scheduledTime,
+      // Schedule detail (populated only when scheduled) for the View Schedule modal.
+      location:      scheduled?.venue ?? "—",
+      testType:      "PACE Test",
+      supervisorId:  scheduled?.recorded_by ?? null,
+      supervisor:    "—",
+      requestedDate,
     });
     if (scheduled && !requestStatus) {
       const dt = scheduled.assessment_timestamp ? new Date(scheduled.assessment_timestamp) : null;
@@ -1140,6 +1168,13 @@ export const getStudentPace = async (user_id) => {
     }
   });
   testRequests.sort((a, b) => a.subject.localeCompare(b.subject));
+
+  // Resolve supervisor names for scheduled rows in one batch (for View Schedule modal).
+  const supNames = await getTeacherNamesByIds(testRequests.map((r) => r.supervisorId));
+  testRequests.forEach((r) => {
+    if (r.supervisorId != null) r.supervisor = supNames.get(r.supervisorId) ?? "—";
+    delete r.supervisorId;
+  });
 
   // ── Next PACE Test card: the soonest scheduled assessment ──────────────────
   let nextPaceTest = null;
@@ -1161,6 +1196,7 @@ export const getStudentPace = async (user_id) => {
       location:  r.venue ?? "—",
       testType:  "PACE Test",
       supervisor: supervisorName,
+      selfTests: selfTestsBySp.get(r.sp_id) ?? [], // attempts for the Go to Self-Test modal
     };
   }
 

@@ -38,6 +38,13 @@ export const resetPassword = asyncHandler(async (req, res) => {
   sendSuccess(res, null, "Password updated successfully. You can now log in.");
 });
 
+// Complete a reset started from a Supabase recovery-email link (token + new password).
+export const resetPasswordWithToken = asyncHandler(async (req, res) => {
+  const { access_token, new_password } = req.body;
+  await AuthService.resetPasswordWithToken(access_token, new_password);
+  sendSuccess(res, null, "Password updated successfully. You can now log in.");
+});
+
 // Public: user submits only their ID number to request a password reset
 export const forgotPassword = asyncHandler(async (req, res) => {
   const { id_number } = req.body;

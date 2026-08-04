@@ -62,10 +62,9 @@ export default function UserPasswordResets({ embedded = false }) {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState("");
   const [banner, setBanner]   = useState("");          // success toast text
-  const [tempResult, setTempResult] = useState(null);  // shown-once generated temp password { tempPassword, email, name }
 
   const [selected, setSelected] = useState(null);      // request open in the detail panel
-  const [action, setAction]     = useState("temp");    // chosen action: "temp" | "link" | "resolve"
+  const [action, setAction]     = useState("reset-email"); // chosen action: "reset-email" | "link" | "resolve"
   const [note, setNote]         = useState("");        // administrator note
   const [processing, setProcessing] = useState(false);
 
@@ -124,8 +123,8 @@ export default function UserPasswordResets({ embedded = false }) {
     setError("");
     try {
       const res = await processPasswordReset(req.sr_id, { action: act, note: noteText });
-      if (act === "temp" && res.data?.tempPassword) {
-        setTempResult({ tempPassword: res.data.tempPassword, email: res.data.email, name: req.name });
+      if (act === "reset-email" && res.data?.emailed) {
+        setBanner(`Password reset link emailed to ${res.data.email ?? req.name}.`);
       } else {
         setBanner(`${req.requestId} resolved.`);
       }
@@ -153,30 +152,6 @@ export default function UserPasswordResets({ embedded = false }) {
       {error && (
         <div className="px-4 py-3 rounded-lg bg-red-50 border border-red-100 text-red-600 text-sm flex items-center gap-2">
           <span className="material-symbols-outlined text-base">error</span>{error}
-        </div>
-      )}
-
-      {/* Generated temp password — `tempResult` set by process() "temp" branch (shown once) */}
-      {tempResult && (
-        <div className="px-4 py-4 rounded-xl bg-blue-50 border border-blue-200">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-bold text-blue-800 flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-base" style={fillStyle}>key</span>
-                Temporary password generated for {tempResult.name}
-              </p>
-              <p className="text-[12px] text-blue-700 mt-1">
-                Share this with the user securely{tempResult.email ? ` (registered email: ${tempResult.email})` : ""}. It is shown only once.
-              </p>
-              <code className="inline-block mt-2 px-3 py-1.5 rounded-lg bg-white border border-blue-200 text-sm font-bold tracking-wide text-on-surface">
-                {tempResult.tempPassword}
-              </code>
-            </div>
-            {/* dismiss the temp-password card -> setTempResult(null) */}
-            <button onClick={() => setTempResult(null)} className="p-1 rounded-full hover:bg-blue-100 text-blue-700">
-              <span className="material-symbols-outlined">close</span>
-            </button>
-          </div>
         </div>
       )}
 
@@ -251,8 +226,8 @@ export default function UserPasswordResets({ embedded = false }) {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-2">
-                        {/* View -> setSelected(r) + seed setAction("temp")/setNote("") -> opens the Request Details panel below */}
-                        <button onClick={() => { setSelected(r); setAction("temp"); setNote(""); }}
+                        {/* View -> setSelected(r) + seed setAction("reset-email")/setNote("") -> opens the Request Details panel below */}
+                        <button onClick={() => { setSelected(r); setAction("reset-email"); setNote(""); }}
                           className="p-1.5 rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-primary" title="View details">
                           <span className="material-symbols-outlined text-lg">visibility</span>
                         </button>
@@ -330,7 +305,7 @@ export default function UserPasswordResets({ embedded = false }) {
               {/* action radios -> setAction("temp"|"link"); `action` is passed to process() below */}
               <div className="space-y-2 mb-4">
                 {[
-                  { key: "temp", title: "Send Temporary Password", sub: "A temporary password will be set and shown to you / sent to the user's registered email." },
+                  { key: "reset-email", title: "Send Password Reset Email", sub: "A password reset link is emailed to the user's registered address; they set their own new password." },
                   { key: "link", title: "Copy Password Reset Link", sub: "The reset link is copied to your clipboard to share with the user." },
                 ].map((opt) => (
                   <label key={opt.key} className={`flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer ${action === opt.key ? "border-primary bg-primary/5" : "border-outline-variant/40"}`}>

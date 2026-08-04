@@ -368,7 +368,6 @@ function EditUserModal({ user, onClose, onSaved }) {
                   </select>
                   {chevron}
                 </div>
-                <p className="text-[11px] text-on-surface-variant mt-1">Role can't be changed here — deactivate and recreate to change a user's role.</p>
               </div>
             </div>
           </section>
@@ -560,7 +559,7 @@ export default function UserManagement() {
                   <div className={`w-9 h-9 rounded-xl flex items-center justify-center mb-3 ${c.iconBg}`}>
                     <span className={`material-symbols-outlined text-lg ${c.iconColor}`} style={fillStyle}>{c.icon}</span>
                   </div>
-                  <p className="text-[11px] font-bold text-on-surface-variant mb-1">{c.label}</p>
+                  <p className="text-[17px] font-bold text-on-surface-variant mb-1">{c.label}</p>
                   <p className="font-headline text-2xl font-extrabold text-on-surface">{stats[c.key] ?? 0}</p>
                 </div>
               ))}
@@ -607,7 +606,7 @@ export default function UserManagement() {
         <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm overflow-hidden">
           <div className="overflow-x-auto"><table className="w-full text-left">
             <thead>
-              <tr className="border-b border-outline-variant/20 text-[11px] uppercase tracking-wider text-on-surface-variant">
+              <tr className="border-b border-outline-variant/20 text-[15px] uppercase tracking-wider text-on-surface-variant">
                 <th className="px-6 py-3.5 font-bold">User</th>
                 <th className="px-6 py-3.5 font-bold">Role</th>
                 <th className="px-6 py-3.5 font-bold">Email</th>

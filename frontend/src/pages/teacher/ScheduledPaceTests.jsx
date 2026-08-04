@@ -194,11 +194,11 @@ export default function ScheduledPaceTests() {
         {/* Filters */}
         <div className="flex items-center gap-3 mb-4 flex-wrap">
           <select value={quarter} onChange={(e) => setQuarter(e.target.value)}
-            className="appearance-none text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl px-4 py-2.5 pr-8 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer">
+            className=" text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl px-4 py-2.5 pr-8 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer">
             {QUARTER_OPTS.map((q) => <option key={q.value} value={q.value}>{q.label}</option>)}
           </select>
           <select value={subject} onChange={(e) => setSubject(e.target.value)}
-            className="appearance-none text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl px-4 py-2.5 pr-8 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer">
+            className=" text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl px-4 py-2.5 pr-8 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer">
             <option value="all">All Subjects</option>
             {subjects.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
@@ -210,7 +210,7 @@ export default function ScheduledPaceTests() {
               className="text-sm font-bold text-on-surface focus:outline-none" />
           </div>
           <select value={status} onChange={(e) => setStatus(e.target.value)}
-            className="appearance-none text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl px-4 py-2.5 pr-8 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer">
+            className=" text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl px-4 py-2.5 pr-8 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer">
             <option value="all">All Status</option>
             {STATUS_OPTS.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>

@@ -54,10 +54,29 @@ const buildInitial = (recommended) => {
   return g;
 };
 
+// seed the grid from an already-saved projection (the getStudentProfile `subjectPaces`
+// shape: subject -> { quarters: [{ paces: [start, start+1, start+2] }, ...] }). Used when
+// the modal is opened to EDIT an existing plan (e.g. from Student Monitoring) rather than
+// to create one from a diagnostic recommendation.
+const buildFromProjection = (subjectPaces) => {
+  const g = {};
+  PLAN_SUBJECTS.forEach(({ key }) => {
+    const quarters = subjectPaces?.[key]?.quarters ?? [];
+    g[key] = [0, 1, 2, 3].map((qi) => {
+      const start = Number(quarters[qi]?.paces?.[0]);
+      return Number.isFinite(start) && start > 0 ? start : DEFAULT_START + qi * 3;
+    });
+  });
+  return g;
+};
+
 // Rendered by <ProjectedPaceRecommendation> (planPaces). onBack = () => setPlanPaces(null)
 // (back to the recommendation); onCancel + onSaved both navigate("/admin/diagnostic").
-export default function ProjectedPacePlanModal({ student, studentId, recommended, schoolYearLabel, onBack, onCancel, onSaved }) {
-  const [grid,   setGrid]   = useState(() => buildInitial(recommended)); // subject -> [q1,q2,q3,q4] start PACEs
+export default function ProjectedPacePlanModal({ student, studentId, recommended, initialProjection, hideBackToRecommendation = false, schoolYearLabel, onBack, onCancel, onSaved }) {
+  // Seed from an existing saved plan when editing (initialProjection), otherwise from the
+  // accepted diagnostic recommendation. Reset Plan reseeds from the same source.
+  const seed = () => (initialProjection ? buildFromProjection(initialProjection) : buildInitial(recommended));
+  const [grid,   setGrid]   = useState(seed); // subject -> [q1,q2,q3,q4] start PACEs
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState("");
 
@@ -110,8 +129,8 @@ export default function ProjectedPacePlanModal({ student, studentId, recommended
             <button onClick={() => window.print()} className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-outline-variant/40 text-xs font-bold text-on-surface hover:bg-surface-container-low transition-colors">
               <span className="material-symbols-outlined text-sm">visibility</span> Preview / Print
             </button>
-            {/* Reset Plan -> setGrid(buildInitial(recommended)) reseeds the grid from the recommendation */}
-            <button onClick={() => setGrid(buildInitial(recommended))} className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-outline-variant/40 text-xs font-bold text-on-surface hover:bg-surface-container-low transition-colors">
+            {/* Reset Plan -> reseeds the grid from its source (existing plan or recommendation) */}
+            <button onClick={() => setGrid(seed())} className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-outline-variant/40 text-xs font-bold text-on-surface hover:bg-surface-container-low transition-colors">
               <span className="material-symbols-outlined text-sm">restart_alt</span> Reset Plan
             </button>
             <button onClick={onBack} className="w-8 h-8 flex items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container-low transition-colors">
@@ -132,7 +151,7 @@ export default function ProjectedPacePlanModal({ student, studentId, recommended
           </div>
           <div>
             <p className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant">Grade Level</p>
-            <p className="text-sm font-bold text-on-surface mt-0.5">{student?.grade_level?.level_name ?? "—"}</p>
+            <p className="text-sm font-bold text-on-surface mt-0.5">{student?.grade_level?.level_name ?? student?.grade_level ?? "—"}</p>
           </div>
           <div>
             <p className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant">Placement Basis</p>
@@ -209,10 +228,12 @@ export default function ProjectedPacePlanModal({ student, studentId, recommended
             <button onClick={onCancel} disabled={saving} className="px-5 py-2.5 rounded-xl border border-outline-variant/40 text-sm font-bold text-on-surface hover:bg-surface-container-low transition-colors disabled:opacity-60">
               Cancel
             </button>
-            <button onClick={onBack} disabled={saving} className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl border border-outline-variant/40 text-sm font-bold text-on-surface hover:bg-surface-container-low transition-colors disabled:opacity-60">
-              <span className="material-symbols-outlined text-base">arrow_back</span>
-              Back to Recommendation
-            </button>
+            {!hideBackToRecommendation && (
+              <button onClick={onBack} disabled={saving} className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl border border-outline-variant/40 text-sm font-bold text-on-surface hover:bg-surface-container-low transition-colors disabled:opacity-60">
+                <span className="material-symbols-outlined text-base">arrow_back</span>
+                Back to Recommendation
+              </button>
+            )}
             {/* Save Projection -> handleSave() (generateProjection, then onSaved) ; Back -> onBack, Cancel -> onCancel */}
             <button onClick={handleSave} disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-primary text-white text-sm font-bold hover:bg-primary/90 transition-colors disabled:opacity-60 shadow-lg shadow-primary/20">
               {saving
