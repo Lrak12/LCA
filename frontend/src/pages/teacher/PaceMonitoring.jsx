@@ -525,12 +525,7 @@ function IndividualView({ student, quarters, onPaceEdit, onStatusClick, onAssign
                       </td>
                     )}
                     {paceRow.map((pace, si) => (
-                      <PaceCell
-                        key={si}
-                        pace={pace}
-                        editable
-                        onCommit={(newNum) =>
-                          onPaceEdit(
+                      <PaceCell key={si} pace={pace} editable onCommit={(newNum) =>onPaceEdit(
                             SUBJECT_LABELS[si],
                             quarter.num,
                             ri,

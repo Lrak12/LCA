@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import {fetchStudentAcademicRecord,saveSupervisorNote,markReadyForNext,} from "../api/teacher.js";
+import {fetchStudentAcademicRecord,saveSupervisorNote,markReadyForNext,updateStudentProfile,setPaceScore,} from "../api/teacher.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 const fmtDate = (iso) => {
@@ -21,7 +21,17 @@ export default function StudentAcademicRecordModal({ studentId, onClose }) {
   const [quarter, setQuarter] = useState("all");
   const [note,    setNote]    = useState("");
   const [savingNote, setSavingNote] = useState(false);
+  const [noteMsg, setNoteMsg] = useState(null); // { ok, text } feedback after Save Note
   const [readying, setReadying] = useState(false);
+
+  // ── Edit mode (supervisor edits profile fields + grades) ──────────────────────
+  const [editMode, setEditMode]       = useState(false);
+  const [profileForm, setProfileForm] = useState(null); // { first_name, last_name, dateOfBirth, gender, address, contact }
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [editMsg, setEditMsg]         = useState(null); // { ok, text }
+  const [editingCell, setEditingCell] = useState(null); // "subject|pace" of the grade cell being edited
+  const [cellScore, setCellScore]     = useState("");
+  const [savingCell, setSavingCell]   = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -40,12 +50,69 @@ export default function StudentAcademicRecordModal({ studentId, onClose }) {
 
   const handleSaveNote = async () => {
     setSavingNote(true);
-    try { await saveSupervisorNote(studentId, note); } catch { /* ignore */ } finally { setSavingNote(false); }
+    setNoteMsg(null);
+    try {
+      await saveSupervisorNote(studentId, note);
+      setNoteMsg({ ok: true, text: "Note saved." });
+    } catch (err) {
+      setNoteMsg({ ok: false, text: err.response?.data?.message ?? err.message ?? "Failed to save note." });
+    } finally {
+      setSavingNote(false);
+    }
   };
   const handleReady = async () => {
     setReadying(true);
     try { await markReadyForNext(studentId); load(); } catch { /* ignore */ } finally { setReadying(false); }
   };
+
+  // Enter edit mode: seed the profile form from the loaded profile.
+  const startEdit = () => {
+    const pr = data?.profile;
+    setProfileForm({
+      first_name: pr?.first_name ?? "",
+      last_name:  pr?.last_name ?? "",
+      date_of_birth: pr?.dateOfBirth ? String(pr.dateOfBirth).slice(0, 10) : "",
+      gender:     pr?.gender && pr.gender !== "—" ? pr.gender : "",
+      address:    pr?.address && pr.address !== "—" ? pr.address : "",
+      contact_number: pr?.contact && pr.contact !== "—" ? pr.contact : "",
+    });
+    setEditMsg(null);
+    setEditingCell(null);
+    setEditMode(true);
+  };
+  const cancelEdit = () => { setEditMode(false); setEditingCell(null); setEditMsg(null); };
+
+  const saveProfile = async () => {
+    setSavingProfile(true);
+    setEditMsg(null);
+    try {
+      await updateStudentProfile(studentId, profileForm);
+      setEditMsg({ ok: true, text: "Student information saved." });
+      load();
+    } catch (err) {
+      setEditMsg({ ok: false, text: err.response?.data?.message ?? err.message ?? "Failed to save." });
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  // Inline grade edit: save one PACE cell's score, then reload the record.
+  const saveCell = async (subj, cell) => {
+    if (!cell?.pace) { setEditingCell(null); return; }
+    setSavingCell(true);
+    try {
+      await setPaceScore({ student_id: studentId, subject: subj, pace_number: cell.pace, score: cellScore });
+      setEditingCell(null);
+      load();
+    } catch (err) {
+      setEditMsg({ ok: false, text: err.response?.data?.message ?? err.message ?? "Failed to update grade." });
+      setEditingCell(null);
+    } finally {
+      setSavingCell(false);
+    }
+  };
+
+  const setPF = (k, v) => setProfileForm((f) => ({ ...f, [k]: v }));
 
   const p   = data?.profile;
   const tc  = data?.topCards ?? {};
@@ -87,18 +154,47 @@ export default function StudentAcademicRecordModal({ studentId, onClose }) {
 
             {/* Profile + top cards */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-              {/* Profile */}
+              {/* Profile — read-only, or editable inputs in edit mode */}
               <div>
-                <h3 className="text-xl font-extrabold text-on-surface">{p?.name}</h3>
-                <span className="inline-block bg-primary/10 text-primary text-[11px] font-bold px-2 py-0.5 rounded mt-1">Student ID: {p?.student_id}</span>
-                <div className="mt-3 space-y-1.5 text-sm text-on-surface-variant">
-                  <p>🎂 Date of Birth: {fmtDate(p?.dateOfBirth)}</p>
-                  <p>⚧ Gender: {p?.gender}</p>
-                  <p>🎓 Grade Level: {p?.gradeLevel}</p>
-                  <p>📅 School Year: {p?.schoolYear}</p>
-                  <p>📍 Address: {p?.address}</p>
-                  <p>📞 Contact: {p?.contact}</p>
-                </div>
+                {editMode && profileForm ? (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <EditField label="First Name"><input value={profileForm.first_name} onChange={(e) => setPF("first_name", e.target.value)} className={editInput} /></EditField>
+                      <EditField label="Last Name"><input value={profileForm.last_name} onChange={(e) => setPF("last_name", e.target.value)} className={editInput} /></EditField>
+                    </div>
+                    <span className="inline-block bg-primary/10 text-primary text-[11px] font-bold px-2 py-0.5 rounded">Student ID: {p?.student_id}</span>
+                    <EditField label="Date of Birth"><input type="date" value={profileForm.date_of_birth} onChange={(e) => setPF("date_of_birth", e.target.value)} className={editInput} /></EditField>
+                    <EditField label="Gender">
+                      <select value={profileForm.gender} onChange={(e) => setPF("gender", e.target.value)} className={editInput}>
+                        <option value="">—</option><option>Male</option><option>Female</option>
+                      </select>
+                    </EditField>
+                    <EditField label="Address"><input value={profileForm.address} onChange={(e) => setPF("address", e.target.value)} className={editInput} /></EditField>
+                    <EditField label="Contact"><input value={profileForm.contact_number} onChange={(e) => setPF("contact_number", e.target.value)} className={editInput} /></EditField>
+                    <p className="text-[11px] text-on-surface-variant">Grade Level: <strong>{p?.gradeLevel}</strong> · SY: <strong>{p?.schoolYear}</strong></p>
+                    <div className="flex items-center gap-2 pt-1">
+                      <button onClick={saveProfile} disabled={savingProfile} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-[#0d1b2e] text-white hover:opacity-90 disabled:opacity-50">
+                        {savingProfile ? <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <span className="material-symbols-outlined text-sm" style={fillStyle}>save</span>}
+                        {savingProfile ? "Saving…" : "Save Info"}
+                      </button>
+                      <button onClick={cancelEdit} className="px-3 py-1.5 text-xs font-bold rounded-lg border border-gray-200 text-on-surface-variant hover:bg-gray-50">Cancel</button>
+                    </div>
+                    {editMsg && <p className={`text-[11px] font-semibold flex items-center gap-1 ${editMsg.ok ? "text-green-600" : "text-red-600"}`}><span className="material-symbols-outlined text-xs">{editMsg.ok ? "check_circle" : "error"}</span>{editMsg.text}</p>}
+                  </div>
+                ) : (
+                  <>
+                    <h3 className="text-xl font-extrabold text-on-surface">{p?.name}</h3>
+                    <span className="inline-block bg-primary/10 text-primary text-[11px] font-bold px-2 py-0.5 rounded mt-1">Student ID: {p?.student_id}</span>
+                    <div className="mt-3 space-y-1.5 text-sm text-on-surface-variant">
+                      <p>🎂 Date of Birth: {fmtDate(p?.dateOfBirth)}</p>
+                      <p>⚧ Gender: {p?.gender}</p>
+                      <p>🎓 Grade Level: {p?.gradeLevel}</p>
+                      <p>📅 School Year: {p?.schoolYear}</p>
+                      <p>📍 Address: {p?.address}</p>
+                      <p>📞 Contact: {p?.contact}</p>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Top cards */}
@@ -168,7 +264,30 @@ export default function StudentAcademicRecordModal({ studentId, onClose }) {
                           {quartersShown.map((q) => (
                             <tr key={q.quarter} className="border-b border-outline-variant/10">
                               <td className="px-3 py-3 text-xs font-bold text-on-surface-variant">{QLABEL[q.quarter - 1]}</td>
-                              {q.cells.map((c, i) => <td key={i} className="px-3 py-3 text-center"><Cell cell={c} /></td>)}
+                              {q.cells.map((c, i) => {
+                                const cellKey = `${subject}|${c.pace}`;
+                                const isEditing = editMode && editingCell === cellKey && c.pace != null;
+                                return (
+                                  <td key={i} className="px-3 py-3 text-center">
+                                    {isEditing ? (
+                                      <input type="number" min="0" max="100" autoFocus value={cellScore} disabled={savingCell}
+                                        title="Press Enter to save, Esc to cancel (blank clears the grade)"
+                                        onChange={(e) => setCellScore(e.target.value)}
+                                        onBlur={() => setEditingCell(null)}
+                                        onKeyDown={(e) => { if (e.key === "Enter") saveCell(subject, c); if (e.key === "Escape") setEditingCell(null); }}
+                                        className="w-16 border border-primary/50 rounded-lg px-1.5 py-1 text-center text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                                    ) : editMode && c.pace != null ? (
+                                      <button type="button" title="Click to edit grade"
+                                        onClick={() => { setEditingCell(cellKey); setCellScore(c.score ?? ""); }}
+                                        className="min-w-[3rem] rounded-lg px-1.5 py-1 hover:bg-primary/5 border border-dashed border-primary/30 cursor-pointer">
+                                        <Cell cell={c} />
+                                      </button>
+                                    ) : (
+                                      <Cell cell={c} />
+                                    )}
+                                  </td>
+                                );
+                              })}
                               <td className="px-3 py-3 text-center font-extrabold text-primary">{q.total != null ? q.total : "-"}</td>
                             </tr>
                           ))}
@@ -196,10 +315,16 @@ export default function StudentAcademicRecordModal({ studentId, onClose }) {
                   <LegendItem color="bg-orange-500" title="Ongoing" desc="PACE is currently in progress" />
                   <LegendItem color="bg-slate-300" title="Not Yet Started" desc="PACE has not been started" />
                 </div>
-                <button className="w-full mb-2 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold rounded-xl border border-primary/30 text-primary hover:bg-primary/5 transition-colors"
-                  title="Editing student info is coming soon">
-                  <span className="material-symbols-outlined text-base">edit</span> Edit Student Information
+                <button onClick={editMode ? cancelEdit : startEdit}
+                  className="w-full mb-2 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold rounded-xl border border-primary/30 text-primary hover:bg-primary/5 transition-colors">
+                  <span className="material-symbols-outlined text-base">{editMode ? "close" : "edit"}</span>
+                  {editMode ? "Done Editing" : "Edit Student Information"}
                 </button>
+                {editMode && (
+                  <p className="text-[11px] text-on-surface-variant mb-2 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-xs">info</span>Click a grade in the table to edit it.
+                  </p>
+                )}
                 <button onClick={handleReady} disabled={readying || data?.readyForNext}
                   className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold rounded-xl bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 transition-colors">
                   <span className="material-symbols-outlined text-base" style={fillStyle}>check_circle</span>
@@ -259,6 +384,11 @@ export default function StudentAcademicRecordModal({ studentId, onClose }) {
                   {savingNote ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <span className="material-symbols-outlined text-base" style={fillStyle}>save</span>}
                   {savingNote ? "Saving…" : "Save Note"}
                 </button>
+                {noteMsg && (
+                  <p className={`mt-2 text-xs font-semibold flex items-center gap-1.5 ${noteMsg.ok ? "text-green-600" : "text-red-600"}`}>
+                    <span className="material-symbols-outlined text-sm">{noteMsg.ok ? "check_circle" : "error"}</span>{noteMsg.text}
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -268,6 +398,13 @@ export default function StudentAcademicRecordModal({ studentId, onClose }) {
   );
 }
 
+const editInput = "w-full border border-gray-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20";
+const EditField = ({ label, children }) => (
+  <label className="block">
+    <span className="block text-[9px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-0.5">{label}</span>
+    {children}
+  </label>
+);
 const MiniCard = ({ label, sub, value, valueColor, icon, iconColor }) => (
   <div className="border border-outline-variant/20 rounded-xl p-4">
     <div className="flex items-start justify-between">
@@ -295,6 +432,7 @@ const AttCell = ({ n, pct, label, bg, color }) => (
 );
 const Cell = ({ cell }) => {
   if (cell.score != null) return <span className={`font-bold ${cell.score >= 90 ? "text-green-600" : "text-on-surface"}`}>{cell.score}</span>;
+  if (cell.status === "Completed") return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">Completed</span>;
   if (cell.status === "Ongoing") return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-600">Ongoing</span>;
   return <span className="text-[11px] text-on-surface-variant/50">Not Started</span>;
 };

@@ -198,6 +198,22 @@ export const markReadyForNext = asyncHandler(async (req, res) => {
   sendSuccess(res, data, "Marked ready for next PACE");
 });
 
+// updateStudentProfile - PATCH /teacher/student/:id/profile { first_name, last_name, date_of_birth, gender, address, contact_number }
+export const updateStudentProfile = asyncHandler(async (req, res) => {
+  const data = await TeacherService.updateStudentProfile(req.user.user_id, parseInt(req.params.id, 10), req.body ?? {});
+  sendSuccess(res, data, "Student information updated");
+});
+
+// setPaceScore - PATCH /teacher/student-pace/score { student_id, subject, pace_number, score }
+export const setPaceScore = asyncHandler(async (req, res) => {
+  const { student_id, subject, pace_number, score } = req.body;
+  if (!student_id || !subject || pace_number == null) {
+    return res.status(400).json({ message: "student_id, subject and pace_number are required" });
+  }
+  const data = await TeacherService.setPaceScore(req.user.user_id, { student_id: parseInt(student_id, 10), subject, pace_number, score });
+  sendSuccess(res, data, "Grade updated");
+});
+
 // getStudentAssessments - GET /teacher/record-assessments?student_id=.
 //   Validates the id, then returns that student's per-PACE assessments.
 //   NEXT > service.getStudentAssessments. UI: teacher/Assessments.jsx.
@@ -214,6 +230,15 @@ export const recordSelfTest = asyncHandler(async (req, res) => {
   if (!sp_id || score == null) return res.status(400).json({ message: "sp_id and score are required" });
   const data = await TeacherService.recordSelfTest(req.user.user_id, { sp_id, score, date_taken });
   sendCreated(res, data, "Self-test recorded");
+});
+
+// resetSelfTest - POST { sp_id }. Clears the student's self-test attempts for this PACE
+// so they can be recorded again. NEXT > service.resetSelfTest.
+export const resetSelfTest = asyncHandler(async (req, res) => {
+  const { sp_id } = req.body;
+  if (!sp_id) return res.status(400).json({ message: "sp_id is required" });
+  const data = await TeacherService.resetSelfTest(req.user.user_id, { sp_id });
+  sendSuccess(res, data, "Self-test attempts reset");
 });
 
 // recordPaceTest - POST { sp_id, score, date_taken }. NEXT > service.recordPaceTest

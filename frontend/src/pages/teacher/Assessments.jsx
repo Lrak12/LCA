@@ -1,13 +1,16 @@
 // Record Self-Test and PACE-Test scores per student, per PACE. Rules: self-test
-// READY = average of attempts >= 90; PACE test is locked until READY, and passes at
-// any attempt >= 90. Backend: teacher.service getStudentAssessments / recordSelfTest
-// / recordPaceTest (under /teacher/record-assessments).
+// READY = ANY attempt >= 90; PACE test is locked until READY, and passes at any
+// attempt >= 90. After 3 failed self-test attempts the student needs intervention and
+// the supervisor can Reset to re-record. Backend: teacher.service getStudentAssessments
+// / recordSelfTest / resetSelfTest / recordPaceTest (under /teacher/record-assessments).
 import { useState, useEffect, useCallback } from "react";
 import TeacherLayout from "../../components/TeacherLayout.jsx";
+import ConfirmModal from "../../components/ConfirmModal.jsx";
 import {
   fetchTeacherStudents,
   fetchStudentAssessments,
   recordSelfTest,
+  resetSelfTest,
   recordPaceTest,
 } from "../../api/teacher.js";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
@@ -57,8 +60,12 @@ function SelfTestRecordingView({ row, student, passMark, onBack, onRecorded }) {
   const [date,   setDate]   = useState(new Date().toISOString().split("T")[0]); // date input (defaults today)
   const [saving, setSaving] = useState(false);         // save in flight
   const [error,  setError]  = useState("");            // inline validation/save error
+  const [resetting, setResetting] = useState(false);   // reset in flight
+  const [confirmReset, setConfirmReset] = useState(false); // reset confirmation open?
 
   const nextAttempt = st.attemptsUsed + 1;             // which attempt # the form will create
+  // Best (highest) score drives readiness under the "any attempt >= 90" rule.
+  const bestScore = st.attempts.length ? Math.max(...st.attempts.map((a) => a.score ?? 0)) : null;
 
   // handleSave - validate 0-100, POST the attempt, then refresh + close the form.
   const handleSave = async () => {
@@ -75,6 +82,23 @@ function SelfTestRecordingView({ row, student, passMark, onBack, onRecorded }) {
       setError(err.response?.data?.message ?? err.message ?? "Failed to record.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  // handleReset - clear this PACE's self-test attempts so recording can start over.
+  const handleReset = async () => {
+    setResetting(true);
+    setError("");
+    try {
+      await resetSelfTest({ sp_id: row.sp_id });        // POST .../self-test/reset
+      setConfirmReset(false);
+      setOpen(false);
+      setScore("");
+      onRecorded();                                     // parent reloads the assessments
+    } catch (err) {
+      setError(err.response?.data?.message ?? err.message ?? "Failed to reset.");
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -141,8 +165,8 @@ function SelfTestRecordingView({ row, student, passMark, onBack, onRecorded }) {
       {/* Summary */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 text-center">
         <div className="py-2">
-          <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-1">Current Average</p>
-          <p className="text-3xl font-extrabold text-on-surface">{st.average != null ? `${st.average}%` : "—"}</p>
+          <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-1">Best Score</p>
+          <p className={`text-3xl font-extrabold ${bestScore != null ? (st.ready ? "text-green-600" : "text-on-surface") : "text-on-surface"}`}>{bestScore != null ? `${bestScore}%` : "—"}</p>
         </div>
         <div className="py-2 md:border-x border-outline-variant/15">
           <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-2">Readiness Status</p>
@@ -155,6 +179,25 @@ function SelfTestRecordingView({ row, student, passMark, onBack, onRecorded }) {
           <p className="text-3xl font-extrabold text-on-surface">{st.attemptsUsed} / 3</p>
         </div>
       </div>
+
+      {/* Intervention: 3 attempts recorded, none reached the pass mark */}
+      {st.needsIntervention && (
+        <div className="max-w-2xl mx-auto mb-4 rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+          <div className="flex items-start gap-3">
+            <span className="material-symbols-outlined text-red-600 mt-0.5" style={fillStyle}>report</span>
+            <div className="flex-1">
+              <p className="text-sm font-extrabold text-red-700">This student needs an intervention.</p>
+              <p className="text-xs text-red-600 mt-0.5">All 3 self-test attempts were below {passMark}%. Reset the attempts to record again after intervention.</p>
+              {error && <p className="mt-2 text-xs text-red-700 font-semibold flex items-center gap-1.5"><span className="material-symbols-outlined text-sm">error</span>{error}</p>}
+            </div>
+            <button onClick={() => setConfirmReset(true)} disabled={resetting}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-xl bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 whitespace-nowrap">
+              {resetting ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <span className="material-symbols-outlined text-base">restart_alt</span>}
+              {resetting ? "Resetting…" : "Reset Attempts"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Record attempt */}
       {st.canRecord ? (
@@ -192,15 +235,40 @@ function SelfTestRecordingView({ row, student, passMark, onBack, onRecorded }) {
             </button>
           </div>
         )
-      ) : (
-        <p className="text-center text-sm text-on-surface-variant mb-4">All 3 self-test attempts have been recorded.</p>
+      ) : st.ready ? (
+        <p className="text-center text-sm font-bold text-green-700 mb-4">Student is READY — a self-test attempt reached {passMark}%. Proceed to the PACE test.</p>
+      ) : null}
+
+      {/* General reset (available whenever attempts exist and it's not the intervention case,
+          which shows its own Reset button). Lets a supervisor clear attempts to re-record. */}
+      {st.canReset && !st.needsIntervention && (
+        <div className="flex justify-center mb-4">
+          <button onClick={() => setConfirmReset(true)} disabled={resetting}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-xl border border-gray-200 text-on-surface-variant hover:bg-gray-50 disabled:opacity-50">
+            {resetting ? <span className="w-4 h-4 border-2 border-on-surface-variant/30 border-t-on-surface-variant rounded-full animate-spin" /> : <span className="material-symbols-outlined text-base">restart_alt</span>}
+            {resetting ? "Resetting…" : "Reset Attempts"}
+          </button>
+        </div>
       )}
 
       {/* Footer note */}
       <div className="bg-purple-50 border border-purple-100 rounded-xl px-4 py-3 flex items-center gap-2 text-sm text-purple-800">
         <span className="material-symbols-outlined text-base" style={fillStyle}>info</span>
-        Students are considered READY only if the average of Self-Tests is {passMark}% and above.
+        Students are considered READY as long as any Self-Test attempt is {passMark}% and above.
       </div>
+
+      <ConfirmModal
+        open={confirmReset}
+        tone="danger"
+        icon="restart_alt"
+        title="Reset Self-Test Attempts?"
+        detail="This cannot be undone."
+        message={`This permanently clears all ${st.attemptsUsed} self-test attempt${st.attemptsUsed === 1 ? "" : "s"} for ${row.subject} PACE ${row.paceNumber ?? ""}. The student can then be recorded from attempt 1 again.`}
+        confirmLabel="Reset Attempts"
+        busy={resetting}
+        onConfirm={handleReset}
+        onCancel={() => setConfirmReset(false)}
+      />
     </>
   );
 }
@@ -302,9 +370,18 @@ function PaceTestRecordingView({ row, student, passMark, onBack, onRecorded }) {
         </div>
         <div className="py-2 md:border-x border-outline-variant/15">
           <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-2">Assessment Status</p>
-          <span className={`text-sm font-extrabold px-4 py-1.5 rounded-full ${pt.passed ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
-            {pt.passed ? "PASSED" : "FAILED"}
-          </span>
+          {(() => {
+            // Only call it FAILED once all attempts are used without passing. Before any
+            // attempt is recorded it's "Not Yet Taken"; mid-way it's "In Progress".
+            const s = pt.passed
+              ? { label: "PASSED",        cls: "bg-green-100 text-green-700" }
+              : pt.attemptsUsed === 0
+                ? { label: "NOT YET TAKEN", cls: "bg-blue-100 text-blue-700"  }
+                : pt.attemptsUsed >= 3
+                  ? { label: "FAILED",        cls: "bg-red-100 text-red-600"    }
+                  : { label: "IN PROGRESS",   cls: "bg-orange-100 text-orange-700" };
+            return <span className={`text-sm font-extrabold px-4 py-1.5 rounded-full ${s.cls}`}>{s.label}</span>;
+          })()}
         </div>
         <div className="py-2">
           <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-1">Attempts Used</p>

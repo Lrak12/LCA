@@ -71,7 +71,7 @@ function GradeLevelCard({ level, onManageStudents, onAssignSupervisor, onView })
       <div className="p-5 flex-1">
         {/* Grade label + student count */}
         <div className="flex items-start justify-between mb-5">
-          <span className="text-[13px] font-extrabold tracking-widest uppercase bg-surface-container-high text-on-surface-variant px-2.5 py-1 rounded-full">
+          <span className="text-[20px] font-extrabold tracking-widest uppercase bg-red-100 text-on-surface-variant px-2.5 py-1 ">
             {level.grade}
           </span>
           <div className="text-right leading-none">

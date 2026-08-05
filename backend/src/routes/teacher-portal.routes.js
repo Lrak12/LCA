@@ -31,6 +31,8 @@ router.post("/account/support-requests", requireRole("teacher"), AccountControll
 router.get("/student-record",     requireRole("teacher"), TeacherController.getStudentAcademicRecord);
 router.post("/student-record/note", requireRole("teacher"), TeacherController.saveSupervisorNote);
 router.post("/student-record/ready-next", requireRole("teacher"), TeacherController.markReadyForNext);
+router.patch("/student-record/:id/profile", requireRole("teacher"), TeacherController.updateStudentProfile); // supervisor edits student info
+router.patch("/student-record/grade", requireRole("teacher"), TeacherController.setPaceScore);              // inline grade edit
 // GET /teacher/attendance  - load a day's roster + saved status. NEXT > controller.getAttendance
 router.get("/attendance",         requireRole("teacher"), TeacherController.getAttendance);
 // POST /teacher/attendance - save the day's records.         NEXT > controller.submitAttendance
@@ -59,6 +61,7 @@ router.post("/student-pace-manage",   requireRole("teacher"), TeacherController.
 // Record Assessments page (teacher/Assessments.jsx). NEXT > the matching controller > service.
 router.get("/record-assessments",     requireRole("teacher"), TeacherController.getStudentAssessments); // load one student's PACEs + attempts
 router.post("/record-assessments/self-test", requireRole("teacher"), TeacherController.recordSelfTest);  // add a self-test attempt
+router.post("/record-assessments/self-test/reset", requireRole("teacher"), TeacherController.resetSelfTest); // clear attempts to re-record
 router.post("/record-assessments/pace-test", requireRole("teacher"), TeacherController.recordPaceTest);  // add a pace-test attempt
 router.get("/pace-test-scheduling",   requireRole("teacher"), TeacherController.getPaceTestScheduling);
 router.get("/scheduled-tests",        requireRole("teacher"), TeacherController.getScheduledTests);

@@ -1033,7 +1033,7 @@ export const getStudentPace = async (user_id) => {
   });
   const allSpIds = [...spMeta.keys()];
 
-  // Self-test eligibility per PACE: AVERAGE of attempts ≥ 90
+  // Self-test eligibility per PACE: ANY attempt ≥ 90 (not the average)
   const selfReadyBySp = new Map();
   const selfTestsBySp = new Map(); // sp_id → attempts[] (for the Go to Self-Test modal)
   if (allSpIds.length) {
@@ -1041,11 +1041,9 @@ export const getStudentPace = async (user_id) => {
       .from("self_test_result")
       .select("sp_id, score, date_taken, passed, quarter")
       .in("sp_id", allSpIds);
-    const acc = new Map();
     (selfRows ?? []).forEach((r) => {
       if (r.score == null) return;
-      const a = acc.get(r.sp_id) ?? { sum: 0, n: 0 };
-      a.sum += r.score; a.n += 1; acc.set(r.sp_id, a);
+      if (r.score >= 90) selfReadyBySp.set(r.sp_id, true); // READY once one attempt passes
       const list = selfTestsBySp.get(r.sp_id) ?? [];
       list.push({
         score:  r.score,
@@ -1058,7 +1056,6 @@ export const getStudentPace = async (user_id) => {
       });
       selfTestsBySp.set(r.sp_id, list);
     });
-    acc.forEach((a, sp) => selfReadyBySp.set(sp, a.n ? a.sum / a.n >= 90 : false));
     // Order each PACE's attempts oldest-first so they list as Self-Test 1, 2, 3…
     selfTestsBySp.forEach((list) => {
       list.sort((a, b) => String(a._ts).localeCompare(String(b._ts)));
@@ -1276,14 +1273,14 @@ export const submitPaceTestRequest = async (user_id, sp_id) => {
     throw new Error("No supervisor is assigned to your grade level yet. Please contact your supervisor.");
   }
 
-  // Eligibility: self-test AVERAGE must reach 90
+  // Eligibility: at least one self-test attempt must reach 90 (not the average)
   const { data: selfRows } = await supabaseAdmin
     .from("self_test_result")
     .select("score")
     .eq("sp_id", spId);
-  const xs = (selfRows ?? []).map((r) => r.score).filter((v) => v != null);
-  if (!xs.length || xs.reduce((a, b) => a + b, 0) / xs.length < 90) {
-    throw new Error("You must pass the self-test (90% average or higher) before requesting a PACE test.");
+  const passedSelf = (selfRows ?? []).some((r) => r.score != null && r.score >= 90);
+  if (!passedSelf) {
+    throw new Error("You must score at least 90% on a self-test before requesting a PACE test.");
   }
 
   // Reject if an active request/schedule already exists for this PACE

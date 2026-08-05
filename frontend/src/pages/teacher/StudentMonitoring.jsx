@@ -82,12 +82,12 @@ export default function StudentMonitoring() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { setPage(1); }, [tab, grade, search, paceStatus, assessStatus, subject, sortDir]); // back to page 1 on filter/sort change
 
-  const stats       = data?.stats ?? {};
-  const rows        = data?.students ?? [];
-  const total       = data?.totalStudents ?? 0;
-  const totalPages  = data?.totalPages ?? 1;
-  const gradeLevels = data?.gradeLevels ?? [];
-  const subjects    = data?.subjects ?? [];
+  const stats       = data?.stats ?? {};// data sa stats
+  const rows        = data?.students ?? [];// data sa students
+  const total       = data?.totalStudents ?? 0;// data sa total students
+  const totalPages  = data?.totalPages ?? 1;// data sa total pages
+  const gradeLevels = data?.gradeLevels ?? [];// data sa grade levels
+  const subjects    = data?.subjects ?? [];// data sa subjects
   const startIdx    = total ? (page - 1) * 8 + 1 : 0;
   const endIdx      = Math.min(page * 8, total);
 

@@ -66,7 +66,7 @@ const PasswordField = ({ label, value, onChange, placeholder }) => {
           className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1 text-on-surface-variant text-base pointer-events-none"
           tabIndex={-1}
         >
-          <span className="material-symbols-outlined text-lg">{show ? "visibility_off" : "visibility"}</span>
+          <span className="material-symbols-outlined text-lg">{show ? "visibility" : "visibility_off"}</span>
         </button>
       </div>
     </div>

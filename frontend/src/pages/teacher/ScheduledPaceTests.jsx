@@ -1,11 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import TeacherLayout from "../../components/TeacherLayout.jsx";
-import {
-  fetchScheduledTests,
-  updatePaceTestSchedule,
-  cancelPaceTest,
-} from "../../api/teacher.js";
+import ConfirmModal from "../../components/ConfirmModal.jsx";
+import {fetchScheduledTests,updatePaceTestSchedule,cancelPaceTest,} from "../../api/teacher.js";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
@@ -19,7 +16,7 @@ const QUARTER_OPTS = [
   { value: "4", label: "4th Quarter" },
 ];
 const STATUS_OPTS = ["Scheduled", "Rescheduled", "Completed", "Missed"];
-
+//style rani siya
 const STATUS_STYLE = {
   Scheduled:   "bg-blue-100 text-blue-700",
   Completed:   "bg-green-100 text-green-700",
@@ -90,6 +87,7 @@ export default function ScheduledPaceTests() {
   const [editVals, setEditVals] = useState({ date: "", time: "", status: "Scheduled" });
   const [saving,  setSaving]  = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const [detailErr, setDetailErr] = useState("");
 
   const load = useCallback(() => {
@@ -145,6 +143,7 @@ export default function ScheduledPaceTests() {
     setDetailErr("");
     try {
       await cancelPaceTest(selected.pts_id);
+      setConfirmCancel(false);
       setSelId(null);
       setRefresh((k) => k + 1);
     } catch (err) {
@@ -374,7 +373,7 @@ export default function ScheduledPaceTests() {
                 ) : (
                   <>
                     <button onClick={() => setEditing(true)} className="px-5 py-2.5 text-sm font-bold rounded-xl border border-gray-200 text-on-surface hover:bg-gray-50 transition-colors">Edit Schedule</button>
-                    <button onClick={handleCancel} disabled={cancelling}
+                    <button onClick={() => setConfirmCancel(true)} disabled={cancelling}
                       className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold rounded-xl bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors">
                       {cancelling ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <span className="material-symbols-outlined text-base">cancel</span>}
                       Cancel Schedule
@@ -385,6 +384,22 @@ export default function ScheduledPaceTests() {
             </div>
           </div>
         )}
+
+        <ConfirmModal
+          open={confirmCancel}
+          tone="danger"
+          icon="event_busy"
+          title="Cancel PACE Test?"
+          detail="This cancels the scheduled test."
+          message={selected
+            ? `Cancel the ${selected.subject} PACE ${selected.paceNumber ?? ""} test for ${selected.studentName}? The student will need a new schedule to take it.`
+            : ""}
+          confirmLabel="Cancel Schedule"
+          cancelLabel="Keep Schedule"
+          busy={cancelling}
+          onConfirm={handleCancel}
+          onCancel={() => setConfirmCancel(false)}
+        />
       </main>
     </TeacherLayout>
   );

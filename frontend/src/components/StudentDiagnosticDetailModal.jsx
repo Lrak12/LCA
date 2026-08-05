@@ -7,6 +7,8 @@
 //   plan:        GET /student-monitoring/:id/profile (api/studentMonitoring.js fetchStudentProfile)
 //        -> controllers/studentMonitoring.controller.js > getStudentProfile (~line 13) -> services/studentMonitoring.service.js > getStudentProfile (~line 649)
 import { useState, useEffect } from "react";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 import { fetchDiagnostics } from "../api/diagnosticAssessments.js";
 import { fetchStudentProfile } from "../api/studentMonitoring.js";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -78,10 +80,10 @@ export default function StudentDiagnosticDetailModal({ student, onClose }) {
   const subjectPaces = profile?.subjectPaces ?? {};                        // subject -> quarters -> paces (the projected plan)
   const planSubjects = Object.keys(subjectPaces);                          // plan table column headers
 
-  // Export = the student's Projected PACE Plan as a printable document (Save as PDF).
-  // Opens a standalone window with just the plan grid and triggers the print dialog,
-  // so it doesn't include the rest of the modal. Print (whole modal) is separate.
-  const handleExport = () => {
+  // Print = open a clean, standalone window with just the Projected PACE Plan and
+  // trigger the browser's print dialog. It only prints — it never downloads a file.
+  // (Export, below, is the one that saves a PDF via jsPDF.)
+  const handlePrint = () => {
     const esc = (v) => String(v ?? "")
       .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
@@ -122,11 +124,69 @@ export default function StudentDiagnosticDetailModal({ student, onClose }) {
       </body></html>`;
 
     const w = window.open("", "_blank");
-    if (!w) { setError("Please allow pop-ups to export the plan."); return; }
+    if (!w) { setError("Please allow pop-ups to print the plan."); return; }
     w.document.write(html);
     w.document.close();
     w.focus();
     setTimeout(() => w.print(), 250);
+  };
+
+  // Export = download the student's Projected PACE Plan straight to a PDF file
+  // (jsPDF + autotable). No print dialog and no extra browser tab — the file is
+  // saved directly. Print (above) is a separate button.
+  const handleExport = () => {
+    const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+    const marginX = 40;
+    let y = 48;
+
+    // Title + subtitle
+    doc.setFont("helvetica", "bold").setFontSize(18).setTextColor(26, 26, 26);
+    doc.text("Projected PACE Plan", marginX, y);
+    y += 16;
+    doc.setFont("helvetica", "normal").setFontSize(10).setTextColor(85, 85, 85);
+    doc.text("Projected PACE sequence for each subject for the entire school year.", marginX, y);
+    y += 22;
+
+    // Meta block (student / grade / date assessed)
+    doc.setFontSize(11).setTextColor(26, 26, 26);
+    const meta = [
+      [`Student:`, `${fullName || "—"} (ID: ${sid})`],
+      [`Grade Level:`, `${gradeLevel}`],
+      [`Date Assessed:`, `${formatDate(dateAssessed)}`],
+    ];
+    meta.forEach(([label, value]) => {
+      doc.setFont("helvetica", "bold").text(label, marginX, y);
+      doc.setFont("helvetica", "normal").text(value, marginX + 82, y);
+      y += 15;
+    });
+    y += 8;
+
+    if (planSubjects.length) {
+      // Build the plan grid: one row per (quarter, slot); the quarter label spans its 3 slots.
+      const body = QUARTER_LABELS.flatMap((ql, qi) =>
+        [0, 1, 2].map((slot) => {
+          const row = [];
+          if (slot === 0) row.push({ content: ql, rowSpan: 3, styles: { fontStyle: "bold", valign: "middle", halign: "left" } });
+          planSubjects.forEach((sub) => row.push(String(subjectPaces[sub]?.quarters?.[qi]?.paces?.[slot] ?? "—")));
+          return row;
+        }),
+      );
+
+      autoTable(doc, {
+        startY: y,
+        head: [["Quarter", ...planSubjects]],
+        body,
+        styles: { fontSize: 9, halign: "center", lineColor: [204, 204, 204], lineWidth: 0.5, cellPadding: 5 },
+        headStyles: { fillColor: [243, 244, 246], textColor: [26, 26, 26], fontStyle: "bold" },
+        margin: { left: marginX, right: marginX },
+      });
+    } else {
+      doc.setFont("helvetica", "normal").setFontSize(11);
+      doc.text("No PACE projection recorded for this school year yet.", marginX, y);
+    }
+
+    const safeName = (fullName || sid).replace(/[^a-z0-9]+/gi, "_").replace(/^_+|_+$/g, "");
+    doc.save(`Projected_PACE_Plan_${safeName || sid}.pdf`);
   };
 
   return (
@@ -280,7 +340,7 @@ export default function StudentDiagnosticDetailModal({ student, onClose }) {
                     </table>
                   </div>
                 )}
-                {/* Export -> CSV report (handleExport); Print -> window.print() (browser print-to-PDF) */}
+                {/* Export -> downloads the Projected PACE Plan as a PDF (handleExport, jsPDF); Print -> opens print dialog only (handlePrint) */}
                 <div className="flex justify-end gap-3 mt-4">
                   <button
                     onClick={handleExport}
@@ -289,13 +349,13 @@ export default function StudentDiagnosticDetailModal({ student, onClose }) {
                     <span className="material-symbols-outlined text-base">download</span>
                     Export
                   </button>
-                  {/*<button
-                    onClick={() => window.print()}
+                  <button
+                    onClick={handlePrint}
                     className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-outline-variant/40 text-sm font-bold text-primary hover:bg-surface-container-low transition-colors"
                   >
-                    <span className="material-symbols-outlined text-base">print</span> uncomment to para makita ang print button sa modal
+                    <span className="material-symbols-outlined text-base">print</span>
                     Print
-                  </button> */}
+                  </button>
                 </div>
               </div>
             </div>

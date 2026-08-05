@@ -254,7 +254,7 @@ export default function PaceProgress() {
         <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-8">
           <div>
             <h2 className="font-headline text-4xl font-extrabold tracking-tight text-primary">
-              {getGreeting()}, {firstName}.
+              PACE Progress
             </h2>
             <p className="text-on-surface-variant mt-1 max-w-lg">
               Check your PACE completion, assessment scores, and overall academic

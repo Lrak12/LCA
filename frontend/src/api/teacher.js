@@ -54,6 +54,14 @@ export const saveSupervisorNote = (student_id, note) =>
 export const markReadyForNext = (student_id) =>
   client.post("/teacher/student-record/ready-next", { student_id });
 
+// Supervisor edits a student's profile fields (name, DOB, gender, address, contact).
+export const updateStudentProfile = (student_id, body) =>
+  client.patch(`/teacher/student-record/${student_id}/profile`, body);
+
+// Supervisor edits one PACE's grade inline ({ student_id, subject, pace_number, score }).
+export const setPaceScore = (body) =>
+  client.patch("/teacher/student-record/grade", body);
+
 // Load one day's attendance for the class (params { date }). UI: teacher/Attendance.jsx.
 // Backend: GET /teacher/attendance > controller.getAttendance > service.getAttendance.
 export const fetchTeacherAttendance = (params = {}) =>
@@ -108,6 +116,10 @@ export const fetchStudentAssessments = (student_id) =>
 // Record a self-test attempt (body { sp_id, score, date_taken }). Backend: service.recordSelfTest (~2686).
 export const recordSelfTest = (body) =>
   client.post("/teacher/record-assessments/self-test", body);
+
+// Reset (clear) a student's self-test attempts for a PACE (body { sp_id }). Backend: service.resetSelfTest.
+export const resetSelfTest = (body) =>
+  client.post("/teacher/record-assessments/self-test/reset", body);
 
 // Record a PACE-test attempt (gated on self-test READY). Backend: service.recordPaceTest (~2716).
 export const recordPaceTest = (body) =>

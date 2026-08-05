@@ -276,11 +276,13 @@ export const updateSupervisor = async (teacher_id, {
     if (userErr) throw new Error(userErr.message);
   }
 
-  // 2b. Keep Supabase Auth in sync when the email changed
+  // 2b. Keep Supabase Auth in sync when the email changed. email_confirm:true applies
+  // the new address immediately (auto-verified, no confirmation step) — same as the
+  // admin User Management flow, and avoids leaving a stale pending email change.
   if (emailChanged && teacher.users?.auth_id) {
     const { error: authErr } = await supabaseAdmin.auth.admin.updateUserById(
       teacher.users.auth_id,
-      { email },
+      { email, email_confirm: true },
     );
     if (authErr) throw new Error(authErr.message);
   }

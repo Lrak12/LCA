@@ -260,7 +260,7 @@ export default function TeacherDashboard() {
 
         {/* ── Footer ──────────────────────────────────────────────── */}
         <footer className="text-center text-xs text-on-surface-variant py-4 border-t border-outline-variant/20">
-          @2026 All Rights Reserved // fix 
+          @2026 All Rights Reserved
         </footer>
 
       </main>

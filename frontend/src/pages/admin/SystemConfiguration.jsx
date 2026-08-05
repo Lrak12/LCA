@@ -10,8 +10,9 @@ import { useState, useEffect, useRef } from "react";
 import AdminLayout from "../../components/AdminLayout.jsx";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
 import {fetchSchoolYears, createSchoolYear, updateSchoolYear, activateSchoolYear,fetchUsers, setUserActive,} from "../../api/admin.js";
-import { fetchAcademicConfig } from "../../api/settings.js";
+import { fetchAcademicConfig, deleteGradeLevel } from "../../api/settings.js";
 import AddGradeLevelModal from "../../components/AddGradeLevelModal.jsx";
+import ConfirmModal from "../../components/ConfirmModal.jsx";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 const USER_PAGE_SIZE = 8;
@@ -139,9 +140,12 @@ function SchoolYearTab({ setBanner }) {
   const [form, setForm]       = useState({ year_label: "", start_date: "", end_date: "" }); // create form
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId]   = useState(null);      // sy_id currently being activated
+  const [confirmSy, setConfirmSy] = useState(null);  // school year pending "set active" confirmation
   const [gradeLevels, setGradeLevels] = useState([]); // grade levels for the active year
   const [glLoading, setGlLoading]     = useState(true);
   const [showAddGl, setShowAddGl]     = useState(false); // Add Grade Level modal open?
+  const [confirmGl, setConfirmGl]     = useState(null);  // grade level pending delete confirmation
+  const [deletingGl, setDeletingGl]   = useState(null);  // gl_id currently being deleted
 
   const reload = () => setReloadKey((k) => k + 1);
 
@@ -216,6 +220,25 @@ function SchoolYearTab({ setBanner }) {
     }
   };
 
+  // delete a grade level. The DB blocks this (FK) if students or a supervisor are
+  // still attached, so we surface that message instead of silently failing.
+  const onDeleteGl = async (g) => {
+    setError("");
+    setDeletingGl(g.gl_id);
+    try {
+      await deleteGradeLevel(g.gl_id);               // DELETE /settings/academic/grade-levels/:id
+      setBanner(`${g.level_name} removed.`);
+      reload();
+    } catch (err) {
+      setError(
+        err.response?.data?.message ??
+        `Cant delete ${g.level_name}. Students or supervisor still assigned.`
+      );
+    } finally {
+      setDeletingGl(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {error && (
@@ -224,42 +247,146 @@ function SchoolYearTab({ setBanner }) {
         </div>
       )}
 
-      {/* Current School Year */}
-      <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-6">
-        <div className="flex items-start justify-between gap-4 mb-5">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-              <span className="material-symbols-outlined" style={fillStyle}>event_available</span>
-            </div>
-            <h3 className="font-headline text-lg font-extrabold text-on-surface flex items-center gap-2">
-              Current School Year
-              {active && <span className="text-[10px] font-extrabold tracking-widest uppercase bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Active</span>}
-            </h3>
+    <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-6">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4 mb-5">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+            <span className="material-symbols-outlined" style={fillStyle}>
+              event_available
+            </span>
           </div>
-          {/* Edit Active School Year -> setEditing(active) opens <EditSchoolYearModal> */}
-          {active && (
-            <button onClick={() => setEditing(active)} className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-outline-variant/40 text-sm font-bold text-on-surface hover:bg-surface-container-low">
-              <span className="material-symbols-outlined text-base">edit</span> Edit Active School Year
-            </button>
-          )}
+          <h3 className="font-headline text-lg font-extrabold text-on-surface flex items-center gap-2">
+            Current School Year
+            {active && (
+              <span className="text-[10px] font-extrabold tracking-widest uppercase bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                Active
+              </span>
+            )}
+          </h3>
         </div>
-        {loading ? (
-          <Skeleton className="h-12 w-full" />
-        ) : !active ? (
-          <p className="text-sm text-on-surface-variant">No active school year set. Set one as active below.</p>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
-            <div><p className={labelCls}>School Year</p><div className={`${inputCls} bg-surface-container-lowest`}>{syLabel(active.year_label)}</div></div>
-            <div><p className={labelCls}>Start Date</p><div className={`${inputCls} bg-surface-container-lowest`}>{fmtDate(active.start_date)}</div></div>
-            <div><p className={labelCls}>End Date</p><div className={`${inputCls} bg-surface-container-lowest`}>{fmtDate(active.end_date)}</div></div>
-            <span className="text-[10px] font-extrabold tracking-widest uppercase bg-green-100 text-green-700 px-3 py-2 rounded-lg text-center">Active</span>
-          </div>
+
+        {active && (
+          <button
+            onClick={() => setEditing(active)}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-outline-variant/40 text-sm font-bold text-on-surface hover:bg-surface-container-low"
+          >
+            <span className="material-symbols-outlined text-base">edit</span>
+            Edit Active School Year
+          </button>
         )}
-        <div className="mt-4 flex items-start gap-2 px-4 py-3 rounded-lg bg-blue-50 text-blue-700 text-[13px]">
-          <span className="material-symbols-outlined text-base shrink-0" style={fillStyle}>info</span>
-          Only one school year can be active at a time. The active school year is used across all modules and reports.
-        </div>
       </div>
+
+      {/* School Year Details */}
+      {loading ? (
+        <Skeleton className="h-12 w-full" />
+      ) : !active ? (
+        <p className="text-sm text-on-surface-variant">
+          No active school year set. Set one as active below.
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
+          <div>
+            <p className={labelCls}>School Year</p>
+            <div className={`${inputCls} bg-surface-container-lowest`}>
+              {syLabel(active.year_label)}
+            </div>
+          </div>
+
+          <div>
+            <p className={labelCls}>Start Date</p>
+            <div className={`${inputCls} bg-surface-container-lowest`}>
+              {fmtDate(active.start_date)}
+            </div>
+          </div>
+
+          <div>
+            <p className={labelCls}>End Date</p>
+            <div className={`${inputCls} bg-surface-container-lowest`}>
+              {fmtDate(active.end_date)}
+            </div>
+          </div>
+
+          <span className="text-[10px] font-extrabold tracking-widest uppercase bg-green-100 text-green-700 px-3 py-2 rounded-lg text-center">
+            Active
+          </span>
+        </div>
+      )}
+
+
+      {/* Divider */}
+      <div className="my-6 border-t border-outline-variant/20" />
+
+      {/* Grade Levels */}
+      <div className="flex items-start justify-between gap-4 mb-5">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+            <span className="material-symbols-outlined" style={fillStyle}>
+              inventory_2
+            </span>
+          </div>
+
+          <div>
+            <h3 className="font-headline text-lg font-extrabold text-on-surface">
+              Grade Levels
+            </h3>
+            <p className="text-sm text-on-surface-variant">
+              Grade levels for the active school year.
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={() => setShowAddGl(true)}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-white text-sm font-bold hover:bg-primary/90 shrink-0"
+        >
+          <span className="material-symbols-outlined text-base">add</span>
+          Add Grade Level
+        </button>
+      </div>
+
+      {glLoading ? (
+        <Skeleton className="h-10 w-full" />
+      ) : gradeLevels.length === 0 ? (
+        <p className="text-sm text-on-surface-variant">
+          No grade levels yet. Use "Add Grade Level" to create one.
+        </p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {gradeLevels.map((g) => (
+            <span
+              key={g.gl_id}
+              className="inline-flex items-center gap-1 pl-3 pr-1.5 py-1.5 rounded-full bg-surface-container-high text-on-surface text-sm font-bold"
+            >
+              {g.level_name}
+
+              <button
+                onClick={() => setConfirmGl(g)}
+                disabled={deletingGl === g.gl_id}
+                aria-label={`Remove ${g.level_name}`}
+                title={`Remove ${g.level_name}`}
+                className="flex items-center justify-center w-5 h-5 rounded-full text-on-surface-variant hover:bg-red-100 hover:text-red-600 transition-colors disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined text-base leading-none">
+                  close
+                </span>
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-4 flex items-start gap-2 px-4 py-3 rounded-lg bg-blue-50 text-blue-700 text-[13px]">
+        <span
+          className="material-symbols-outlined text-base shrink-0"
+          style={fillStyle}
+        >
+          info
+        </span>
+        Only one school year can be active at a time. The active school year is
+        used across all modules and reports.
+      </div>
+    </div>
 
       {/* Add New School Year */}
       <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-6">
@@ -283,37 +410,6 @@ function SchoolYearTab({ setBanner }) {
         </form>
       </div>
 
-      {/* Grade Levels (active school year) */}
-      <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-6">
-        <div className="flex items-start justify-between gap-4 mb-5">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-              <span className="material-symbols-outlined" style={fillStyle}>inventory_2</span>
-            </div>
-            <div>
-              <h3 className="font-headline text-lg font-extrabold text-on-surface">Grade Levels</h3>
-              <p className="text-sm text-on-surface-variant">Grade levels for the active school year.</p>
-            </div>
-          </div>
-          {/* Add Grade Level -> setShowAddGl(true) opens <AddGradeLevelModal> */}
-          <button onClick={() => setShowAddGl(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-white text-sm font-bold hover:bg-primary/90 shrink-0">
-            <span className="material-symbols-outlined text-base">add</span> Add Grade Level
-          </button>
-        </div>
-        {glLoading ? (
-          <Skeleton className="h-10 w-full" />
-        ) : gradeLevels.length === 0 ? (
-          <p className="text-sm text-on-surface-variant">No grade levels yet. Use “Add Grade Level” to create one.</p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {gradeLevels.map((g) => (
-              <span key={g.gl_id} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-container-high text-on-surface text-sm font-bold">
-                {g.level_name}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
 
       {showAddGl && (
         <AddGradeLevelModal
@@ -365,8 +461,8 @@ function SchoolYearTab({ setBanner }) {
                             <span className="material-symbols-outlined text-sm">check</span> Current Active
                           </span>
                         ) : (
-                          /* Set as Active -> onActivate(sy) (activateSchoolYear + reload) */
-                          <button onClick={() => onActivate(sy)} disabled={busyId === sy.sy_id}
+                          /* Set as Active -> confirm, then onActivate(sy) (activateSchoolYear + reload) */
+                          <button onClick={() => setConfirmSy(sy)} disabled={busyId === sy.sy_id}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-outline-variant/40 text-on-surface text-xs font-bold hover:bg-surface-container-low disabled:opacity-60">
                             <span className="material-symbols-outlined text-sm">star</span> Set as Active
                           </button>
@@ -396,6 +492,30 @@ function SchoolYearTab({ setBanner }) {
           onSaved={() => { setEditing(null); setBanner("School year updated."); reload(); }}
         />
       )}
+
+      <ConfirmModal
+        open={!!confirmSy}
+        tone="primary"
+        icon="event_available"
+        title="Set Active School Year?"
+        message={confirmSy ? `Make ${syLabel(confirmSy.year_label)} the active school year? This deactivates the current active year and changes what the whole system treats as the current year.` : ""}
+        confirmLabel="Set as Active"
+        busy={busyId === confirmSy?.sy_id}
+        onConfirm={async () => { const sy = confirmSy; await onActivate(sy); setConfirmSy(null); }}
+        onCancel={() => setConfirmSy(null)}
+      />
+
+      <ConfirmModal
+        open={!!confirmGl}
+        tone="danger"
+        icon="delete"
+        title="Remove Grade Level?"
+        message={confirmGl ? `Remove ${confirmGl.level_name} from the active school year? This can't be undone, and it will be blocked if any students or a supervisor are still assigned to it.` : ""}
+        confirmLabel="Remove"
+        busy={deletingGl === confirmGl?.gl_id}
+        onConfirm={async () => { const g = confirmGl; await onDeleteGl(g); setConfirmGl(null); }}
+        onCancel={() => setConfirmGl(null)}
+      />
     </div>
   );
 }
@@ -414,6 +534,7 @@ function UserAccessTab({ setBanner }) {
   const [error, setError]   = useState("");
   const [statusEdits, setStatusEdits] = useState({}); // user_id -> "active"|"inactive" (unsaved dropdown edits)
   const [busyId, setBusyId] = useState(null);          // row currently saving
+  const [confirmUser, setConfirmUser] = useState(null); // user pending deactivate confirmation
   const [reloadKey, setReloadKey] = useState(0);       // bump to refetch
 
   // debounce the search box
@@ -608,9 +729,9 @@ function UserAccessTab({ setBanner }) {
                           >
                             <span className="material-symbols-outlined text-sm">save</span> Save Changes
                           </button>
-                          {/* Deactivate/Activate -> toggleActive(u) one-click flip */}
+                          {/* Deactivate/Activate -> deactivate asks first; activate is direct */}
                           <button
-                            onClick={() => toggleActive(u)}
+                            onClick={() => (u.is_active ? setConfirmUser(u) : toggleActive(u))}
                             disabled={busyId === u.user_id}
                             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold border disabled:opacity-60 ${u.is_active ? "border-red-200 text-red-600 hover:bg-red-50" : "border-green-200 text-green-600 hover:bg-green-50"}`}
                           >
@@ -644,6 +765,19 @@ function UserAccessTab({ setBanner }) {
           </div>
         </div>
       </div>
+
+      <ConfirmModal
+        open={!!confirmUser}
+        tone="danger"
+        icon="block"
+        title="Deactivate User?"
+        detail="They will be blocked from signing in."
+        message={confirmUser ? `Deactivate ${confirmUser.name}'s account? They will not be able to log in until reactivated.` : ""}
+        confirmLabel="Deactivate"
+        busy={busyId === confirmUser?.user_id}
+        onConfirm={async () => { const u = confirmUser; await toggleActive(u); setConfirmUser(null); }}
+        onCancel={() => setConfirmUser(null)}
+      />
     </div>
   );
 }

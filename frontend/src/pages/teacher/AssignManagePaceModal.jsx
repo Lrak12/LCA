@@ -95,8 +95,6 @@ export default function AssignManagePaceModal({ studentId, onClose, onSaved }) {
     });
   }, [data]);
 
-  const moduleOptions = data?.moduleOptions ?? {};
-
   // Open the details form for a specific PACE (Manage / View / Assign)
   const openForm = (subject, pace) => {
     setFormErr("");
@@ -114,13 +112,6 @@ export default function AssignManagePaceModal({ studentId, onClose, onSaved }) {
   };
 
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-
-  // Auto-fill the PACE title when the number matches a known module
-  const onPaceNumberChange = (val) => {
-    const opts = moduleOptions[form.subject] ?? [];
-    const match = opts.find((o) => String(o.pace_number) === String(val));
-    setForm((f) => ({ ...f, pace_number: val, pace_title: match ? match.title : f.pace_title }));
-  };
 
   // handleSave - POST the form as one student_pace upsert; the backend auto-computes
   //   completion_status + points when the status is Completed. Then reload + notify parent.
@@ -281,23 +272,23 @@ export default function AssignManagePaceModal({ studentId, onClose, onSaved }) {
                 <h4 className="text-sm font-extrabold text-on-surface uppercase tracking-wide mb-5">Assign / Manage PACE Details</h4>
 
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-                  <Field label="Subject *">
-                    <select value={form.subject} onChange={(e) => setForm((f) => ({ ...f, subject: e.target.value, pace_title: "" }))}
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20">
-                      {[...new Set([...SUBJECTS, form.subject])].map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select>
+                  {/* Subject + PACE Number + Title identify the selected PACE — shown read-only, not
+                      editable. The PACE is chosen via the table's "Current Pace" selector before this
+                      form opens; this form only manages its status, dates, and extensions. */}
+                  <Field label="Subject">
+                    <div className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold bg-gray-100 text-on-surface-variant cursor-not-allowed select-none truncate" title={form.subject || ""}>
+                      {form.subject || "—"}
+                    </div>
                   </Field>
-                  <Field label="PACE Number *">
-                    <input list="pace-opts" value={form.pace_number} onChange={(e) => onPaceNumberChange(e.target.value)}
-                      placeholder="e.g. 1010" type="number"
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20" />
-                    <datalist id="pace-opts">
-                      {(moduleOptions[form.subject] ?? []).map((o) => <option key={o.pace_number} value={o.pace_number}>{o.title}</option>)}
-                    </datalist>
+                  <Field label="PACE Number">
+                    <div className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold bg-gray-100 text-on-surface-variant cursor-not-allowed select-none">
+                      {form.pace_number !== "" && form.pace_number != null ? `PACE ${form.pace_number}` : "—"}
+                    </div>
                   </Field>
                   <Field label="PACE Title">
-                    <input value={form.pace_title} onChange={(e) => setField("pace_title", e.target.value)} placeholder="Auto / optional"
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                    <div className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-gray-100 text-on-surface-variant cursor-not-allowed select-none truncate" title={form.pace_title || ""}>
+                      {form.pace_title || "—"}
+                    </div>
                   </Field>
                   <Field label="Status">
                     <select value={form.status} onChange={(e) => setField("status", e.target.value)}

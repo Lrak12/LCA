@@ -74,6 +74,23 @@ export const editGradeLevel = async (gl_id, { level_name }) => {
 };
 
 export const removeGradeLevel = async (gl_id) => {
+  // Trap: never delete a grade level that still has students assigned. We check
+  // explicitly (not relying on a DB foreign key, which could be CASCADE/SET NULL
+  // and silently orphan or reassign students) and block with a clear message.
+  const { count, error: countErr } = await supabaseAdmin
+    .from("student")
+    .select("student_id", { count: "exact", head: true })
+    .eq("gl_id", gl_id);
+  if (countErr) throw new Error(countErr.message);
+  if (count > 0) {
+    const err = new Error(
+      `This grade level still has ${count} student${count === 1 ? "" : "s"} assigned. ` +
+      `Reassign or remove them before deleting it.`
+    );
+    err.statusCode = 409; // Conflict — the frontend surfaces this message to the admin
+    throw err;
+  }
+
   const { error } = await supabaseAdmin
     .from("grade_level")
     .delete()

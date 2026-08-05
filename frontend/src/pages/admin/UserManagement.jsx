@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import AdminLayout from "../../components/AdminLayout.jsx";
 import { fetchUsers, setUserActive, createUser, updateUser } from "../../api/admin.js";
+import ConfirmModal from "../../components/ConfirmModal.jsx";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
 import { isPhMobile, PH_MOBILE_HINT } from "../../utils/phone.js";
 
@@ -460,6 +461,7 @@ export default function UserManagement() {
   const [editUser, setEditUser]   = useState(null);   // user being edited
   const [banner, setBanner]       = useState("");     // success toast text
   const [busyId, setBusyId]       = useState(null);   // row being toggled
+  const [confirmUser, setConfirmUser] = useState(null); // user pending deactivate confirmation
 
   // debounce the search box
   const debounceRef = useRef(null);
@@ -669,9 +671,9 @@ export default function UserManagement() {
                             onClick={(e) => e.stopPropagation()}
                             className="absolute right-0 top-9 z-20 w-44 bg-white rounded-xl border border-outline-variant/20 shadow-xl py-1"
                           >
-                            {/* Deactivate/Activate -> toggleActive(u) (PATCH status, then reload) */}
+                            {/* Deactivate asks first; Activate is direct */}
                             <button
-                              onClick={() => toggleActive(u)}
+                              onClick={() => { setMenuOpen(null); if (u.is_active) setConfirmUser(u); else toggleActive(u); }}
                               className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium hover:bg-surface-container-lowest text-left text-on-surface"
                             >
                               <span className="material-symbols-outlined text-base">{u.is_active ? "person_off" : "check_circle"}</span>
@@ -728,6 +730,18 @@ export default function UserManagement() {
       </main>
 
       {/* modals: `showAdd` -> AddUserModal (onCreated adds the user); `editUser` -> EditUserModal (onSaved reloads) */}
+      <ConfirmModal
+        open={!!confirmUser}
+        tone="danger"
+        icon="person_off"
+        title="Deactivate User?"
+        detail="They will be blocked from signing in."
+        message={confirmUser ? `Deactivate ${confirmUser.name}'s account? They will not be able to log in until reactivated.` : ""}
+        confirmLabel="Deactivate"
+        busy={busyId === confirmUser?.user_id}
+        onConfirm={async () => { const u = confirmUser; await toggleActive(u); setConfirmUser(null); }}
+        onCancel={() => setConfirmUser(null)}
+      />
       {showAdd && <AddUserModal onClose={() => setShowAdd(false)} onCreated={onCreated} />}
       {editUser && (
         <EditUserModal

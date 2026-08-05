@@ -2,6 +2,7 @@ import * as TeacherModel from "../models/teacher.model.js";
 import * as UserModel from "../models/user.model.js";
 import * as SelfTestModel from "../models/selfTestResult.model.js";
 import * as PaceTestModel from "../models/paceTestResult.model.js";
+import * as NotificationService from "./notification.service.js";
 import { supabaseAdmin } from "../config/supabase.js";
 
 export const getAllTeachers = async () => {
@@ -1554,11 +1555,21 @@ export const getPaceTestSchedule = async (user_id, student_id) => {
   return data ?? [];
 };
 
-// Combine a date (YYYY-MM-DD) + optional time (HH:MM) into an ISO timestamp.
+// School-local timezone offset (Asia/Manila = UTC+8, no DST). Teachers enter the
+// assessment date/time as Philippine wall-clock time, so we tag it with this offset.
+const SCHOOL_TZ_OFFSET = "+08:00";
+
+// Grace window after a scheduled test's time before it counts as a no-show. 0 = cancel
+// as soon as the scheduled time passes with no attempt. Raise this for a late buffer.
+const MISSED_GRACE_MS = 0; //ilisan ranig 60 * 60 * 1000 para mu 1hr siya before ma cancel 0 lang sa for now for demo lang 
+
+// Combine a date (YYYY-MM-DD) + optional time (HH:MM) into an ISO timestamp, tagged
+// with the school timezone. Without the offset the naive string lands in the
+// timestamptz column as UTC, and every time renders 8h off (6:00 PM shows as 2:00 AM).
 function _toScheduledAt(scheduled_date, scheduled_time) {
   if (!scheduled_date) return null;
   const time = scheduled_time && /^\d{2}:\d{2}/.test(scheduled_time) ? scheduled_time : "00:00";
-  return `${scheduled_date}T${time}:00`;
+  return `${scheduled_date}T${time}:00${SCHOOL_TZ_OFFSET}`;
 }
 
 export const schedulePaceTest = async (user_id, { student_id, subject, pace_number, quarter, scheduled_date, scheduled_time, notes }) => {
@@ -1613,6 +1624,43 @@ export const cancelPaceTest = async (user_id, pacetest_id) => {
   if (error) throw new Error(error.message);
   return { cancelled: true };
 };
+
+// Resolve the student (user_id + subject/pace) behind a pace_test_result row, so we
+// can notify them when their test is scheduled. Returns null if anything is missing.
+async function _studentNotifyInfoForPacetest(pacetest_id) {
+  const { data: pt } = await supabaseAdmin
+    .from("pace_test_result")
+    .select("sp_id")
+    .eq("pacetest_id", pacetest_id)
+    .maybeSingle();
+  if (!pt) return null;
+  const { data: sp } = await supabaseAdmin
+    .from("student_pace")
+    .select("student(user_id), pace_module(subject, module_number)")
+    .eq("sp_id", pt.sp_id)
+    .maybeSingle();
+  if (!sp?.student?.user_id) return null;
+  return {
+    user_id:     sp.student.user_id,
+    subject:     sp.pace_module?.subject ?? null,
+    pace_number: sp.pace_module?.module_number ?? null,
+  };
+}
+
+// Format a date (YYYY-MM-DD) + optional time (HH:MM) into a human string for the
+// notification message — built from the raw strings so it's timezone-safe.
+function _fmtScheduleForMsg(scheduled_date, scheduled_time) {
+  const d = new Date(`${scheduled_date}T00:00:00`);
+  const dateStr = isNaN(d) ? scheduled_date
+    : d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  if (scheduled_time && /^\d{2}:\d{2}/.test(scheduled_time)) {
+    const [h, m] = scheduled_time.split(":").map(Number);
+    const ampm = h >= 12 ? "PM" : "AM";
+    const h12  = ((h + 11) % 12) + 1;
+    return `${dateStr} at ${h12}:${String(m).padStart(2, "0")} ${ampm}`;
+  }
+  return dateStr;
+}
 
 // Resolve the venue (= student's grade level) for a pace_test_result row.
 async function _venueForPacetest(pacetest_id) {
@@ -1669,6 +1717,26 @@ export const updatePaceTestSchedule = async (user_id, pacetest_id, { scheduled_d
     .single();
 
   if (error) throw new Error(error.message);
+
+  // Notify the student that their PACE test was scheduled/rescheduled. Non-fatal:
+  // a notification failure must not fail the scheduling itself.
+  if (patch.assessment_timestamp && (status === "Scheduled" || status === "Rescheduled")) {
+    try {
+      const info = await _studentNotifyInfoForPacetest(Number(pacetest_id));
+      if (info?.user_id) {
+        const paceLabel = [info.subject, info.pace_number != null ? `PACE ${info.pace_number}` : null].filter(Boolean).join(" ");
+        const whenStr   = _fmtScheduleForMsg(scheduled_date, scheduled_time);
+        const venueStr  = patch.venue ? ` Venue: ${patch.venue}.` : "";
+        await NotificationService.createForUsers([info.user_id], {
+          title: status === "Rescheduled" ? "PACE Test Rescheduled" : "PACE Test Scheduled",
+          message_content: `Your ${paceLabel || "PACE"} test has been ${status === "Rescheduled" ? "rescheduled" : "scheduled"} for ${whenStr}.${venueStr}`,
+        });
+      }
+    } catch (e) {
+      console.warn("[pace-test schedule] notification failed:", e.message);
+    }
+  }
+
   return data;
 };
 
@@ -1695,7 +1763,7 @@ export const getScheduledTests = async (user_id, { quarter, subject, status, fro
   const glIds = gradeLevels.map((g) => g.gl_id);
   const { data: students } = await supabaseAdmin
     .from("student")
-    .select("student_id, first_name, last_name, grade_level(level_name)")
+    .select("student_id, user_id, first_name, last_name, grade_level(level_name)")
     .in("gl_id", glIds);
   if (!students?.length) return empty;
 
@@ -1731,6 +1799,7 @@ export const getScheduledTests = async (user_id, { quarter, subject, status, fro
       const info = spInfo.get(r.sp_id) ?? {};
       return {
         pts_id:       r.pacetest_id,
+        sp_id:        r.sp_id,
         student_id:   info.student_id ?? null,
         subject:      info.subject ?? "—",
         pace_number:  info.pace_number ?? null,
@@ -1744,23 +1813,17 @@ export const getScheduledTests = async (user_id, { quarter, subject, status, fro
     .sort((a, b) => String(a.scheduled_at).localeCompare(String(b.scheduled_at)));
   if (!rows.length) return { ...empty, subjects: [] };
 
-  // Readiness (eligibility): self-test AVERAGE >= 90, keyed student|subject|pace
+  // Readiness (eligibility): a student is READY when ANY self-test attempt >= 90
+  // (no longer the average), keyed student|subject|pace.
   const readySet = new Set();
   if (spIds.length) {
     const { data: selfTests } = await supabaseAdmin
       .from("self_test_result")
       .select("sp_id, score")
       .in("sp_id", spIds);
-    const sumBySp = new Map();
     (selfTests ?? []).forEach((r) => {
-      if (r.score == null) return;
-      const cur = sumBySp.get(r.sp_id) ?? { sum: 0, n: 0 };
-      cur.sum += r.score; cur.n += 1;
-      sumBySp.set(r.sp_id, cur);
-    });
-    sumBySp.forEach((agg, spId) => {
-      if (agg.sum / agg.n < PACE_TEST_READY_MARK) return;
-      const info = spInfo.get(spId);
+      if (r.score == null || r.score < PACE_TEST_READY_MARK) return;
+      const info = spInfo.get(r.sp_id);
       if (info) readySet.add(`${info.student_id}|${info.subject}|${info.pace_number}`);
     });
   }
@@ -1775,6 +1838,47 @@ export const getScheduledTests = async (user_id, { quarter, subject, status, fro
 
   const now = new Date();
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+  // ── No-show sweep (auto-cancel) ─────────────────────────────────────────────
+  // A scheduled test whose time has passed (beyond a grace window) with no recorded
+  // attempt is a no-show. Auto-cancel it (status → "Cancelled") and notify the student
+  // once that they missed it. Flipping the status dedups the notification. Runs lazily
+  // on page load since there's no background job.
+  const attemptedSpIds = new Set();
+  {
+    const { data: attemptRows } = await supabaseAdmin
+      .from("pace_test_result")
+      .select("sp_id")
+      .in("sp_id", spIds)
+      .not("score", "is", null);               // a scored row = the test was actually taken
+    (attemptRows ?? []).forEach((r) => attemptedSpIds.add(r.sp_id));
+  }
+  const missedCutoff = new Date(now.getTime() - MISSED_GRACE_MS);
+  const newlyMissed = rows.filter((row) =>
+    ["scheduled", "rescheduled"].includes(lc(row.status)) &&
+    new Date(row.scheduled_at) < missedCutoff &&
+    !attemptedSpIds.has(row.sp_id),
+  );
+  if (newlyMissed.length) {
+    const ids = newlyMissed.map((r) => r.pts_id);
+    // Auto-cancel the no-show schedules (dedups future notifications) and reflect it locally.
+    await supabaseAdmin.from("pace_test_result").update({ assessment_status: "Cancelled" }).in("pacetest_id", ids);
+    newlyMissed.forEach((r) => { r.status = "Cancelled"; });
+    // Notify each affected student that they missed it (non-fatal).
+    for (const r of newlyMissed) {
+      try {
+        const uid = studentById.get(r.student_id)?.user_id;
+        if (!uid) continue;
+        const paceLabel = [r.subject, r.pace_number != null ? `PACE ${r.pace_number}` : null].filter(Boolean).join(" ");
+        await NotificationService.createForUsers([uid], {
+          title: "Missed PACE Test",
+          message_content: `You missed your scheduled ${paceLabel || "PACE"} test, so it has been cancelled. Please see your supervisor to reschedule.`,
+        });
+      } catch (e) {
+        console.warn("[pace-test no-show] notification failed:", e.message);
+      }
+    }
+  }
 
   // Effective status: derive "Missed" for past, still-active tests
   const effectiveStatus = (row) => {
@@ -1875,27 +1979,25 @@ export const getPaceTestScheduling = async (user_id, { subject, quarter } = {}) 
   const spIds = (paces ?? []).map((p) => p.sp_id);
 
   const scoreKey = (sid, subj, pace) => `${sid}|${subj}|${pace}`;
-  const scoreByKey = new Map();      // student|subject|pace → self-test AVERAGE
-  let eligibleCount = 0;             // PACEs whose self-test AVERAGE >= 90
+  const scoreByKey = new Map();      // student|subject|pace → best (highest) self-test score
+  let eligibleCount = 0;             // PACEs with ANY self-test attempt >= 90
   if (spIds.length) {
     const { data: selfTests } = await supabaseAdmin
       .from("self_test_result")
       .select("sp_id, score")
       .in("sp_id", spIds);
-    // Average self-test score per sp_id
-    const sumBySp = new Map();
+    // Best (highest) self-test score per sp_id — readiness is any attempt >= 90.
+    const bestBySp = new Map();
     (selfTests ?? []).forEach((r) => {
       if (r.score == null) return;
-      const cur = sumBySp.get(r.sp_id) ?? { sum: 0, n: 0 };
-      cur.sum += r.score; cur.n += 1;
-      sumBySp.set(r.sp_id, cur);
+      const cur = bestBySp.get(r.sp_id);
+      if (cur == null || r.score > cur) bestBySp.set(r.sp_id, r.score);
     });
-    sumBySp.forEach((agg, spId) => {
+    bestBySp.forEach((best, spId) => {
       const info = spInfo.get(spId);
       if (!info) return;
-      const avg = agg.sum / agg.n;
-      scoreByKey.set(scoreKey(info.student_id, info.subject, info.pace_number), Math.round(avg * 100) / 100);
-      if (avg >= PACE_TEST_READY_MARK) eligibleCount++;
+      scoreByKey.set(scoreKey(info.student_id, info.subject, info.pace_number), Math.round(best * 100) / 100);
+      if (best >= PACE_TEST_READY_MARK) eligibleCount++;
     });
   }
 
@@ -2378,13 +2480,16 @@ export const getStudentAcademicRecord = async (user_id, student_id) => {
   const spList = paces ?? [];
   const spIds  = spList.map((p) => p.sp_id);
 
-  // PACE test results
+  // PACE test results — only ACTUAL attempts (score not null). Schedule/request rows
+  // share this table with a null score; including them makes latestTest return a null
+  // score (a Completed PACE shows "Not Started") and inflates the "not passed" count.
   let testsBySp = new Map();
   if (spIds.length) {
     const { data: tr } = await supabaseAdmin
       .from("pace_test_result")
       .select("sp_id, score, date_taken, passed, quarter")
       .in("sp_id", spIds)
+      .not("score", "is", null)
       .order("date_taken", { ascending: true });
     (tr ?? []).forEach((r) => { (testsBySp.get(r.sp_id) ?? testsBySp.set(r.sp_id, []).get(r.sp_id)).push(r); });
   }
@@ -2552,6 +2657,8 @@ export const getStudentAcademicRecord = async (user_id, student_id) => {
   return {
     profile: {
       student_id: student.student_id,
+      first_name: full?.first_name ?? student.first_name ?? "",
+      last_name:  full?.last_name ?? student.last_name ?? "",
       name:       `${full?.first_name ?? student.first_name} ${full?.last_name ?? student.last_name}`.trim(),
       dateOfBirth: full?.date_of_birth ?? null,
       gender:     full?.gender ?? "—",
@@ -2610,6 +2717,92 @@ export const saveSupervisorNote = async (user_id, student_id, note) => {
     if (error) throw new Error(error.message);
   }
   return { saved: true };
+};
+
+// Supervisor edits a student's profile (info card fields). Teacher-scoped via ownership.
+export const updateStudentProfile = async (user_id, student_id, fields = {}) => {
+  const { student } = await _ownedStudent(user_id, student_id);
+  const patch = {};
+  const setStr = (k, v) => { if (v !== undefined) patch[k] = v == null ? null : String(v).trim() || null; };
+  if (fields.first_name !== undefined) {
+    const fn = String(fields.first_name).trim();
+    if (!fn) throw new Error("First name is required.");
+    patch.first_name = fn;
+  }
+  if (fields.last_name !== undefined) {
+    const ln = String(fields.last_name).trim();
+    if (!ln) throw new Error("Last name is required.");
+    patch.last_name = ln;
+  }
+  setStr("date_of_birth", fields.date_of_birth);
+  setStr("gender", fields.gender);
+  setStr("address", fields.address);
+  setStr("contact_number", fields.contact_number);
+
+  if (!Object.keys(patch).length) return { updated: false };
+  const { error } = await supabaseAdmin.from("student").update(patch).eq("student_id", student.student_id);
+  if (error) throw new Error(error.message);
+  return { updated: true };
+};
+
+// Supervisor edits one PACE's grade inline in the academic record grid. Sets the PACE
+// test score for the student's (subject + pace_number) PACE and re-derives its
+// completion/points (>=90 completes it; below reverts to In Progress; blank clears).
+export const setPaceScore = async (user_id, { student_id, subject, pace_number, score }) => {
+  const { teacher, student } = await _ownedStudent(user_id, student_id);
+  const blank = score === "" || score == null;
+  const sc = blank ? null : Number(score);
+  if (!blank && (isNaN(sc) || sc < 0 || sc > 100)) throw new Error("Score must be between 0 and 100.");
+
+  // Resolve the student's PACE (sp_id) for this subject + module number.
+  const { data: sps } = await supabaseAdmin
+    .from("student_pace")
+    .select("sp_id, end_date, extension_count, completion_date, pace_module!inner(subject, module_number)")
+    .eq("student_id", student.student_id);
+  const sp = (sps ?? []).find((p) =>
+    p.pace_module?.subject === subject && String(p.pace_module?.module_number) === String(pace_number));
+  if (!sp) throw new Error("This PACE isn't assigned to the student, so it can't be graded.");
+
+  const passed  = !blank && sc >= ASSESS_PASS_MARK;
+  const takenOn = new Date().toISOString().split("T")[0];
+
+  // Latest actual (scored) attempt for this PACE, if any.
+  const { data: existing } = await supabaseAdmin
+    .from("pace_test_result")
+    .select("pacetest_id")
+    .eq("sp_id", sp.sp_id)
+    .not("score", "is", null)
+    .order("date_taken", { ascending: false })
+    .limit(1);
+
+  if (blank) {
+    await supabaseAdmin.from("pace_test_result").delete().eq("sp_id", sp.sp_id).not("score", "is", null);
+  } else if (existing?.[0]) {
+    const { error } = await supabaseAdmin.from("pace_test_result")
+      .update({ score: sc, passed, date_taken: takenOn }).eq("pacetest_id", existing[0].pacetest_id);
+    if (error) throw new Error(error.message);
+  } else {
+    const { error } = await supabaseAdmin.from("pace_test_result")
+      .insert({ sp_id: sp.sp_id, score: sc, passed, date_taken: takenOn, recorded_by: teacher.teacher_id });
+    if (error) throw new Error(error.message);
+  }
+
+  // Re-derive the PACE's completion + points from the new score.
+  if (passed) {
+    const completionDate = sp.completion_date || takenOn;
+    const { completion_status, points_earned } = _computePaceCompletion({
+      end_date: sp.end_date, completion_date: completionDate, extension_count: sp.extension_count, passed: true,
+    });
+    await supabaseAdmin.from("student_pace")
+      .update({ status: "Completed", completion_date: completionDate, completion_status, points_earned, ready_for_next: true })
+      .eq("sp_id", sp.sp_id);
+  } else {
+    // failing score or cleared → no longer completed
+    await supabaseAdmin.from("student_pace")
+      .update({ status: "In Progress", completion_status: null, points_earned: 0, completion_date: null, ready_for_next: false })
+      .eq("sp_id", sp.sp_id);
+  }
+  return { updated: true, passed };
 };
 
 // Flags the student's current (or latest) PACE ready_for_next = true.
@@ -2691,14 +2884,18 @@ export const getStudentAssessments = async (user_id, student_id) => {
   if (spIds.length) {
     const [{ data: selfRows }, { data: paceRows }] = await Promise.all([
       supabaseAdmin.from("self_test_result").select("sp_id, attempt_no, score, date_taken, passed, recorded_by").in("sp_id", spIds),
-      supabaseAdmin.from("pace_test_result").select("sp_id, score, date_taken, passed, recorded_by").in("sp_id", spIds).order("date_taken", { ascending: true }),
+      // Only rows with an actual score are real attempts. Schedule/request rows also
+      // live in pace_test_result (assessment_status set, score null) — exclude them so
+      // a scheduled-but-not-taken test doesn't show as a failed null% attempt.
+      supabaseAdmin.from("pace_test_result").select("sp_id, score, date_taken, passed, recorded_by").in("sp_id", spIds).not("score", "is", null).order("date_taken", { ascending: true }),
     ]);
     (selfRows ?? []).forEach((r) => { (selfBySp.get(r.sp_id) ?? selfBySp.set(r.sp_id, []).get(r.sp_id)).push(r); });
     (paceRows ?? []).forEach((r) => { (paceBySp.get(r.sp_id) ?? paceBySp.set(r.sp_id, []).get(r.sp_id)).push(r); });
   }
 
   const PASS = ASSESS_PASS_MARK;
-  // Self-test READY is based on the AVERAGE of attempts (>= 90), not any single attempt.
+  // Self-test READY when ANY single attempt scores >= 90 (not the average). avgScore is
+  // kept only as an informational figure.
   const avgScore = (arr) => {
     const xs = (arr ?? []).map((r) => r.score).filter((v) => v != null);
     return xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 100) / 100 : null;
@@ -2713,8 +2910,9 @@ export const getStudentAssessments = async (user_id, student_id) => {
       const subject     = p.pace_module?.subject ?? "—";
       const selfAtt     = (selfBySp.get(p.sp_id) ?? []).sort((a, b) => (a.attempt_no ?? 0) - (b.attempt_no ?? 0));
       const paceAtt     = (paceBySp.get(p.sp_id) ?? []);
-      const selfAvg     = avgScore(selfAtt);
-      const selfReady   = selfAvg != null && selfAvg >= PASS;   // average-based READY
+      const selfAvg     = avgScore(selfAtt);                   // informational only
+      const selfReady   = passedAny(selfAtt);                  // READY when ANY attempt >= 90
+      const selfNeedsIntervention = !selfReady && selfAtt.length >= MAX_ATTEMPTS; // 3 tries, none passed
       const pacePassed  = passedAny(paceAtt);
 
       // Status precedence: PACE passed > PACE attempted > self-test ready > not ready.
@@ -2734,14 +2932,16 @@ export const getStudentAssessments = async (user_id, student_id) => {
           average:     selfAvg,
           ready:       selfReady,
           attemptsUsed: selfAtt.length,
-          canRecord:   selfAtt.length < MAX_ATTEMPTS,
+          canRecord:   !selfReady && selfAtt.length < MAX_ATTEMPTS,   // stop once passed or capped
+          needsIntervention: selfNeedsIntervention,                   // 3 failed attempts, none >= 90
+          canReset:    selfAtt.length > 0,                            // supervisor can clear + re-record
         },
         paceTest: {
           attempts:    paceAtt.map((r, i) => ({ attempt: i + 1, score: r.score, date: r.date_taken, passed: r.passed ?? (r.score >= PASS), recordedBy: r.recorded_by ?? null })),
           passed:      pacePassed,
           latestScore: paceAtt.length ? paceAtt[paceAtt.length - 1].score : null,  // most recent attempt
           attemptsUsed: paceAtt.length,
-          available:   selfReady,                        // locked until self-test AVERAGE passes
+          available:   selfReady,                        // unlocked once a self-test attempt passes
           canRecord:   selfReady && paceAtt.length < MAX_ATTEMPTS,
         },
         status,
@@ -2778,15 +2978,25 @@ export const recordSelfTest = async (user_id, { sp_id, score, date_taken }) => {
   return { recorded: true, attempt_no, passed: sc >= ASSESS_PASS_MARK };
 };
 
-// A student is self-test READY for a PACE when the AVERAGE of attempts >= 90.
+// Reset a student's self-test attempts for a PACE so they can be recorded again.
+// Per product decision this CLEARS the attempts (old attempts are not retained).
+export const resetSelfTest = async (user_id, { sp_id }) => {
+  await _ownsSpId(user_id, sp_id);                     // ownership check (throws if not owned)
+  const { error } = await supabaseAdmin
+    .from("self_test_result")
+    .delete()
+    .eq("sp_id", Number(sp_id));
+  if (error) throw new Error(error.message);
+  return { reset: true };
+};
+
+// A student is self-test READY for a PACE when ANY attempt scores >= 90.
 async function _selfTestReady(sp_id) {
   const { data: rows } = await supabaseAdmin
     .from("self_test_result")
     .select("score")
     .eq("sp_id", Number(sp_id));
-  const xs = (rows ?? []).map((r) => r.score).filter((v) => v != null);
-  if (!xs.length) return false;
-  return (xs.reduce((a, b) => a + b, 0) / xs.length) >= ASSESS_PASS_MARK;
+  return (rows ?? []).some((r) => r.score != null && r.score >= ASSESS_PASS_MARK);
 }
 
 // Insert one PACE-test attempt (max 3), gated on the self-test average passing. A
@@ -2796,16 +3006,18 @@ export const recordPaceTest = async (user_id, { sp_id, score, date_taken }) => {
   const sc = Number(score);
   if (isNaN(sc) || sc < 0 || sc > 100) throw new Error("Score must be between 0 and 100"); // validate range
 
-  // Gate: self-test AVERAGE must reach the pass mark first
+  // Gate: at least one self-test attempt must reach the pass mark first
   if (!(await _selfTestReady(sp_id))) {
-    throw new Error("The student's self-test average must reach 90% before recording a PACE test");
+    throw new Error("The student must score at least 90% on a self-test before recording a PACE test");
   }
 
-  // Enforce the 3-attempt cap.
+  // Enforce the 3-attempt cap. Count only rows with an actual score — schedule/request
+  // rows (score null) share this table and must not consume attempt slots.
   const { data: existing } = await supabaseAdmin
     .from("pace_test_result")
     .select("pacetest_id")
-    .eq("sp_id", Number(sp_id));
+    .eq("sp_id", Number(sp_id))
+    .not("score", "is", null);
   if ((existing?.length ?? 0) >= MAX_ATTEMPTS) throw new Error(`Maximum ${MAX_ATTEMPTS} PACE test attempts already recorded`);
 
   const passed  = sc >= ASSESS_PASS_MARK;               // did this attempt pass?

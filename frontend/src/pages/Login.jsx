@@ -14,7 +14,7 @@
 //   The controller also writes a LOGIN audit row (audit.service.writeAudit) and returns
 //   { access_token, user }. AuthContext saves the token to localStorage + setUser(...),
 //   then handleSubmit navigates to ROLE_DASHBOARDS[user.role].
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import schoolImage from "../assets/newloginpic.webp";
@@ -28,8 +28,18 @@ const ROLE_DASHBOARDS = {
 };
 
 export default function Login() {
-  const { login } = useAuth();
+  const { user, logout, login } = useAuth();
   const navigate  = useNavigate();
+
+  // If someone reaches this page while a session is still active — most commonly
+  // by pressing the browser Back button after signing in — end that session
+  // automatically. Landing on /login always means "sign in fresh".
+  // Mount-only (empty deps) on purpose: a normal sign-in sets `user` a moment
+  // before we navigate away, and we must NOT log that in-progress login back out.
+  useEffect(() => {
+    if (user) logout();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [idNumber, setIdNumber]         = useState("");
   const [password, setPassword]         = useState("");
