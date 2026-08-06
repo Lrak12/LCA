@@ -729,10 +729,13 @@ export default function PaceProgress() {
         {/* Go to Self-Test modal — self-test progress + attempt results for a PACE */}
         {viewSelfTest && (() => {
           const required  = 3; // target number of self-tests per PACE
+          const passMark  = 90; // a self-test must score ≥ 90 to count as passed
           const attempts  = viewSelfTest.selfTests ?? [];
           const completed = attempts.length;
           const progress  = Math.round((Math.min(completed, required) / required) * 100);
           const slots     = Array.from({ length: Math.max(required, completed) });
+          const hasPassed = attempts.some((st) => st.passed); // gate for scheduling a PACE test
+          const bestScore = attempts.length ? Math.max(...attempts.map((st) => st.score ?? 0)) : null;
           return (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
@@ -806,6 +809,19 @@ export default function PaceProgress() {
                   })}
                 </div>
               </div>
+
+              {/* Why the student can't schedule yet — shown until a self-test passes */}
+              {!hasPassed && (
+                <div className="px-6 pt-5">
+                  <div className="flex items-start gap-2.5 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200">
+                    <span className="material-symbols-outlined text-amber-600 text-lg leading-none">info</span>
+                    <p className="text-xs font-medium text-amber-800 leading-relaxed">
+                      You can't schedule a PACE test yet. You need at least one self-test scored{" "}
+                      <span className="font-bold">{passMark}% or higher</span> to become eligible.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* Footer */}
               <div className="px-6 py-5 flex justify-end gap-3">

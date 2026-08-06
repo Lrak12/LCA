@@ -4,6 +4,12 @@ import * as StudentParentContactModel from "../models/studentParentContact.model
 import * as NotificationService from "./notification.service.js";
 import { supabase, supabaseAdmin } from "../config/supabase.js";
 
+// School wall-clock timezone. PACE test schedules are stored as real instants
+// anchored to the school offset (see teacher.service.js SCHOOL_TZ_OFFSET), so
+// they must be formatted back in this zone — not UTC — to show the time the
+// supervisor actually entered (e.g. 8:54 AM, not 12:54 AM).
+const SCHOOL_TZ = "Asia/Manila";
+
 // ── PACE projection helpers (source of truth: pace_quarterly_projection) ──────
 
 /** Derive an overall status for a subject/quarter row from its 3 status slots */
@@ -1127,8 +1133,8 @@ export const getStudentPace = async (user_id) => {
     let scheduledDate = null, scheduledTime = null;
     if (scheduled?.assessment_timestamp) {
       const sdt = new Date(scheduled.assessment_timestamp);
-      scheduledDate = sdt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
-      scheduledTime = sdt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
+      scheduledDate = sdt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: SCHOOL_TZ });
+      scheduledTime = sdt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: SCHOOL_TZ });
     }
     // Date the student submitted the request (stamped into date_taken on submit).
     const requestedDate = requested?.date_taken
@@ -1152,14 +1158,14 @@ export const getStudentPace = async (user_id) => {
     });
     if (scheduled && !requestStatus) {
       const dt = scheduled.assessment_timestamp ? new Date(scheduled.assessment_timestamp) : null;
-      // The schedule time is a wall-clock value stored as UTC, so format in UTC
-      // to avoid a server-timezone shift (e.g. 9:00 AM showing as 5:00 PM).
+      // The schedule is a real instant anchored to the school offset, so format
+      // in the school timezone to show the supervisor's entered wall-clock time.
       requestStatus = {
         subject:      cand.subject,
         paceNo:       cand.paceNo ?? "—",
         status:       "Scheduled",
-        scheduleDate: dt ? dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" }) : "—",
-        time:         dt ? dt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" }) : "—",
+        scheduleDate: dt ? dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: SCHOOL_TZ }) : "—",
+        time:         dt ? dt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: SCHOOL_TZ }) : "—",
         venue:        scheduled.venue ?? "—",
       };
     }
@@ -1187,8 +1193,8 @@ export const getStudentPace = async (user_id) => {
     nextPaceTest = {
       subject:   m?.subject ?? "—",
       paceNo:    m?.paceNo ?? null,
-      date:      dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" }),
-      time:      dt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" }),
+      date:      dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: SCHOOL_TZ }),
+      time:      dt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: SCHOOL_TZ }),
       status:    "Scheduled",
       location:  r.venue ?? "—",
       testType:  "PACE Test",
