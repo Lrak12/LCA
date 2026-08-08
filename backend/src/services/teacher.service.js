@@ -708,23 +708,34 @@ export const getStudentMonitoringOverview = async (user_id, { grade, search, pac
   studentIds.forEach((id) => { pacesByStudent[id] = []; });
   (paces ?? []).forEach((p) => { pacesByStudent[p.student_id]?.push(p); });
 
-  // Assessment activity + last PACE test per student
+  // Assessment activity per student. "Assessed (Tests Taken)" means the student
+  // actually SAT a PACE test — i.e. a scored pace_test_result row. A row that only
+  // carries a schedule (status scheduled/rescheduled with no score yet) counts as
+  // "Scheduled to Take Test", not assessed. Self-tests are eligibility practice
+  // (readiness), so they are deliberately NOT counted as an assessment here —
+  // otherwise every scheduled student (who must pass a self-test first) would be
+  // swallowed by the "assessed" bucket and never show as scheduled.
   const spIds = (paces ?? []).map((p) => p.sp_id);
   const spToStudent = new Map((paces ?? []).map((p) => [p.sp_id, p.student_id]));
-  const assessedSet = new Set();           // students with >=1 self/pace test
-  const lastPaceByStudent = new Map();     // student_id → latest pace test date
+  const takenSet     = new Set();          // students with >=1 scored (taken) pace test
+  const scheduledSet = new Set();          // students with an upcoming, not-yet-taken schedule
+  const lastPaceByStudent = new Map();     // student_id → latest taken pace test date
   if (spIds.length) {
-    const [{ data: selfRows }, { data: paceRows }] = await Promise.all([
-      supabaseAdmin.from("self_test_result").select("sp_id").in("sp_id", spIds),
-      supabaseAdmin.from("pace_test_result").select("sp_id, date_taken").in("sp_id", spIds),
-    ]);
-    (selfRows ?? []).forEach((r) => { const sid = spToStudent.get(r.sp_id); if (sid) assessedSet.add(sid); });
+    const lc = (s) => String(s ?? "").toLowerCase();
+    const { data: paceRows } = await supabaseAdmin
+      .from("pace_test_result")
+      .select("sp_id, score, date_taken, assessment_status, assessment_timestamp")
+      .in("sp_id", spIds);
     (paceRows ?? []).forEach((r) => {
       const sid = spToStudent.get(r.sp_id);
       if (!sid) return;
-      assessedSet.add(sid);
-      const prev = lastPaceByStudent.get(sid);
-      if (!prev || (r.date_taken && r.date_taken > prev)) lastPaceByStudent.set(sid, r.date_taken);
+      if (r.score != null) {                         // scored → actually taken
+        takenSet.add(sid);
+        const prev = lastPaceByStudent.get(sid);
+        if (!prev || (r.date_taken && r.date_taken > prev)) lastPaceByStudent.set(sid, r.date_taken);
+      } else if (["scheduled", "rescheduled"].includes(lc(r.assessment_status)) && r.assessment_timestamp) {
+        scheduledSet.add(sid);                        // upcoming schedule, not yet taken
+      }
     });
   }
 
@@ -752,7 +763,7 @@ export const getStudentMonitoringOverview = async (user_id, { grade, search, pac
       onTimePaces:      onTime,
       paceStatus:       completion >= ON_TRACK_MARK ? "On Track" : "Needs Attention",
       lastPaceTest:     lastPaceByStudent.get(s.student_id) ?? null,
-      assessed:         assessedSet.has(s.student_id),
+      assessed:         takenSet.has(s.student_id),
       completion,
       progress,
     };
@@ -774,15 +785,19 @@ export const getStudentMonitoringOverview = async (user_id, { grade, search, pac
 
   // Stats over the full (unfiltered) overall set
   const totalStudents = baseRows.length;
-  const assessed      = assessedSet.size;
+  const assessed      = takenSet.size;
+  // Scheduled-but-not-taken, excluding anyone already counted as assessed, so the
+  // three buckets (assessed / scheduled / not assessed) partition the students and
+  // their counts sum to the total.
+  const scheduledToTake = [...scheduledSet].filter((sid) => !takenSet.has(sid)).length;
   const avg = (arr) => (arr.length ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 10) / 10 : 0);
   const top = [...baseRows].sort((a, b) => b.completion - a.completion || b.performancePoints - a.performancePoints)[0] ?? null;
 
   const stats = {
     totalStudents,
     assessed,
-    scheduledToTake:    0,                                   // no sanctioned scheduling table yet
-    notAssessed:        totalStudents - assessed,
+    scheduledToTake,
+    notAssessed:        totalStudents - assessed - scheduledToTake,
     paceCompletionRate: avg(baseRows.map((r) => r.completion)),
     avgPaceProgress:    avg(baseRows.map((r) => r.progress)),
     needingAttention:   baseRows.filter((r) => r.completion < ON_TRACK_MARK).length,
@@ -1326,16 +1341,23 @@ export const getPaceMonitoring = async (user_id, { student_id } = {}) => {
 
   if (targetStudent) {
     const qMap    = projByStudent[targetStudent.student_id];
-    const allProj = [1, 2, 3, 4].flatMap((q) => Object.values(qMap[q] ?? {}));
-    const completedPaces = allProj
-      .filter((p) => _deriveStatus(p) === "completed")
-      .reduce((a, p) => a + (p.pace_count ?? 0), 0);
-    const totalPaces = allProj.reduce((a, p) => a + (p.pace_count ?? 0), 0);
-    const homeworkTakenHome = allProj.reduce((count, p) =>
-      count +
-      (p.status_r0 === "taken-home" ? 1 : 0) +
-      (p.status_r1 === "taken-home" ? 1 : 0) +
-      (p.status_r2 === "taken-home" ? 1 : 0), 0);
+    // Count PACE cells exactly as the grid renders them: the 3 tracked cells
+    // (status_r0/r1/r2) per canonical subject × quarter. The old logic summed
+    // pace_count over EVERY projection row — including rows whose pace_count ≠ 3
+    // and any stray/duplicate subject rows outside PACE_SUBJECT_ORDER — which
+    // double-counted completed/remaining versus what the grid actually shows.
+    let completedPaces = 0, totalPaces = 0, homeworkTakenHome = 0;
+    [1, 2, 3, 4].forEach((q) => {
+      PACE_SUBJECT_ORDER.forEach((subj) => {
+        const p = qMap[q]?.[subj];
+        if (!p) return;
+        [p.status_r0, p.status_r1, p.status_r2].forEach((st) => {
+          totalPaces += 1;
+          if (st === "completed")  completedPaces += 1;
+          if (st === "taken-home") homeworkTakenHome += 1;
+        });
+      });
+    });
 
     // "PACE Test Ready" when any quarter's projected subjects are all completed
     const paceTestReady = [1, 2, 3, 4].some((q) => {
@@ -1519,6 +1541,57 @@ export const updatePaceProjectionStatus = async (user_id, { student_id, subject,
 
   return { updated: true };
 };
+
+// _syncProjectionCell - reflect a recorded test / assignment in the PACE Monitoring
+//   grid by setting the matching pace_quarterly_projection cell (status_r0/r1/r2).
+//   A PACE number lives in exactly one projection row per subject (the row whose
+//   window pace_start..pace_start+pace_count-1 contains it); the cell index is the
+//   offset from pace_start. Override rules (per product decision):
+//     • "completed" always wins.
+//     • "ongoing" never downgrades a completed / taken-home / already-ongoing cell.
+//   Non-fatal and best-effort — never blocks the score/assignment write.
+async function _syncProjectionCell(student_id, subject, pace_number, targetStatus) {
+  try {
+    if (!subject || pace_number == null) return;
+    const { data: sy } = await supabaseAdmin
+      .from("school_year").select("sy_id").eq("is_active", true).maybeSingle();
+    if (!sy) return;
+
+    const paceNum = Number(pace_number);
+    const { data: rows } = await supabaseAdmin
+      .from("pace_quarterly_projection")
+      .select("quarter, pace_start, pace_count, status_r0, status_r1, status_r2")
+      .eq("student_id", Number(student_id))
+      .eq("sy_id", sy.sy_id)
+      .eq("subject", subject);
+
+    const row = (rows ?? []).find((r) => {
+      const start = r.pace_start;
+      const span  = r.pace_count ?? 3;
+      return start != null && paceNum >= start && paceNum < start + span;
+    });
+    if (!row) return;                              // PACE isn't in any projected window
+
+    const idx = paceNum - row.pace_start;          // 0 / 1 / 2
+    if (idx < 0 || idx > 2) return;
+    const col     = `status_r${idx}`;
+    const current = row[col] ?? "not-started";
+
+    // Ongoing must not clobber a finished / taken-home / already-ongoing cell.
+    if (targetStatus === "ongoing" && ["completed", "taken-home", "ongoing"].includes(current)) return;
+    if (current === targetStatus) return;          // already there
+
+    await supabaseAdmin
+      .from("pace_quarterly_projection")
+      .update({ [col]: targetStatus })
+      .eq("student_id", Number(student_id))
+      .eq("sy_id", sy.sy_id)
+      .eq("quarter", row.quarter)
+      .eq("subject", subject);
+  } catch (e) {
+    console.warn("[syncProjectionCell] failed:", e.message);
+  }
+}
 
 // ─── Schedule PACE Test (pace_test_schedule) ─────────────────────────────────
 // Resolve a teacher row + verify the student belongs to the teacher's grade levels.
@@ -2442,6 +2515,13 @@ export const saveStudentPace = async (user_id, payload) => {
     saved = data;
   }
 
+  // Assigning a PACE marks its monitoring-grid icon "Ongoing" right away (won't
+  // downgrade a completed / taken-home cell). Completing an icon is left to the
+  // Record PACE Test flow, so a manual "Completed" save here doesn't touch it.
+  if (newStatus === "Assigned" || newStatus === "In Progress") {
+    await _syncProjectionCell(student.student_id, subject, paceNum, "ongoing");
+  }
+
   return { sp_id: saved.sp_id };
 };
 
@@ -2553,7 +2633,7 @@ export const getStudentAcademicRecord = async (user_id, student_id) => {
   // Per subject: rows = quarters, columns = that quarter's projected PACEs (start..+2).
   const { data: projections } = await supabaseAdmin
     .from("pace_quarterly_projection")
-    .select("subject, quarter, pace_start")
+    .select("subject, quarter, pace_start, status_r0, status_r1, status_r2")
     .eq("student_id", student.student_id);
 
   // student_pace lookup by subject|module_number
@@ -2641,9 +2721,21 @@ export const getStudentAcademicRecord = async (user_id, student_id) => {
   };
 
   // ── Paces brought home + 100s achieved ────────────────────────────────────────
-  const broughtHomeList = spList
-    .filter((p) => p.homework === true)
-    .map((p) => ({ pace: `${_subjAbbr(p.pace_module?.subject)} ${p.pace_module?.module_number ?? ""}`.trim(), date: p.assigned_date ?? null }));
+  // Brought-home = cells marked "taken-home" in the quarterly projection — the same
+  // source the reports use. The status picker writes only to pace_quarterly_projection,
+  // never to student_pace.homework, so that column can't drive this list.
+  const broughtHomeList = [];
+  (projections ?? []).forEach((r) => {
+    [r.status_r0, r.status_r1, r.status_r2].forEach((st, i) => {
+      if (st !== "taken-home" || r.pace_start == null) return;
+      const num = r.pace_start + i;
+      const sp  = spBySubjModule.get(`${r.subject}|${num}`);
+      broughtHomeList.push({
+        pace: `${_subjAbbr(r.subject)} ${num}`.trim(),
+        date: sp?.assigned_date ?? null,
+      });
+    });
+  });
   const hundredsList = [];
   testsBySp.forEach((arr, sp_id) => {
     arr.forEach((r) => {
@@ -3049,6 +3141,40 @@ export const recordPaceTest = async (user_id, { sp_id, score, date_taken }) => {
     }
   }
 
+  // Reflect the result in the monitoring grid + notify the student (non-fatal).
+  try {
+    const { data: spRow } = await supabaseAdmin
+      .from("student_pace")
+      .select("student_id, pace_module(subject, module_number)")
+      .eq("sp_id", Number(sp_id))
+      .maybeSingle();
+    const subj = spRow?.pace_module?.subject ?? null;
+    const num  = spRow?.pace_module?.module_number ?? null;
+
+    // Auto-update the PACE Monitoring icon: pass → Completed, fail → Ongoing.
+    if (spRow?.student_id && subj && num != null) {
+      await _syncProjectionCell(spRow.student_id, subj, num, passed ? "completed" : "ongoing");
+    }
+
+    // Notify the student that their result is now available.
+    if (spRow?.student_id) {
+      const { data: stu } = await supabaseAdmin
+        .from("student")
+        .select("user_id")
+        .eq("student_id", spRow.student_id)
+        .maybeSingle();
+      if (stu?.user_id) {
+        const paceLabel = [subj, num != null ? `PACE ${num}` : null].filter(Boolean).join(" ") || "your PACE";
+        await NotificationService.createForUsers([stu.user_id], {
+          title: "PACE Test Result Available",
+          message_content: `Your ${paceLabel} test result is now available. View it under Assessment Results.`,
+        });
+      }
+    }
+  } catch (e) {
+    console.warn("[recordPaceTest] post-record sync/notify failed:", e.message);
+  }
+
   return { recorded: true, passed };
 };
 
@@ -3278,6 +3404,7 @@ export const bulkSavePaceTestResults = async (user_id, records) => {
 
   let saved = 0;
   const errors = [];
+  const notifyTargets = []; // { studentId, subject, paceNumber } per saved result
 
   for (const r of records) {
     const studentId  = Number(r.student_id);
@@ -3391,6 +3518,28 @@ export const bulkSavePaceTestResults = async (user_id, records) => {
     }
 
     saved++;
+    notifyTargets.push({ studentId, subject: r.subject, paceNumber });
+  }
+
+  // Notify each student that their PACE test result is now available (non-fatal).
+  if (notifyTargets.length) {
+    try {
+      const ids = [...new Set(notifyTargets.map((t) => t.studentId))];
+      const { data: stus } = await supabaseAdmin
+        .from("student").select("student_id, user_id").in("student_id", ids);
+      const uidByStudent = new Map((stus ?? []).map((s) => [s.student_id, s.user_id]));
+      for (const t of notifyTargets) {
+        const uid = uidByStudent.get(t.studentId);
+        if (!uid) continue;
+        const paceLabel = [t.subject, t.paceNumber != null ? `PACE ${t.paceNumber}` : null].filter(Boolean).join(" ") || "your PACE";
+        await NotificationService.createForUsers([uid], {
+          title: "PACE Test Result Available",
+          message_content: `Your ${paceLabel} test result is now available. View it under Assessment Results.`,
+        });
+      }
+    } catch (e) {
+      console.warn("[bulkSavePaceTestResults] result notifications failed:", e.message);
+    }
   }
 
   return { saved, errors };

@@ -288,21 +288,21 @@ function SchoolYearTab({ setBanner }) {
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
           <div>
             <p className={labelCls}>School Year</p>
-            <div className={`${inputCls} bg-surface-container-lowest`}>
+            <div className={`rounded-lg border border-outline-variant/40 pl-4 pr-10 py-2.5 text-sm font-bold text-on-surface-variant  bg-white bg-surface-container-lowest`}>
               {syLabel(active.year_label)}
             </div>
           </div>
 
           <div>
             <p className={labelCls}>Start Date</p>
-            <div className={`${inputCls} bg-surface-container-lowest`}>
+            <div className={`rounded-lg border border-outline-variant/40 pl-4 pr-10 py-2.5 text-sm font-bold text-on-surface-variant  bg-white bg-surface-container-lowest`}>
               {fmtDate(active.start_date)}
             </div>
           </div>
 
           <div>
             <p className={labelCls}>End Date</p>
-            <div className={`${inputCls} bg-surface-container-lowest`}>
+            <div className={`rounded-lg border border-outline-variant/40 pl-4 pr-10 py-2.5 text-sm font-bold text-on-surface-variant  bg-white bg-surface-container-lowest`}>
               {fmtDate(active.end_date)}
             </div>
           </div>

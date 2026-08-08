@@ -7,6 +7,7 @@ const router = Router();
 router.use(authenticate);
 router.get("/",              requireRole("principal"), SectionController.getAll);
 router.post("/:id/students", requireRole("principal"), SectionController.enrollStudents);
+router.delete("/:id/students/:studentId", requireRole("principal"), SectionController.removeStudent);
 router.post("/:id/teacher",  requireRole("principal"), SectionController.assignTeacher);
 
 export default router;

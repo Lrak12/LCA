@@ -13,6 +13,11 @@ export const enrollStudents = asyncHandler(async (req, res) => {
   sendSuccess(res, data, `${data.enrolled} student(s) enrolled`);
 });
 
+export const removeStudent = asyncHandler(async (req, res) => {
+  const data = await SectionService.removeStudent(req.params.id, req.params.studentId);
+  sendSuccess(res, data, "Student removed from grade level");
+});
+
 export const assignTeacher = asyncHandler(async (req, res) => {
   const { teacher_id } = req.body;
   const data = await SectionService.assignTeacher(req.params.id, teacher_id);

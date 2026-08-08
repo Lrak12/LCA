@@ -291,7 +291,7 @@ export default function ScheduledPaceTests() {
 
         {/* Schedule details */}
         {selected && (
-          <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 mt-6">
+          <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 mt-6 max-w-4xl">
             <div className="px-6 py-4 border-b border-outline-variant/10 flex items-center justify-between">
               <h3 className="font-headline text-sm font-extrabold text-primary uppercase tracking-widest">Schedule Details</h3>
               <button onClick={() => setSelId(null)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-surface-container-low text-on-surface-variant">
@@ -303,7 +303,7 @@ export default function ScheduledPaceTests() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 {/* Student */}
                 <div>
-                  <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-2">Student Information</p>
+                  <p className="text-[13px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-2">Student Information</p>
                   <p className="text-base font-extrabold text-on-surface">{selected.studentName}</p>
                   <p className="text-sm text-on-surface-variant">{selected.gradeLevel}</p>
                   <span className="inline-block mt-2 bg-green-100 text-green-700 text-[10px] font-extrabold tracking-widest uppercase px-2.5 py-1 rounded-full">{selected.studentType}</span>
@@ -311,7 +311,7 @@ export default function ScheduledPaceTests() {
 
                 {/* PACE */}
                 <div className="space-y-2">
-                  <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-2">PACE Information</p>
+                  <p className="text-[13px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-2">PACE Information</p>
                   <DetailRow label="Subject" value={selected.subject} />
                   <DetailRow label="PACE Number" value={selected.paceNumber ?? "—"} />
                   <DetailRow label="PACE Test Eligibility" value={
@@ -321,7 +321,7 @@ export default function ScheduledPaceTests() {
 
                 {/* Schedule */}
                 <div className="space-y-2">
-                  <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-2">Schedule Information</p>
+                  <p className="text-[13px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-2">Schedule Information</p>
                   {editing ? (
                     <>
                       <EditRow label="Schedule Date"><input type="date" value={editVals.date} onChange={(e) => setEditVals((v) => ({ ...v, date: e.target.value }))} className="border border-gray-200 rounded-lg px-2 py-1 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20" /></EditRow>

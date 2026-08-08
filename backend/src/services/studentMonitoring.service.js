@@ -722,13 +722,28 @@ export const getStudentProfile = async (student_id) => {
     else if (s === "tardy" || s === "late") attendance.tardy++;
   }
 
-  // PACEs brought home (homework = true), most-recent first
-  const pacesBroughtHome = studentPaces
-    .filter((sp) => sp.homework === true)
-    .map((sp) => ({
-      pace_code: `${sp.pace_module?.subject ?? "PACE"} ${sp.pace_module?.module_number ?? ""}`.trim(),
-      date: sp.end_date ?? sp.assigned_date ?? null,
-    }))
+  // PACEs brought home = cells marked "taken-home" in the quarterly projection
+  // (the plan of record, same source the reports use). sp.homework is never written
+  // by the status picker, so it can't drive this list. Newest-first by pace date.
+  const spBySubjModule = new Map();
+  studentPaces.forEach((sp) => {
+    const subj = sp.pace_module?.subject, num = sp.pace_module?.module_number;
+    if (subj && num != null) spBySubjModule.set(`${subj}|${num}`, sp);
+  });
+  const pacesBroughtHome = (projRows ?? [])
+    .flatMap((r) =>
+      [r.status_r0, r.status_r1, r.status_r2]
+        .map((st, i) => ({ st, i }))
+        .filter(({ st }) => st === "taken-home" && r.pace_start != null)
+        .map(({ i }) => {
+          const num = r.pace_start + i;
+          const sp  = spBySubjModule.get(`${r.subject}|${num}`);
+          return {
+            pace_code: `${r.subject} ${num}`.trim(),
+            date: sp?.end_date ?? sp?.assigned_date ?? null,
+          };
+        }),
+    )
     .sort((a, b) => new Date(b.date ?? 0) - new Date(a.date ?? 0));
 
   // 100s achieved — latest results first

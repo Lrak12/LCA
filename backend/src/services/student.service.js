@@ -802,33 +802,32 @@ export const getStudentAssessments = async (user_id) => {
       .order("date_taken", { ascending: false }),
   ]);
 
-  // Collapse a PACE's multiple attempts into ONE row showing the AVERAGE score.
-  // Pass mark is 90 (the PACE/self-test standard); date = latest attempt.
+  // Pass mark is 90 (the PACE/self-test standard).
   const PASS = 90;
-  const averageBySp = (results) => {
+
+  // Collapse a PACE's attempts (self-test or PACE-test) into ONE row showing the
+  // BEST (highest) attempt's score, not the average. Readiness is "any attempt >=
+  // 90", so the best attempt is the score of record — this matches the supervisor's
+  // self-test score column (which also takes the highest attempt per PACE). Date =
+  // the best attempt's date.
+  const bestBySp = (results) => {
     const bySp = new Map();
     (results ?? []).forEach((r) => {
       if (r.score == null) return;
-      const cur = bySp.get(r.sp_id) ?? { sum: 0, n: 0, latestRaw: null };
-      cur.sum += r.score;
-      cur.n   += 1;
-      if (!cur.latestRaw || String(r.date_taken ?? "") > String(cur.latestRaw)) {
-        cur.latestRaw = r.date_taken ?? null;
-      }
-      bySp.set(r.sp_id, cur);
+      const cur = bySp.get(r.sp_id);
+      if (!cur || r.score > cur.score) bySp.set(r.sp_id, r);
     });
     return [...bySp.entries()]
-      .map(([sp_id, agg]) => {
-        const average = Math.round((agg.sum / agg.n) * 10) / 10;
+      .map(([sp_id, r]) => {
+        const score = Math.round(r.score * 10) / 10;
         return {
           subject:      subjectBySpId[sp_id] ?? "—",
           paceNumber:   paceNoBySpId[sp_id] ?? null,
-          score:        average,
-          attempts:     agg.n,
-          dateTaken:    toDate(agg.latestRaw),
-          dateTakenRaw: agg.latestRaw ?? null,
-          passed:       average >= PASS,
-          remarks:      paceRemark(average),
+          score,
+          dateTaken:    toDate(r.date_taken),
+          dateTakenRaw: r.date_taken ?? null,
+          passed:       r.passed === true || score >= PASS,
+          remarks:      paceRemark(score),
         };
       })
       .sort((a, b) => a.subject.localeCompare(b.subject) || (a.paceNumber ?? 0) - (b.paceNumber ?? 0));
@@ -842,8 +841,8 @@ export const getStudentAssessments = async (user_id) => {
       score:     r.score,
       dateTaken: toDate(r.date_taken),
     })),
-    selfTestResults: averageBySp(selfTests.data),
-    paceTestResults: averageBySp(paceTests.data),
+    selfTestResults: bestBySp(selfTests.data),
+    paceTestResults: bestBySp(paceTests.data),
   };
 };
 

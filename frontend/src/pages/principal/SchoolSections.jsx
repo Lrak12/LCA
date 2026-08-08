@@ -4,11 +4,12 @@
 //   list:   GET  /grade-levels           -> controllers/section.controller.js > getAll (~line 5)          -> services/section.service.js > getAllGradeLevels (~line 13)
 //   enroll: POST /grade-levels/:id/students -> controllers/section.controller.js > enrollStudents (~line 10) -> services/section.service.js > enrollStudents (~line 55)
 //   assign: POST /grade-levels/:id/teacher  -> controllers/section.controller.js > assignTeacher (~line 16)  -> services/section.service.js > assignTeacher (~line 72)
+//   remove: DELETE /grade-levels/:id/students/:studentId -> controllers/section.controller.js > removeStudent -> services/section.service.js > removeStudent
 //   modals also read api/student.js fetchAllStudents + api/teacher.js fetchAllTeachers.
 import { useState, useEffect, useCallback } from "react";
 import PrincipalLayout from "../../components/PrincipalLayout.jsx";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
-import { fetchAllSections, enrollStudentsInLevel, assignTeacherToSection } from "../../api/sections.js";
+import { fetchAllSections, enrollStudentsInLevel, removeStudentFromLevel, assignTeacherToSection } from "../../api/sections.js";
 import { fetchAllStudents } from "../../api/student.js";
 import { fetchAllTeachers } from "../../api/teacher.js";
 import AddGradeLevelModal from "../../components/AddGradeLevelModal.jsx";
@@ -117,12 +118,12 @@ function GradeLevelCard({ level, onManageStudents, onAssignSupervisor, onView })
 // onConfirm = handleEnroll (calls enrollStudentsInLevel, then reloads).
 function EnrollStudentsModal({ level, onClose, onConfirm }) {
   const [search,      setSearch]      = useState("");
-  const [gradeFilter, setGradeFilter] = useState("all"); // filter by current grade / unassigned
   const [students,    setStudents]    = useState([]);
   const [selected,    setSelected]    = useState(new Set()); // chosen student_ids
   const [loading,     setLoading]     = useState(true);
   const [saving,      setSaving]      = useState(false);
   const [error,       setError]       = useState(null);
+  const [saveError,   setSaveError]   = useState(null); // error surfaced from the enroll call
 
   // load all students to choose from
   useEffect(() => {
@@ -132,32 +133,13 @@ function EnrollStudentsModal({ level, onClose, onConfirm }) {
       .finally(() => setLoading(false));
   }, []);
 
-  // Build sorted unique grade level options from loaded students
-  const gradeOptions = [
-    { value: "all",        label: "All" },
-    { value: "unassigned", label: "Unassigned" },
-    ...Array.from(
-      new Map(
-        students
-          .filter((s) => s.grade_level)
-          .map((s) => [s.grade_level.gl_id, s.grade_level.level_name])
-      ).entries()
-    )
-      .sort((a, b) => a[1].localeCompare(b[1], undefined, { numeric: true }))
-      .map(([gl_id, level_name]) => ({ value: String(gl_id), label: level_name })),
-  ];
-
-  // apply search + grade filter to the student list
+  // Only unassigned students are enrollable: a student already in a grade must
+  // be removed from it first (see the details modal's Remove action). This makes
+  // grade-based filtering unnecessary — every candidate here has no grade.
   const filtered = students.filter((s) => {
+    if (s.gl_id ?? s.grade_level?.gl_id) return false; // already in a grade — not eligible
     const name = `${s.first_name} ${s.last_name}`.toLowerCase();
-    const matchesSearch = name.includes(search.toLowerCase()) || String(s.student_id).includes(search);
-    const matchesGrade =
-      gradeFilter === "all"
-        ? true
-        : gradeFilter === "unassigned"
-        ? !s.gl_id                                   // students not yet in any grade
-        : String(s.gl_id) === gradeFilter;
-    return matchesSearch && matchesGrade;
+    return name.includes(search.toLowerCase()) || String(s.student_id).includes(search);
   });
 
   // add/remove one student from the selection
@@ -179,8 +161,14 @@ function EnrollStudentsModal({ level, onClose, onConfirm }) {
   // enroll the selected students into this level
   const handleConfirm = async () => {
     setSaving(true);
-    try { await onConfirm(level.id, [...selected]); }
-    finally { setSaving(false); }
+    setSaveError(null);
+    try {
+      await onConfirm(level.id, [...selected]);
+    } catch (err) {
+      setSaveError(err?.response?.data?.message ?? err?.message ?? "Failed to enroll students.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -221,23 +209,11 @@ function EnrollStudentsModal({ level, onClose, onConfirm }) {
           </div>
         </div>
 
-        {/* Grade level filter pills */}
+        {/* Helper note: this list is limited to students not yet in a grade */}
         {!loading && !error && (
-          <div className="px-6 pb-2 shrink-0 flex gap-1.5 flex-wrap">
-            {gradeOptions.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => setGradeFilter(opt.value)}
-                className={`px-3 py-1 rounded-full text-[11px] font-extrabold transition-colors border ${
-                  gradeFilter === opt.value
-                    ? "bg-primary text-white border-primary"
-                    : "bg-surface-container-low text-on-surface-variant border-outline-variant/20 hover:border-primary/40"
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
+          <p className="px-6 pb-1 shrink-0 text-[11px] text-on-surface-variant">
+            Showing students not yet assigned to a grade level. To move a student already in a grade, remove them from it first.
+          </p>
         )}
 
         {/* Select-all row */}
@@ -252,7 +228,7 @@ function EnrollStudentsModal({ level, onClose, onConfirm }) {
               />
               <span className="text-xs font-bold text-on-surface-variant">Select all ({filtered.length})</span>
             </label>
-            <span className="text-xs text-on-surface-variant">{students.length} total students</span>
+            <span className="text-xs text-on-surface-variant">{filtered.length} unassigned</span>
           </div>
         )}
 
@@ -309,6 +285,9 @@ function EnrollStudentsModal({ level, onClose, onConfirm }) {
           )}
         </div>
 
+        {saveError && (
+          <p className="px-6 pt-3 shrink-0 text-xs font-medium text-error">{saveError}</p>
+        )}
         <div className="px-6 py-4 border-t border-outline-variant/20 flex gap-3 justify-end shrink-0">
           <button onClick={onClose} className="px-5 py-2.5 text-sm font-bold text-on-surface border border-outline-variant/30 rounded-xl hover:bg-surface-container-low transition-colors">
             Cancel
@@ -488,14 +467,35 @@ function SummaryStat({ value, label, icon, iconBg, iconColor, valueColor = "text
   );
 }
 
-// Read-only grade-level details: info, gender/status summary, recent enrollments.
-// Rendered by <SchoolSections> (viewTarget). onClose = () => setViewTarget(null). No other callbacks.
-function ViewGradeModal({ level, onClose }) {
-  const [students, setStudents] = useState([]);
-  const [loading,  setLoading]  = useState(true);
-  const [error,    setError]    = useState(null);
+// Grade-level details: info, gender/status summary, and the enrolled roster with
+// a per-student Remove (unassign) action.
+// Rendered by <SchoolSections> (viewTarget). onClose = () => setViewTarget(null).
+// onChanged = loadLevels, called after a student is removed so the cards refresh.
+function ViewGradeModal({ level, onClose, onChanged }) {
+  const [students,  setStudents]  = useState([]);
+  const [loading,   setLoading]   = useState(true);
+  const [error,     setError]     = useState(null);
+  const [confirmId, setConfirmId] = useState(null); // student_id awaiting remove confirmation
+  const [removingId, setRemovingId] = useState(null); // student_id currently being removed
+  const [rowError,  setRowError]  = useState(null); // error from a failed remove
 
   const supervisorName = level.faculty?.[0]?.name ?? "No supervisor assigned";
+
+  // Remove (unassign) a student from this grade, then update local state + cards.
+  const handleRemove = async (student_id) => {
+    setRemovingId(student_id);
+    setRowError(null);
+    try {
+      await removeStudentFromLevel(level.id, student_id);
+      setStudents((prev) => prev.filter((s) => s.student_id !== student_id));
+      setConfirmId(null);
+      onChanged?.();
+    } catch (err) {
+      setRowError(err?.response?.data?.message ?? err?.message ?? "Failed to remove student.");
+    } finally {
+      setRemovingId(null);
+    }
+  };
 
   // load only the students in this grade level
   useEffect(() => {
@@ -517,10 +517,10 @@ function ViewGradeModal({ level, onClose }) {
   const inactive = students.filter((s) => s.users?.is_active === false).length;
   const dash     = loading ? "…" : 0;
 
-  // 5 most recently enrolled students
-  const recent = [...students]
-    .sort((a, b) => new Date(b.enrollment_date ?? 0) - new Date(a.enrollment_date ?? 0))
-    .slice(0, 5);
+  // Full roster, most recently enrolled first (all students are shown so any
+  // one can be removed, not just the most recent).
+  const roster = [...students]
+    .sort((a, b) => new Date(b.enrollment_date ?? 0) - new Date(a.enrollment_date ?? 0));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
@@ -570,35 +570,66 @@ function ViewGradeModal({ level, onClose }) {
             </div>
           </div>
 
-          {/* Recently added students */}
+          {/* Enrolled students — full roster with a per-student Remove action */}
           <div>
             <p className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-3">
-              Recently Added Students
+              Enrolled Students
             </p>
+            {rowError && <p className="text-xs font-medium text-error mb-2">{rowError}</p>}
             {loading ? (
               <div className="py-8 flex items-center justify-center">
                 <span className="material-symbols-outlined animate-spin text-primary text-2xl">progress_activity</span>
               </div>
-            ) : recent.length === 0 ? (
+            ) : roster.length === 0 ? (
               <p className="text-sm text-on-surface-variant px-1 py-3">No students enrolled.</p>
             ) : (
               <div className="overflow-x-auto rounded-xl border border-outline-variant/15">
                 <table className="w-full">
                   <thead>
                     <tr className="bg-surface-container-lowest border-b border-outline-variant/15">
-                      {["Student ID", "Student Name", "Date Assigned"].map((h) => (
-                        <th key={h} className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant text-left px-5 py-3 whitespace-nowrap">
+                      {["Student ID", "Student Name", "Date Assigned", ""].map((h, i) => (
+                        <th key={i} className={`text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant px-5 py-3 whitespace-nowrap ${i === 3 ? "text-right" : "text-left"}`}>
                           {h}
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-outline-variant/10">
-                    {recent.map((s) => (
+                    {roster.map((s) => (
                       <tr key={s.student_id} className="hover:bg-surface-container-lowest transition-colors">
                         <td className="px-5 py-3 text-sm font-bold text-on-surface whitespace-nowrap">{s.student_id}</td>
                         <td className="px-5 py-3 text-sm font-bold text-on-surface">{s.first_name} {s.last_name}</td>
                         <td className="px-5 py-3 text-sm text-on-surface-variant whitespace-nowrap">{formatDate(s.enrollment_date)}</td>
+                        <td className="px-5 py-3 text-right whitespace-nowrap">
+                          {confirmId === s.student_id ? (
+                            <span className="inline-flex items-center gap-2">
+                              <span className="text-xs text-on-surface-variant">Remove?</span>
+                              <button
+                                onClick={() => handleRemove(s.student_id)}
+                                disabled={removingId === s.student_id}
+                                className="text-xs font-bold text-white bg-red-500 hover:bg-red-600 disabled:opacity-50 px-2.5 py-1 rounded-lg transition-colors inline-flex items-center gap-1"
+                              >
+                                {removingId === s.student_id && <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>}
+                                Confirm
+                              </button>
+                              <button
+                                onClick={() => setConfirmId(null)}
+                                disabled={removingId === s.student_id}
+                                className="text-xs font-bold text-on-surface-variant hover:text-on-surface px-2 py-1 rounded-lg transition-colors"
+                              >
+                                Cancel
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => { setRowError(null); setConfirmId(s.student_id); }}
+                              className="text-xs font-bold text-red-500 hover:text-white hover:bg-red-500 border border-red-200 hover:border-red-500 px-3 py-1 rounded-lg transition-colors inline-flex items-center gap-1"
+                            >
+                              <span className="material-symbols-outlined text-sm">person_remove</span>
+                              Remove
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -759,6 +790,7 @@ export default function SchoolSections() {
         <ViewGradeModal
           level={viewTarget}
           onClose={() => setViewTarget(null)}
+          onChanged={loadLevels}
         />
       )}
       {showAdd && (
