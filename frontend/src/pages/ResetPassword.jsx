@@ -90,6 +90,15 @@ export default function ResetPassword() {
               </div>
             )}
 
+            {/* Arriving from a new-account email: the token identifies the user, so the ID
+                field is hidden — but show the ID anyway since it's what they sign in with. */}
+            {tokenMode && idNumber && (
+              <div className="px-4 py-3 rounded-lg bg-surface-container-high text-on-surface text-sm flex items-center gap-2">
+                <span className="material-symbols-outlined text-base text-primary">badge</span>
+                <span>Your ID number is <strong className="font-semibold">{idNumber}</strong> — use it to sign in.</span>
+              </div>
+            )}
+
             {!tokenMode && (
               <div className="space-y-2">
                 <label htmlFor="id" className="block text-sm font-medium text-on-surface font-label">ID Number</label>

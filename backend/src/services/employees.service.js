@@ -1,4 +1,4 @@
-import { supabaseAdmin } from "../config/supabase.js";
+import { supabase, supabaseAdmin } from "../config/supabase.js";
 import { describeAuthCreateError } from "../helpers/authErrors.js";
 
 export const getEmployees = async () => {
@@ -230,7 +230,30 @@ export const createEmployee = async ({
     if (assignErr) throw new Error(assignErr.message);
   }
 
-  return { user_id: user.user_id, first_name, last_name, role, email };
+  // 5. Email the new account its login details: the school ID they sign in with
+  //    (login() takes the role-table PK, not the email) plus a set-password link.
+  //    The password the admin typed is never emailed — the user sets their own
+  //    from the link. Same reset flow as userSupport.service.js > processPasswordReset.
+  const schoolId = role === "principal" ? profile.principal_id : profile.teacher_id;
+  let invited = false;
+
+  if (schoolId) {
+    // Expose the ID to the recovery email template as {{ .Data.school_id }}.
+    await supabaseAdmin.auth.admin.updateUserById(authId, {
+      user_metadata: {
+        username,
+        role: role === "principal" ? "principal" : "teacher",
+        school_id: schoolId,
+      },
+    });
+
+    // ?id= prefills / displays the ID on the reset page they land on.
+    const redirectTo = `${process.env.FRONTEND_URL || "http://localhost:5173"}/reset-password?id=${schoolId}`;
+    const { error: mailErr } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+    invited = !mailErr;   // account already works with the admin's password — a failed send isn't fatal
+  }
+
+  return { user_id: user.user_id, school_id: schoolId, first_name, last_name, role, email, invited };
 };
 
 // Update an existing supervisor (teacher): profile fields, account status, email,

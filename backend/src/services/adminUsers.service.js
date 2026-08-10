@@ -298,13 +298,14 @@ export const createUser = async ({
     }
   }
 
-  // Create the Supabase Auth user UNCONFIRMED (this fires the handle_new_user trigger).
-  // email_confirm:false keeps the account unverified so that — with "Confirm email" ON in
-  // the Supabase dashboard — sign-in is blocked until the user clicks the activation link.
+  // Create the Supabase Auth user (this fires the handle_new_user trigger). email_confirm:true
+  // marks the address verified so the set-password link sent below is the only mail the user
+  // gets — same flow as employees.service.js > createEmployee. The password the admin typed
+  // is a working fallback but is never emailed.
   const { data: authData, error: authErr } = await supabaseAdmin.auth.admin.createUser({
     email,
     password,
-    email_confirm: false,
+    email_confirm: true,
     user_metadata: { username: username || email.split("@")[0], role },
   });
   if (authErr) throw new Error(describeAuthCreateError(authErr));
@@ -319,17 +320,6 @@ export const createUser = async ({
   // wait for the trigger to create the matching public.users row
   const user_id = await waitForUserRow(authId);
   if (!user_id) await rollback("User profile was not created by the trigger. Please try again.");
-
-  // Send the activation email (Supabase-native: dashboard SMTP + the "Confirm signup"
-  // template). Sent before the profile insert so a send failure rolls back cleanly and the
-  // admin can retry rather than leaving an un-activatable account behind.
-  const activationRedirect = `${process.env.FRONTEND_URL || "http://localhost:5173"}/login`;
-  const { error: mailErr } = await supabase.auth.resend({
-    type: "signup",
-    email,
-    options: { emailRedirectTo: activationRedirect },
-  });
-  if (mailErr) await rollback(`Account not created — activation email could not be sent: ${mailErr.message}`);
 
   // insert the role-profile row (admin gets the reserved admin_id; others store contact_number)
   const { table, pk } = STAFF_PROFILE[role];
@@ -356,5 +346,21 @@ export const createUser = async ({
     school_id = created?.[pk] ?? null;
   }
 
-  return { user_id, school_id, role, email, first_name, last_name };
+  // Email the new account its login details: the school ID they sign in with (login() takes
+  // the role-table PK, not the email) plus a set-password link. Sent after the profile insert
+  // because school_id only exists once that row is created.
+  let invited = false;
+  if (school_id) {
+    // Expose the ID to the recovery email template as {{ .Data.school_id }}.
+    await supabaseAdmin.auth.admin.updateUserById(authId, {
+      user_metadata: { username: username || email.split("@")[0], role, school_id },
+    });
+
+    // ?id= prefills / displays the ID on the reset page they land on.
+    const redirectTo = `${process.env.FRONTEND_URL || "http://localhost:5173"}/reset-password?id=${school_id}`;
+    const { error: mailErr } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+    invited = !mailErr;   // account already works with the admin's password — a failed send isn't fatal
+  }
+
+  return { user_id, school_id, role, email, first_name, last_name, invited };
 };
