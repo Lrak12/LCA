@@ -22,7 +22,7 @@ const PAGE_SIZE = 6;
 const TABS = [
   { id: "records",       label: "Student Records"        },
   { id: "progress",      label: "Student Progress"       },
-  { id: "recommendations", label: "Projected PACE Plan"   },
+  //{ id: "recommendations", label: "Projected PACE Plan"   },
   // Hidden for panel view — tab content/handlers remain below, just no nav entry.
   // { id: "analytics",     label: "PACE Analytics & Rankings" },
 ];
@@ -114,11 +114,13 @@ const downloadTemplate = () => {
 // Rendered by <StudentMonitoring> (showImport). onClose = () => setShowImport(false);
 // onSuccess = reload (refetches the monitoring dataset).
 function ImportModal({ onClose, onSuccess }) {
-  const [step,       setStep]       = useState("upload"); // upload | preview | importing | result
+  const [step,       setStep]       = useState("upload"); // upload | preview | importing | confirm | result
   const [rows,       setRows]       = useState([]);
   const [parseError, setParseError] = useState("");
   const [result,     setResult]     = useState(null);
   const [fileName,   setFileName]   = useState("");
+  const [duplicates, setDuplicates] = useState([]);   // existing students found on import
+  const [baseResult, setBaseResult] = useState(null); // first-pass result held while confirming overwrite
   const fileRef = useRef();
 
   const handleFile = (file) => {
@@ -150,22 +152,67 @@ function ImportModal({ onClose, onSuccess }) {
     handleFile(e.dataTransfer.files[0]);
   };
 
+  // Row payload sent to the API (only the required columns, in order).
+  const buildPayload = () =>
+    rows.map((r) => REQUIRED_COLS.reduce((obj, col) => { obj[col] = r[col]; return obj; }, {}));
+
+  // First pass: creates the genuinely new students. Anyone already in the system comes
+  // back in `duplicates` (untouched) so we can ask the principal what to do with them.
   const confirmImport = async () => {
     setStep("importing");
     try {
-      const payload = rows.map((r) =>
-        REQUIRED_COLS.reduce((obj, col) => { obj[col] = r[col]; return obj; }, {})
-      );
-      const res = await importStudentsCSV(payload);
-      setResult(res.data);
-      onSuccess();
+      const res  = await importStudentsCSV(buildPayload());
+      const data = res.data;
+      onSuccess();                          // new students are already saved — refresh the list
+      if (data.duplicates?.length) {
+        setBaseResult(data);
+        setDuplicates(data.duplicates);
+        setStep("confirm");
+        return;
+      }
+      setResult(data);
+      setStep("result");
     } catch (err) {
       setResult({ imported: 0, failed: [{ name: "All rows", reason: err.message }] });
+      setStep("result");
     }
+  };
+
+  // Overwrite chosen: re-send only the duplicate rows with the overwrite flag, then merge
+  // the counts from both passes into one result summary.
+  const confirmOverwrite = async () => {
+    setStep("importing");
+    try {
+      const payload = buildPayload();
+      const dupRows = duplicates.map((d) => payload[d.index]).filter(Boolean);
+      const res  = await importStudentsCSV(dupRows, { overwrite: true });
+      const data = res.data;
+      onSuccess();
+      setResult({
+        imported:    baseResult?.imported ?? 0,
+        overwritten: data.overwritten ?? 0,
+        failed:      [...(baseResult?.failed ?? []), ...(data.failed ?? [])],
+      });
+      setStep("result");
+    } catch (err) {
+      setResult({
+        imported: baseResult?.imported ?? 0,
+        failed: [...(baseResult?.failed ?? []), { name: "Overwrite", reason: err.message }],
+      });
+      setStep("result");
+    }
+  };
+
+  // Keep existing chosen: leave the duplicates as they are and show the first-pass result.
+  const skipDuplicates = () => {
+    setResult(baseResult);
     setStep("result");
   };
 
-  const reset = () => { setStep("upload"); setRows([]); setParseError(""); setFileName(""); setResult(null); };
+  const reset = () => {
+    setStep("upload"); setRows([]); setParseError(""); setFileName("");
+    setResult(null); setDuplicates([]); setBaseResult(null);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
@@ -183,6 +230,7 @@ function ImportModal({ onClose, onSuccess }) {
                 {step === "upload"    && "Upload a CSV file with student data"}
                 {step === "preview"   && `${rows.length} row(s) ready to import — review before confirming`}
                 {step === "importing" && "Importing students, please wait…"}
+                {step === "confirm"   && "Existing students found — choose how to proceed"}
                 {step === "result"    && "Import complete"}
               </p>
             </div>
@@ -195,7 +243,7 @@ function ImportModal({ onClose, onSuccess }) {
         {/* Step indicator */}
         <div className="flex items-center gap-0 px-7 py-3 border-b border-outline-variant/10 shrink-0">
           {["Upload", "Preview", "Import", "Result"].map((label, i) => {
-            const idx    = ["upload", "preview", "importing", "result"].indexOf(step);
+            const idx    = ["upload", "preview", "importing", "result"].indexOf(step === "confirm" ? "importing" : step);
             const active = i === idx;
             const done   = i < idx;
             return (
@@ -341,24 +389,66 @@ function ImportModal({ onClose, onSuccess }) {
             </div>
           )}
 
+          {/* ── Overwrite-confirmation step ── */}
+          {step === "confirm" && (
+            <div className="space-y-5">
+              <div className="flex items-start gap-4 p-5 rounded-2xl bg-amber-50 border border-amber-100">
+                <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+                  <span className="material-symbols-outlined text-2xl text-amber-600" style={fillStyle}>warning</span>
+                </div>
+                <div>
+                  <p className="font-extrabold text-lg text-amber-800">
+                    {duplicates.length} student(s) already exist in the system
+                  </p>
+                  <p className="text-sm text-amber-700 mt-0.5">
+                    Do you want to overwrite their existing records with the data from this file?
+                    {baseResult?.imported > 0 && ` The ${baseResult.imported} new student(s) have already been added.`}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-2">Existing students</p>
+                <div className="space-y-2 max-h-52 overflow-y-auto">
+                  {duplicates.map((d, i) => (
+                    <div key={i} className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-surface-container-low border border-outline-variant/20">
+                      <span className="material-symbols-outlined text-amber-500 text-base shrink-0" style={fillStyle}>person</span>
+                      <p className="text-sm font-bold text-on-surface">{d.name}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2 px-4 py-3 rounded-lg bg-blue-50 border border-blue-100 text-sm text-blue-800">
+                <span className="material-symbols-outlined text-base shrink-0 mt-0.5" style={fillStyle}>info</span>
+                <span><strong>Overwrite</strong> updates their profile details (grade level, address, contact, etc.) — their login and academic records are kept. <strong>Keep existing</strong> leaves them unchanged.</span>
+              </div>
+            </div>
+          )}
+
           {/* ── Result step ── */}
           {step === "result" && result && (
             <div className="space-y-5">
-              <div className={`flex items-center gap-4 p-5 rounded-2xl ${result.imported > 0 ? "bg-green-50 border border-green-100" : "bg-error-container border border-error/20"}`}>
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${result.imported > 0 ? "bg-green-100" : "bg-error-container"}`}>
-                  <span className={`material-symbols-outlined text-2xl ${result.imported > 0 ? "text-green-600" : "text-error"}`} style={fillStyle}>
-                    {result.imported > 0 ? "check_circle" : "cancel"}
+              {(() => {
+                const ok = (result.imported ?? 0) + (result.overwritten ?? 0) > 0;
+                return (
+              <div className={`flex items-center gap-4 p-5 rounded-2xl ${ok ? "bg-green-50 border border-green-100" : "bg-error-container border border-error/20"}`}>
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${ok ? "bg-green-100" : "bg-error-container"}`}>
+                  <span className={`material-symbols-outlined text-2xl ${ok ? "text-green-600" : "text-error"}`} style={fillStyle}>
+                    {ok ? "check_circle" : "cancel"}
                   </span>
                 </div>
                 <div>
-                  <p className={`font-extrabold text-lg ${result.imported > 0 ? "text-green-800" : "text-error"}`}>
-                    {result.imported} student(s) imported successfully
+                  <p className={`font-extrabold text-lg ${ok ? "text-green-800" : "text-error"}`}>
+                    {result.imported} student(s) imported{result.overwritten ? `, ${result.overwritten} updated` : ""}
                   </p>
                   {result.failed.length > 0 && (
                     <p className="text-sm text-on-surface-variant mt-0.5">{result.failed.length} row(s) failed — see details below</p>
                   )}
                 </div>
               </div>
+                );
+              })()}
 
               {result.failed.length > 0 && (
                 <div>
@@ -406,6 +496,23 @@ function ImportModal({ onClose, onSuccess }) {
                 </button>
               </>
             )}
+            {step === "confirm" && (
+              <>
+                <button
+                  onClick={skipDuplicates}
+                  className="text-sm font-bold text-on-surface border border-outline-variant/30 rounded-lg px-4 py-2 hover:bg-surface-container-low transition-colors"
+                >
+                  Keep existing
+                </button>
+                <button
+                  onClick={confirmOverwrite}
+                  className="text-sm font-bold bg-amber-500 text-white rounded-lg px-5 py-2 hover:bg-amber-600 transition-colors flex items-center gap-2 shadow-sm shadow-amber-500/20"
+                >
+                  <span className="material-symbols-outlined text-base" style={fillStyle}>sync</span>
+                  Overwrite ({duplicates.length})
+                </button>
+              </>
+            )}
             {step === "result" && (
               <button
                 onClick={onClose}
@@ -424,27 +531,28 @@ function ImportModal({ onClose, onSuccess }) {
 // ─── Student Progress tab ─────────────────────────────────────────────────────
 const PROGRESS_PAGE_SIZE = 7;
 
-// completion % from the backend-provided counts (guards divide-by-zero)
-const completionPct = (s) => (s.totalPaces ? (s.completedPaces / s.totalPaces) * 100 : 0);
-
-// turn that % into the status label used by the table + Status filter
+// Status shown in the table + used by the Status filter. Precedence:
+//   no PACEs assigned            -> Not Yet Assigned
+//   all assigned PACEs completed -> Completed (finishing wins, even over a past failure)
+//   current PACE failed          -> Needs Intervention (latest test < pass mark, no passing retake)
+//   otherwise (assigned/working) -> In Progress
 const progressStatusOf = (s) => {
-  if (!s.totalPaces) return "Needs Intervention";
-  const p = completionPct(s);
-  if (p >= 80) return "Completed";
-  if (p >= 40) return "In Progress";
-  return "Needs Intervention";
+  if (!s.totalPaces) return "Not Yet Assigned";
+  if (s.completedPaces >= s.totalPaces) return "Completed";
+  if (s.currentPaceFailed) return "Needs Intervention";
+  return "In Progress";
 };
 
 // coloured status pill
 const ProgressStatusBadge = ({ status }) => {
   const styles = {
-    "Completed":         "bg-green-100 text-green-700",
-    "In Progress":       "bg-amber-100 text-amber-700",
+    "Completed":          "bg-green-100 text-green-700",
+    "In Progress":        "bg-amber-100 text-amber-700",
     "Needs Intervention": "bg-rose-100 text-rose-700",
+    "Not Yet Assigned":   "bg-slate-100 text-slate-500",
   };
   return (
-    <span className={`text-[11px] font-bold px-3 py-1 rounded-full whitespace-nowrap ${styles[status] ?? styles["Needs Intervention"]}`}>
+    <span className={`text-[11px] font-bold px-3 py-1 rounded-full whitespace-nowrap ${styles[status] ?? styles["Not Yet Assigned"]}`}>
       {status}
     </span>
   );
@@ -460,6 +568,7 @@ const ProgressStatusBadge = ({ status }) => {
 function StudentProgressTab({ students, loading }) {
   const [gradeLevel, setGradeLevel] = useState("");
   const [status,     setStatus]     = useState("");
+  const [search,     setSearch]     = useState("");
   const [page,       setPage]       = useState(1);
 
   // gradeLevels - the distinct grade levels present in `students`, sorted by grade
@@ -476,11 +585,19 @@ function StudentProgressTab({ students, loading }) {
 
   // filtered - `students` narrowed by the two dropdowns. Recomputed when the list
   //   or either filter changes.
-  const filtered = useMemo(() => students.filter((s) => {
-    const matchGrade  = !gradeLevel || s.grade_level === gradeLevel;      // keep if "All" OR grade matches
-    const matchStatus = !status     || progressStatusOf(s) === status;    // keep if "All" OR status matches
-    return matchGrade && matchStatus;                                     // row survives only if BOTH pass
-  }), [students, gradeLevel, status]);
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return students.filter((s) => {
+      const matchGrade  = !gradeLevel || s.grade_level === gradeLevel;      // keep if "All" OR grade matches
+      const matchStatus = !status     || progressStatusOf(s) === status;    // keep if "All" OR status matches
+      const matchSearch = !q                                                // keep if the box is empty, else match name/ID
+        || String(s.full_name  ?? "").toLowerCase().includes(q)
+        || String(s.first_name ?? "").toLowerCase().includes(q)
+        || String(s.last_name  ?? "").toLowerCase().includes(q)
+        || String(s.student_id ?? "").toLowerCase().includes(q);
+      return matchGrade && matchStatus && matchSearch;                      // row survives only if ALL pass
+    });
+  }, [students, gradeLevel, status, search]);
 
   // ── Pagination math (all rows are already in memory, so this is client-side) ──
   const totalPages  = Math.max(1, Math.ceil(filtered.length / PROGRESS_PAGE_SIZE)); // at least 1 page
@@ -497,12 +614,22 @@ function StudentProgressTab({ students, loading }) {
       return [totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages]; // near the end
     return [currentPage - 2, currentPage - 1, currentPage, currentPage + 1, currentPage + 2]; // sliding middle window
   };
-
+  const resetFilters = () => { setSearch(""); setGradeLevel(""); setStatus(""); setPage(1); };
   return (
     <>
-      {/* Filter Row - the two dropdowns. Changing either calls its setter AND
-          setPage(1) so you don't get stranded on an out-of-range page. */}
+      {/* Filter Row - search box + two dropdowns + reset. Each control calls its setter AND
+          setPage(1) so you don't get stranded on an out-of-range page. studnet progress*/}
       <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <div className="relative flex-1 min-w-[220px]">
+          <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1 text-on-surface-variant text-base pointer-events-none">search</span>
+          <input
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            placeholder="Search by name or ID…"
+            className="w-full pl-9 pr-9 py-2.5 text-sm bg-white border border-outline-variant/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30 shadow-sm"
+          />
+        </div>
+
         <div className="flex items-center gap-2 shrink-0">
           <span className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant">Grade Level</span>
           <div className="relative">
@@ -527,6 +654,7 @@ function StudentProgressTab({ students, loading }) {
               className="appearance-none text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl pl-4 pr-9 py-2.5 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer min-w-[140px]"
             >
               <option value="">All</option>
+              <option value="Not Yet Assigned">Not Yet Assigned</option>
               <option value="Completed">Completed</option>
               <option value="In Progress">In Progress</option>
               <option value="Needs Intervention">Needs Intervention</option>
@@ -534,19 +662,25 @@ function StudentProgressTab({ students, loading }) {
             <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1 text-on-surface-variant text-base pointer-events-none">expand_more</span>
           </div>
         </div>
+        <button
+          onClick={resetFilters}
+            className="flex items-center gap-1.5 text-sm font-bold text-on-surface-variant bg-white border border-outline-variant/20 rounded-xl px-4 py-2.5 shadow-sm hover:bg-surface-container-low transition-colors shrink-0">
+            <span className="material-symbols-outlined text-base">refresh</span>
+            Reset
+          </button>
       </div>
 
-      {/* Table - 7 columns (#, Student ID, Name, Completed PACE, Total Assigned,
-          PACE Completion %, Status). The header cells are generated from this array. */}
-      <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 overflow-hidden">
+      {/* Table - 6 columns (#, Student ID, Name, Completed PACE, Total Assigned,
+          Status). The header cells are generated from this array. */}
+      <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/50 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-outline-variant/20 bg-surface-container-lowest">
-                {["#", "Student ID", "Name", "Completed PACE", "Total Assigned", "PACE Completion %", "Status"].map((h) => (
+              <tr className="border-b border-outline-variant/50 bg-surface-container/100">
+                {["#", "Student ID", "Name", "Completed PACE", "Total Assigned", "Status"].map((h) => (
                   <th
                     key={h}
-                    className={`text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant px-5 py-4 whitespace-nowrap ${
+                    className={`text-[13px] font-extrabold tracking-widest uppercase text-on-surface-variant px-5 py-4 whitespace-nowrap ${
                       h === "Status" ? "text-center" : "text-left"
                     }`}
                   >
@@ -555,43 +689,32 @@ function StudentProgressTab({ students, loading }) {
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-outline-variant/10">
+            <tbody className="divide-y divide-outline-variant/50">
               {loading ? (
                 Array.from({ length: PROGRESS_PAGE_SIZE }).map((_, i) => (
                   <tr key={i}>
-                    {Array.from({ length: 7 }).map((__, j) => (
+                    {Array.from({ length: 6 }).map((__, j) => (
                       <td key={j} className="px-5 py-5"><div className="animate-pulse bg-surface-container-high rounded h-4 w-full" /></td>
                     ))}
                   </tr>
                 ))
               ) : pageRows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-5 py-12 text-center text-sm text-on-surface-variant">
+                  <td colSpan={6} className="px-5 py-12 text-center text-sm text-on-surface-variant">
                     {students.length === 0 ? "No students found." : "No students match the current filters."}
                   </td>
                 </tr>
               ) : (
-                pageRows.map((s, idx) => {
-                  const pct = completionPct(s);
-                  return (
-                    <tr key={s.student_id} className="hover:bg-surface-container-lowest transition-colors">
+                pageRows.map((s, idx) => (
+                    <tr key={s.student_id} className="hover:bg-surface-container-lowest transition-colors ">
                       <td className="px-5 py-5 text-sm font-bold text-on-surface-variant">{startIndex + idx + 1}</td>
                       <td className="px-5 py-5 text-sm font-medium text-on-surface-variant whitespace-nowrap">ID {s.student_id}</td>
                       <td className="px-5 py-5 text-sm font-bold text-on-surface">{lastFirst(s)}</td>
                       <td className="px-5 py-5 text-sm text-on-surface">{s.completedPaces}</td>
                       <td className="px-5 py-5 text-sm text-on-surface">{s.totalPaces}</td>
-                      <td className="px-5 py-5">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-bold text-on-surface w-16 shrink-0">{pct.toFixed(2)}%</span>
-                          <div className="w-24 h-2 rounded-full bg-surface-container-high overflow-hidden">
-                            <div className="h-full bg-green-500 rounded-full" style={{ width: `${Math.min(pct, 100)}%` }} />
-                          </div>
-                        </div>
-                      </td>
                       <td className="px-5 py-5 text-center"><ProgressStatusBadge status={progressStatusOf(s)} /></td>
                     </tr>
-                  );
-                })
+                ))
               )}
             </tbody>
           </table>
@@ -1548,7 +1671,7 @@ export default function StudentMonitoring() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-outline-variant/20 bg-surface-container-lowest">
+                    <tr className="border-b border-outline-variant/50 bg-surface-container/100">
                       {["#", "Student ID", "Name", "Grade Level", "PACE Status", "Actions"].map((h) => (
                         <th
                           key={h}
@@ -1576,7 +1699,7 @@ export default function StudentMonitoring() {
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-outline-variant/10">
+                  <tbody className="divide-y divide-outline-variant/50">
                     {loading ? (
                       Array.from({ length: PAGE_SIZE }).map((_, i) => <SkeletonRow key={i} />)
                     ) : pageStudents.length === 0 ? (

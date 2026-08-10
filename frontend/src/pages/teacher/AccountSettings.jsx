@@ -23,21 +23,6 @@ import {
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
-// ─── Toggle switch ────────────────────────────────────────────────────────────
-const Toggle = ({ value, onChange }) => (
-  <button
-    onClick={() => onChange(!value)}
-    aria-pressed={value}
-    className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${value ? "bg-green-500" : "bg-slate-300"}`}
-  >
-    <span
-      className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all duration-200 ${
-        value ? "left-[22px]" : "left-[2px]"
-      }`}
-    />
-  </button>
-);
-
 // ─── Accessibility feature row ────────────────────────────────────────────────
 const AccessRow = ({ icon, iconBg, title, desc, children }) => (
   <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 py-5 border-b border-outline-variant/10 last:border-0">
@@ -89,41 +74,11 @@ const PasswordField = ({ label, value, onChange, placeholder }) => {
   );
 };
 
-// ─── Left sub-nav ─────────────────────────────────────────────────────────────
-const NAV = [
-  { key: "profile",       icon: "person",   title: "Profile",       sub: "Information & Security" },
-  { key: "accessibility", icon: "settings", title: "Accessibility", sub: ""                       },
-  // Hidden: Contact Administrator tab (panel view). Panel + handlers remain below, just no nav entry.
-  // { key: "contact",       icon: "mail",     title: "Contact",       sub: "Administrator"          },
-];
-
-const SubNav = ({ active, onSelect }) => (
-  <div className="w-full lg:w-56 shrink-0">
-    {/* horizontal scrollable tabs on mobile, vertical rail on lg+ */}
-    <div className="flex lg:flex-col gap-1 overflow-x-auto pb-1 lg:pb-0">
-      {NAV.map((n) => {
-        const on = active === n.key;
-        return (
-          <button
-            key={n.key}
-            onClick={() => onSelect(n.key)}
-            className={`shrink-0 lg:w-full flex items-center gap-3 text-left px-3 py-2.5 rounded-lg border-l-[3px] whitespace-nowrap transition-colors ${
-              on
-                ? "border-secondary bg-secondary/5 text-secondary"
-                : "border-transparent text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface"
-            }`}
-          >
-            <span className="material-symbols-outlined text-xl" style={on ? fillStyle : undefined}>{n.icon}</span>
-            <span className="min-w-0">
-              <span className={`block text-sm font-bold leading-tight ${on ? "text-secondary" : "text-on-surface"}`}>{n.title}</span>
-              {n.sub && <span className="block text-[11px] text-on-surface-variant leading-tight">{n.sub}</span>}
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  </div>
-);
+// No left nav anymore — Accessibility is folded into its own card below Profile
+// (High Contrast Mode, Font Style, and Worksheet Scale were removed entirely; High
+// Contrast is still reachable via the Color Mode dropdown) and Contact Administrator
+// stays hidden (panel + handlers remain below, just unreachable), so `activeTab`
+// never changes from "profile" — same layout as the student/principal Settings pages.
 
 // ─── Preferences overview (right) ─────────────────────────────────────────────
 const PrefRow = ({ iconBg, icon, title, sub, subColor }) => (
@@ -252,7 +207,7 @@ export default function AccountSettings() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
-  const [activeTab, setActiveTab] = useState("profile");
+  const [activeTab] = useState("profile"); // always "profile" — no left nav; Contact stays hidden (see top-of-file note)
 
   // Profile state (loaded from backend)
   const [loaded,    setLoaded]    = useState(null);   // last-saved snapshot for Discard
@@ -304,10 +259,13 @@ export default function AccountSettings() {
 
     const s = loadSettings();
     setTextSize(s.textSize);
-    setHighContrast(s.highContrast);
     setColorMode(s.colorMode);
-    setWorksheetScale(s.worksheetScale);
-    setFontStyle(s.fontStyle);
+    // High Contrast Mode, Font Style, and Worksheet Scale were removed as controls here —
+    // force them to default so a value saved before the removal can't stay stuck with no
+    // way to change it back (high contrast is still reachable via the Color Mode dropdown).
+    setHighContrast(DEFAULT_SETTINGS.highContrast);
+    setFontStyle(DEFAULT_SETTINGS.fontStyle);
+    setWorksheetScale(DEFAULT_SETTINGS.worksheetScale);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -420,133 +378,109 @@ export default function AccountSettings() {
           </div>
         </div>
 
-        {/* ── Three-column layout (stacks on < lg) ─────────────────────── */}
+        {/* ── Two-column layout (stacks on < lg): content + preferences sidebar ── */}
         <div className="flex flex-col lg:flex-row gap-6 lg:items-start">
 
-          <SubNav active={activeTab} onSelect={setActiveTab} />
-
           {/* ── CENTER: section content ──────────────────────────────── */}
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 space-y-6">
 
             {/* ════ PROFILE INFORMATION & SECURITY ════ */}
             {activeTab === "profile" && (
-              <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-6">
-                <div className="flex items-center gap-3 mb-6">
-                  <span className="w-1 h-5 rounded-full bg-secondary" />
-                  <h3 className="text-base font-extrabold text-on-surface">Profile Information &amp; Security</h3>
-                </div>
+              <>
+                <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-6">
+                  <div className="flex items-center gap-3 mb-6">
+                    <span className="w-1 h-5 rounded-full bg-secondary" />
+                    <h3 className="text-base font-extrabold text-on-surface">Profile Information &amp; Security</h3>
+                  </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className={labelCls}>First Name</label>
-                    <input type="text" required value={firstName} onChange={(e) => setFirstName(e.target.value)} className={inputCls} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Last Name</label>
-                    <input type="text" required value={lastName} onChange={(e) => setLastName(e.target.value)} className={inputCls} />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className={labelCls}>Email Address</label>
-                    <div className="flex items-center gap-2">
-                      <input type="email" value={email} disabled className={`${inputCls} bg-surface-container-low text-on-surface-variant cursor-not-allowed`} />
-                      <button type="button" onClick={() => setShowEmailModal(true)}
-                        className="shrink-0 px-4 py-2.5 rounded-lg border border-outline-variant/40 text-sm font-bold text-primary hover:bg-surface-container-low transition-colors whitespace-nowrap">
-                        Change
-                      </button>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className={labelCls}>First Name</label>
+                      <input type="text" required value={firstName} onChange={(e) => setFirstName(e.target.value)} className={inputCls} />
                     </div>
-                    <p className="text-xs text-on-surface-variant mt-1">Changing your email sends a verification code to the new address.</p>
+                    <div>
+                      <label className={labelCls}>Last Name</label>
+                      <input type="text" required value={lastName} onChange={(e) => setLastName(e.target.value)} className={inputCls} />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className={labelCls}>Email Address</label>
+                      <div className="flex items-center gap-2">
+                        <input type="email" value={email} disabled className={`${inputCls} bg-surface-container-low text-on-surface-variant cursor-not-allowed`} />
+                        <button type="button" onClick={() => setShowEmailModal(true)}
+                          className="shrink-0 px-4 py-2.5 rounded-lg border border-outline-variant/40 text-sm font-bold text-primary hover:bg-surface-container-low transition-colors whitespace-nowrap">
+                          Change
+                        </button>
+                      </div>
+                      <p className="text-xs text-on-surface-variant mt-1">Changing your email sends a verification code to the new address.</p>
+                    </div>
+                    {showEmailModal && (
+                      <EmailChangeModal
+                        currentEmail={email}
+                        requestCode={(newEmail) => requestTeacherEmailCode(newEmail)}
+                        verifyCode={async (code, newEmail) => { const res = await verifyTeacherEmailCode({ newEmail, code }); return res?.data?.email; }}
+                        onChanged={(newEmail) => { setEmail(newEmail); setLoaded((p) => (p ? { ...p, email: newEmail } : p)); }}
+                        onClose={() => setShowEmailModal(false)}
+                      />
+                    )}
+                    <div className="sm:col-span-2">
+                      <label className={labelCls}>Contact Number</label>
+                      <input type="tel" value={contact} onChange={(e) => setContact(e.target.value)} className={inputCls} />
+                    </div>
                   </div>
-                  {showEmailModal && (
-                    <EmailChangeModal
-                      currentEmail={email}
-                      requestCode={(newEmail) => requestTeacherEmailCode(newEmail)}
-                      verifyCode={async (code, newEmail) => { const res = await verifyTeacherEmailCode({ newEmail, code }); return res?.data?.email; }}
-                      onChanged={(newEmail) => { setEmail(newEmail); setLoaded((p) => (p ? { ...p, email: newEmail } : p)); }}
-                      onClose={() => setShowEmailModal(false)}
-                    />
-                  )}
-                  <div className="sm:col-span-2">
-                    <label className={labelCls}>Contact Number</label>
-                    <input type="tel" value={contact} onChange={(e) => setContact(e.target.value)} className={inputCls} />
+
+                  <h4 className="text-base font-extrabold text-on-surface mt-8 mb-4">Change Password</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <PasswordField label="Current Password" value={currentPw} onChange={setCurrentPw} placeholder="Enter current password" />
+                    <PasswordField label="New Password"     value={newPw}     onChange={setNewPw}     placeholder="Enter new password" />
+                    <PasswordField label="Confirm Password" value={confirmPw} onChange={setConfirmPw} placeholder="Confirm new password" />
                   </div>
+                  <p className="text-[11px] text-on-surface-variant mt-2">Leave the password fields blank to keep your current password.</p>
                 </div>
 
-                <h4 className="text-base font-extrabold text-on-surface mt-8 mb-4">Change Password</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  <PasswordField label="Current Password" value={currentPw} onChange={setCurrentPw} placeholder="Enter current password" />
-                  <PasswordField label="New Password"     value={newPw}     onChange={setNewPw}     placeholder="Enter new password" />
-                  <PasswordField label="Confirm Password" value={confirmPw} onChange={setConfirmPw} placeholder="Confirm new password" />
-                </div>
-                <p className="text-[11px] text-on-surface-variant mt-2">Leave the password fields blank to keep your current password.</p>
-              </div>
-            )}
-
-            {/* ════ ACCESSIBILITY ════ */}
-            {activeTab === "accessibility" && (
-              <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-6">
-                <h3 className="text-base font-extrabold text-on-surface">Accessibility Features</h3>
-                <p className="text-[12px] text-on-surface-variant mt-0.5 mb-2">Changes apply immediately and are saved automatically.</p>
-
-                <AccessRow icon="format_size" iconBg="bg-indigo-500" title="Text Size" desc="Adjust the size of text across the application.">
-                  <div className="flex rounded-xl overflow-hidden border border-outline-variant/30">
-                    {["Small", "Medium", "Large"].map((sz) => (
-                      <button key={sz} onClick={() => setTextSize(sz)}
-                        className={`px-4 py-1.5 text-sm font-bold transition-colors ${textSize === sz ? "bg-on-surface text-white" : "bg-white text-on-surface-variant hover:bg-surface-container-low"}`}>
-                        {sz}
-                      </button>
-                    ))}
+                {/* ════ ACCESSIBILITY — its own card, same as the student/principal Settings pages ════ */}
+                <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-6">
+                  <div className="flex items-center gap-3 mb-6">
+                    <span className="w-1 h-5 rounded-full bg-secondary" />
+                    <h3 className="text-base font-extrabold text-on-surface">Accessibility</h3>
                   </div>
-                </AccessRow>
+                  <p className="text-[12px] text-on-surface-variant -mt-4 mb-2">Changes apply immediately and are saved automatically.</p>
 
-                <AccessRow icon="wb_sunny" iconBg="bg-teal-500" title="High Contrast Mode" desc="Increase contrast for better visibility.">
-                  <Toggle value={highContrast} onChange={setHighContrast} />
-                </AccessRow>
-
-                <AccessRow icon="palette" iconBg="bg-purple-500" title="Color Mode" desc="Choose a color mode that works best for you.">
-                  <div className="relative">
-                    <select value={colorMode} onChange={(e) => setColorMode(e.target.value)} className={selectCls}>
-                      {["Default", "Dark", "High Contrast", "Color Blind"].map((o) => <option key={o}>{o}</option>)}
-                    </select>
-                    <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none" style={{ fontSize: 18 }}>expand_more</span>
-                  </div>
-                </AccessRow>
-
-                <AccessRow icon="zoom_in" iconBg="bg-blue-500" title="Worksheet Scale" desc="Adjust the size of tables and worksheets.">
-                  <div className="flex flex-col items-end gap-1 w-44">
-                    <input type="range" min={75} max={125} step={25} value={worksheetScale}
-                      onChange={(e) => setWorksheetScale(Number(e.target.value))} className="w-full accent-primary cursor-pointer" />
-                    <div className="flex justify-between w-full">
-                      {[75, 100, 125].map((v) => (
-                        <span key={v} className={`text-[10px] font-bold ${worksheetScale === v ? "text-primary" : "text-on-surface-variant"}`}>{v}%</span>
+                  <AccessRow icon="format_size" iconBg="bg-indigo-500" title="Text Size" desc="Adjust the size of text across the application.">
+                    <div className="flex rounded-xl overflow-hidden border border-outline-variant/30">
+                      {["Small", "Medium", "Large"].map((sz) => (
+                        <button key={sz} onClick={() => setTextSize(sz)}
+                          className={`px-4 py-1.5 text-sm font-bold transition-colors ${textSize === sz ? "bg-on-surface text-white" : "bg-white text-on-surface-variant hover:bg-surface-container-low"}`}>
+                          {sz}
+                        </button>
                       ))}
                     </div>
-                  </div>
-                </AccessRow>
+                  </AccessRow>
 
-                <AccessRow icon="text_fields" iconBg="bg-green-500" title="Font Style" desc="Choose a font style that improves readability.">
-                  <div className="relative">
-                    <select value={fontStyle} onChange={(e) => setFontStyle(e.target.value)} className={selectCls}>
-                      {["Default", "Serif", "Monospace", "Dyslexic-Friendly"].map((o) => <option key={o}>{o}</option>)}
-                    </select>
-                    <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none" style={{ fontSize: 18 }}>expand_more</span>
-                  </div>
-                </AccessRow>
+                  <AccessRow icon="palette" iconBg="bg-purple-500" title="Color Mode" desc="Choose a color mode that works best for you.">
+                    <div className="relative">
+                      <select value={colorMode} onChange={(e) => setColorMode(e.target.value)} className={selectCls}>
+                        {["Default", "Dark", "High Contrast", "Color Blind"].map((o) => <option key={o}>{o}</option>)}
+                      </select>
+                      <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none" style={{ fontSize: 18 }}>expand_more</span>
+                    </div>
+                  </AccessRow>
 
-                <div className="pt-4 flex justify-end">
-                  <button
-                    onClick={() => {
-                      setTextSize(DEFAULT_SETTINGS.textSize);
-                      setHighContrast(DEFAULT_SETTINGS.highContrast);
-                      setColorMode(DEFAULT_SETTINGS.colorMode);
-                      setWorksheetScale(DEFAULT_SETTINGS.worksheetScale);
-                      setFontStyle(DEFAULT_SETTINGS.fontStyle);
-                    }}
-                    className="text-xs font-bold text-on-surface-variant hover:text-on-surface border border-outline-variant/30 rounded-xl px-4 py-2 hover:bg-surface-container-low transition-colors"
-                  >
-                    Reset to defaults
-                  </button>
+                  <div className="pt-4 flex justify-end">
+                    <button
+                      onClick={() => {
+                        setTextSize(DEFAULT_SETTINGS.textSize);
+                        setHighContrast(DEFAULT_SETTINGS.highContrast);
+                        setColorMode(DEFAULT_SETTINGS.colorMode);
+                        setWorksheetScale(DEFAULT_SETTINGS.worksheetScale);
+                        setFontStyle(DEFAULT_SETTINGS.fontStyle);
+                      }}
+                      className="text-xs font-bold text-on-surface-variant hover:text-on-surface border border-outline-variant/30 rounded-xl px-4 py-2 hover:bg-surface-container-low transition-colors"
+                    >
+                      Reset to defaults
+                    </button>
+                  </div>
                 </div>
-              </div>
+              </>
             )}
 
             {/* ════ CONTACT ADMINISTRATOR ════ */}

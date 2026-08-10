@@ -945,6 +945,7 @@ export const getStudentPace = async (user_id) => {
   const teacherNames = await getTeacherNamesByIds(rows.map((r) => r.recorded_by));
 
   const STATUS_LABELS = {
+    completed:    "Completed",
     ongoing:      "In Progress",
     "taken-home": "Taken Home",
     "needs-next": "Needs Next PACE",
@@ -1030,16 +1031,34 @@ export const getStudentPace = async (user_id) => {
     slots.forEach((slot) => {
       const sp = spByKey.get(`${slot.subject}::${slot.paceNo}`) ?? {};
       const overdue = sp.end_date && slot.status !== "completed" && todayStr > String(sp.end_date);
-      const remarks = slot.status === "completed" ? "Completed"
-        : overdue ? "Needs improvement"
-        : slot.status === "not-started" ? "—"
-        : "On track";
+
+      // Default status label comes from the slot's progress state.
+      let statusLabel = STATUS_LABELS[slot.status] ?? "Not Started";
+      let remarks;
+
+      if (slot.status === "completed") {
+        // A finished PACE only counts as truly done if it PASSED (score >= 90). If it
+        // failed, show "Failed" here too, so this table agrees with the Completed PACEs
+        // table (which grades on pass/fail) instead of contradicting it.
+        const scores = scoreByModuleKey.get(`${slot.subject}::${slot.paceNo}`) ?? [];
+        const finalScore = scores.length
+          ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+          : 0;
+        const passed = finalScore >= 90;
+        statusLabel = passed ? "Completed" : "Failed";
+        remarks     = passed ? "Completed" : "Needs improvement";
+      } else {
+        remarks = overdue ? "Needs improvement"
+          : slot.status === "not-started" ? "—"
+          : "On track";
+      }
+
       paceModules.push({
         subject:       slot.subject,
         paceNo:        slot.paceNo,
         quarter:       slot.quarter ?? null,
         assignedBy:    slot.assignedBy,
-        status:        STATUS_LABELS[slot.status] ?? "Not Started",
+        status:        statusLabel,
         progress:      slotProgress(slot.status),
         startDate:     `Quarter ${slot.quarter}`,
         assignedDate:  sp.assigned_date ?? null,
@@ -1377,9 +1396,19 @@ const waitForUserProfile = async (authId) => {
   throw new Error("User profile was not created in time by the trigger. Please retry.");
 };
 
-export const importStudents = async (rows) => {
-  const succeeded = [];
-  const failed    = [];
+// CSV import. Two modes, driven by `overwrite`:
+//   overwrite = false (default) — create the genuinely new students, and for anyone
+//     already in the system, DON'T touch them: collect them into `duplicates` so the
+//     caller can prompt the principal ("this student already exists — overwrite?").
+//   overwrite = true — update those existing students' profiles in place (keeping their
+//     student_id / login / academic history) and create any that are still new.
+// Existing students are matched on first name + last name + date of birth, so the trap
+// works no matter how the student was originally added (CSV or the single-add form).
+export const importStudents = async (rows, { overwrite = false } = {}) => {
+  const succeeded   = [];   // newly created students
+  const overwritten = [];   // existing students updated in place (overwrite mode)
+  const duplicates  = [];   // existing students left untouched, awaiting a decision
+  const failed      = [];
 
   // Get active school year for grade level lookup
   const { data: activeSY } = await supabaseAdmin
@@ -1400,7 +1429,20 @@ export const importStudents = async (rows) => {
     });
   }
 
-  for (const row of rows) {
+  // Pre-load existing students so we can flag re-imports of the same person.
+  // Key: "firstname|lastname|dobDigits" (case-insensitive, dashes stripped from the DOB
+  // so "2012-03-14" and "20120314" collide the same way).
+  const dupKey = (fn, ln, dob) =>
+    `${String(fn ?? "").toLowerCase().trim()}|${String(ln ?? "").toLowerCase().trim()}|${String(dob ?? "").replace(/\D/g, "")}`;
+  const { data: allStudents } = await supabaseAdmin
+    .from("student")
+    .select("student_id, user_id, first_name, last_name, date_of_birth");
+  const existingByKey = new Map(
+    (allStudents ?? []).map((s) => [dupKey(s.first_name, s.last_name, s.date_of_birth), s])
+  );
+
+  for (let index = 0; index < rows.length; index++) {
+    const row = rows[index];
     const { first_name, last_name, date_of_birth, gender, address, contact_number, enrollment_date, grade_level } = row;
     const fullName = `${first_name} ${last_name}`.trim();
 
@@ -1411,6 +1453,36 @@ export const importStudents = async (rows) => {
         throw new Error(`Grade level "${grade_level}" not found in the active school year.`);
       }
 
+      const existing = existingByKey.get(dupKey(first_name, last_name, date_of_birth));
+
+      // ── Already in the system ──
+      if (existing) {
+        if (!overwrite) {
+          // Leave them untouched and report back so the principal can decide.
+          duplicates.push({ index, name: fullName });
+          continue;
+        }
+        // Overwrite confirmed — refresh the existing student's profile in place.
+        // student_id / login stay the same; academic history is untouched.
+        const { error: updErr } = await supabaseAdmin
+          .from("student")
+          .update({
+            first_name,
+            last_name,
+            date_of_birth,
+            gender,
+            address,
+            contact_number,
+            enrollment_date,
+            ...(gl_id ? { gl_id } : {}),
+          })
+          .eq("student_id", existing.student_id);
+        if (updErr) throw new Error(updErr.message);
+        overwritten.push(fullName);
+        continue;
+      }
+
+      // ── New student — create Auth account + profile + student row ──
       const password = date_of_birth.replace(/\D/g, "");
       const base     = `${first_name}.${last_name}`.toLowerCase().replace(/\s+/g, ".");
       const username = base;
@@ -1423,26 +1495,11 @@ export const importStudents = async (rows) => {
         user_metadata: { username, role: "student" },
       });
 
-      // Student already exists — update their grade level if provided
       if (authError) {
+        // Safety net: the pre-check missed it (e.g. an account created moments ago).
+        // Treat a duplicate email as an existing student, not a hard failure.
         if (authError.message.toLowerCase().includes("already been registered")) {
-          if (gl_id) {
-            const { data: existingProfile } = await supabaseAdmin
-              .from("users")
-              .select("user_id")
-              .eq("email", email)
-              .maybeSingle();
-            if (existingProfile) {
-              await supabaseAdmin
-                .from("student")
-                .update({ gl_id })
-                .eq("user_id", existingProfile.user_id);
-              succeeded.push(fullName);
-              continue;
-            }
-          }
-          // Already exists but no grade level to update — skip silently
-          succeeded.push(fullName);
+          duplicates.push({ index, name: fullName });
           continue;
         }
         throw new Error(describeAuthCreateError(authError));
@@ -1478,13 +1535,18 @@ export const importStudents = async (rows) => {
         throw new Error(studentError.message);
       }
 
+      // Register it so a later row in the same file repeating this person is caught too.
+      existingByKey.set(dupKey(first_name, last_name, date_of_birth), {
+        student_id: newStudentId,
+        user_id: userProfile.user_id,
+      });
       succeeded.push(fullName);
     } catch (err) {
       failed.push({ name: fullName, reason: err.message });
     }
   }
 
-  return { imported: succeeded.length, failed };
+  return { imported: succeeded.length, overwritten: overwritten.length, duplicates, failed };
 };
 
 export const getStudentDashboard = async (user_id) => {

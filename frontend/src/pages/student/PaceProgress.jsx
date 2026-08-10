@@ -91,9 +91,13 @@ const subjectColor = (subject) =>
 // ─── Status Badge ─────────────────────────────────────────────────────────────
 const StatusBadge = ({ status }) => {
   const styles = {
-    "In Progress":  "bg-blue-100 text-blue-700",
-    "Completed":    "bg-green-100 text-green-700",
-    "Not Started":  "bg-slate-100 text-slate-500",
+    "In Progress":     "bg-blue-100 text-blue-700",
+    "Completed":       "bg-green-100 text-green-700",
+    "Passed":          "bg-green-100 text-green-700",
+    "Failed":          "bg-red-100 text-red-700",
+    "Taken Home":      "bg-amber-100 text-amber-700",
+    "Needs Next PACE": "bg-purple-100 text-purple-700",
+    "Not Started":     "bg-slate-100 text-slate-500",
   };
   return (
     <span className={`text-[10px] font-extrabold tracking-widest uppercase px-3 py-1.5 rounded-full ${styles[status] ?? "bg-slate-100 text-slate-500"}`}>
@@ -451,9 +455,8 @@ export default function PaceProgress() {
                     <TH>Subject</TH>
                     <TH>Pace No.</TH>
                     <TH>Assigned Date</TH>
-                    <TH>Status</TH>
-                    <TH>Progress</TH>
                     <TH>Estimated Date</TH>
+                    <TH>Status</TH>
                     <TH>Remarks</TH>
                   </tr>
                 </thead>
@@ -491,13 +494,10 @@ export default function PaceProgress() {
                         <span className="text-sm text-on-surface-variant">{formatDateRaw(chosen?.assignedDate)}</span>
                       </td>
                       <td className="py-4 pr-6">
-                        <StatusBadge status={chosen?.status} />
-                      </td>
-                      <td className="py-4 pr-6 min-w-[160px]">
-                        <ProgressBar value={chosen?.progress ?? 0} />
+                        <span className="text-sm text-on-surface-variant">{formatDateRaw(chosen?.estimatedDate)}</span>
                       </td>
                       <td className="py-4 pr-6">
-                        <span className="text-sm text-on-surface-variant">{formatDateRaw(chosen?.estimatedDate)}</span>
+                        <StatusBadge status={chosen?.status} />
                       </td>
                       <td className="py-4">
                         <span className="text-sm text-on-surface-variant">{chosen?.remarks ?? "—"}</span>

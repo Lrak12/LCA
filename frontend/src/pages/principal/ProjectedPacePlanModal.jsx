@@ -7,6 +7,8 @@
 //        -> controllers/assessment.controller.js > generateProjection (~line 60)
 //        -> services/reports.service.js > generateDiagnosticProjection (~line 770)
 import { useState } from "react";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 import { generateProjection } from "../../api/diagnosticAssessments.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
@@ -82,6 +84,8 @@ export default function ProjectedPacePlanModal({ student, studentId, recommended
 
   const fullName  = student ? `${student.first_name ?? ""} ${student.last_name ?? ""}`.trim() : "—";
   const generated = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  const sid        = student?.student_id ?? studentId;
+  const gradeLevel = student?.grade_level?.level_name ?? student?.grade_level ?? "—";
 
   // change one subject's start PACE for one quarter
   const setQuarterStart = (subjectKey, qi, value) =>
@@ -110,6 +114,106 @@ export default function ProjectedPacePlanModal({ student, studentId, recommended
     }
   };
 
+  // Print/Export both render the CURRENT grid (each quarter's 3 PACEs = its start + slot
+  // offset), so the output always matches what's on screen after any edits.
+  const cellVal = (key, qi, slot) => (grid[key]?.[qi] ?? DEFAULT_START) + slot;
+
+  // Print = open a clean, standalone window with just the plan and trigger the print
+  // dialog. It only prints — Export (below) is the one that downloads a PDF.
+  const handlePrint = () => {
+    const esc = (v) => String(v ?? "")
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+    const head = PLAN_SUBJECTS.map((s) => `<th>${esc(s.label)}</th>`).join("");
+    const body = QUARTERS.map((ql, qi) =>
+      [0, 1, 2].map((slot) => {
+        const qCell = slot === 0 ? `<td class="q" rowspan="3">${esc(ql)}</td>` : "";
+        const cells = PLAN_SUBJECTS.map((s) => `<td>${esc(cellVal(s.key, qi, slot))}</td>`).join("");
+        return `<tr>${qCell}${cells}</tr>`;
+      }).join(""),
+    ).join("");
+
+    const html = `<!doctype html><html><head><meta charset="utf-8">
+      <title>Projected PACE Plan - ${esc(fullName || sid)}</title>
+      <style>
+        body { font-family: Arial, Helvetica, sans-serif; color:#1a1a1a; padding:28px; }
+        h1 { font-size:20px; margin:0 0 2px; }
+        .sub { color:#555; font-size:12px; margin:0 0 18px; }
+        .meta { font-size:13px; margin-bottom:18px; }
+        .meta div { margin:2px 0; }
+        table { border-collapse:collapse; width:100%; font-size:12px; }
+        th, td { border:1px solid #ccc; padding:6px 10px; text-align:center; }
+        th { background:#f3f4f6; }
+        td.q { font-weight:bold; text-align:left; background:#fafafa; white-space:nowrap; }
+        @media print { body { padding:0; } }
+      </style></head>
+      <body>
+        <h1>Projected PACE Plan</h1>
+        <p class="sub">Projected PACE sequence for each subject for the entire school year.</p>
+        <div class="meta">
+          <div><strong>Student:</strong> ${esc(fullName || "—")} (ID: ${esc(sid)})</div>
+          <div><strong>Grade Level:</strong> ${esc(gradeLevel)}</div>
+          <div><strong>Date Generated:</strong> ${esc(generated)}</div>
+        </div>
+        <table><thead><tr><th>Quarter</th>${head}</tr></thead><tbody>${body}</tbody></table>
+      </body></html>`;
+
+    const w = window.open("", "_blank");
+    if (!w) { setError("Please allow pop-ups to print the plan."); return; }
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 250);
+  };
+
+  // Export = download the plan straight to a PDF (jsPDF + autotable). No print dialog,
+  // no extra tab — the file is saved directly.
+  const handleExport = () => {
+    const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+    const marginX = 40;
+    let y = 48;
+
+    doc.setFont("helvetica", "bold").setFontSize(18).setTextColor(26, 26, 26);
+    doc.text("Projected PACE Plan", marginX, y);
+    y += 16;
+    doc.setFont("helvetica", "normal").setFontSize(10).setTextColor(85, 85, 85);
+    doc.text("Projected PACE sequence for each subject for the entire school year.", marginX, y);
+    y += 22;
+
+    doc.setFontSize(11).setTextColor(26, 26, 26);
+    const meta = [
+      ["Student:", `${fullName || "—"} (ID: ${sid})`],
+      ["Grade Level:", `${gradeLevel}`],
+      ["Date Generated:", `${generated}`],
+    ];
+    meta.forEach(([label, value]) => {
+      doc.setFont("helvetica", "bold").text(label, marginX, y);
+      doc.setFont("helvetica", "normal").text(value, marginX + 92, y);
+      y += 15;
+    });
+    y += 8;
+
+    const body = QUARTERS.flatMap((ql, qi) =>
+      [0, 1, 2].map((slot) => {
+        const row = [];
+        if (slot === 0) row.push({ content: ql, rowSpan: 3, styles: { fontStyle: "bold", valign: "middle", halign: "left" } });
+        PLAN_SUBJECTS.forEach((s) => row.push(String(cellVal(s.key, qi, slot))));
+        return row;
+      }),
+    );
+    autoTable(doc, {
+      startY: y,
+      head: [["Quarter", ...PLAN_SUBJECTS.map((s) => s.label)]],
+      body,
+      styles: { fontSize: 8, halign: "center", lineColor: [204, 204, 204], lineWidth: 0.5, cellPadding: 4 },
+      headStyles: { fillColor: [243, 244, 246], textColor: [26, 26, 26], fontStyle: "bold" },
+      margin: { left: marginX, right: marginX },
+    });
+
+    const safeName = String(fullName || sid).replace(/[^a-z0-9]+/gi, "_").replace(/^_+|_+$/g, "");
+    doc.save(`Projected_PACE_Plan_${safeName || sid}.pdf`);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl my-4 max-h-[94vh] flex flex-col">
@@ -125,9 +229,12 @@ export default function ProjectedPacePlanModal({ student, studentId, recommended
             </h2>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            {/* Preview / Print -> window.print() */}
-            <button onClick={() => window.print()} className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-outline-variant/40 text-xs font-bold text-on-surface hover:bg-surface-container-low transition-colors">
-              <span className="material-symbols-outlined text-sm">visibility</span> Preview / Print
+            {/* Export -> downloads the plan as a PDF (handleExport, jsPDF); Print -> opens a clean standalone print view (handlePrint) */}
+            <button onClick={handleExport} className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-outline-variant/40 text-xs font-bold text-on-surface hover:bg-surface-container-low transition-colors">
+              <span className="material-symbols-outlined text-sm">download</span> Export
+            </button>
+            <button onClick={handlePrint} className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-outline-variant/40 text-xs font-bold text-on-surface hover:bg-surface-container-low transition-colors">
+              <span className="material-symbols-outlined text-sm">print</span> Print
             </button>
             {/* Reset Plan -> reseeds the grid from its source (existing plan or recommendation) */}
             <button onClick={() => setGrid(seed())} className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-outline-variant/40 text-xs font-bold text-on-surface hover:bg-surface-container-low transition-colors">

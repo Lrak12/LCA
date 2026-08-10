@@ -2523,6 +2523,37 @@ export const saveStudentPace = async (user_id, payload) => {
     await _syncProjectionCell(student.student_id, subject, paceNum, "ongoing");
   }
 
+  // Notify the student when a PACE is assigned — fires for new assignments AND
+  // re-assignments (i.e. any save that lands on status "Assigned"), but not on
+  // completion or other edits. Shows the start/end dates the supervisor set, with
+  // "Not set" when a date is left blank. Non-fatal: a notification failure must not
+  // fail the assignment save. Dates formatted from the raw YYYY-MM-DD (timezone-safe).
+  if (newStatus === "Assigned") {
+    try {
+      const { data: stu } = await supabaseAdmin
+        .from("student")
+        .select("user_id")
+        .eq("student_id", student.student_id)
+        .maybeSingle();
+      if (stu?.user_id) {
+        const fmtDate = (d) => {
+          if (!d) return "Not set";
+          const dt = new Date(`${d}T00:00:00`);
+          return isNaN(dt) ? "Not set"
+            : dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+        };
+        await NotificationService.createForUsers([stu.user_id], {
+          title: "New PACE Assigned",
+          message_content:
+            `Your supervisor assigned ${subject} PACE ${paceNum}. ` +
+            `Start: ${fmtDate(row.start_date)} · Due: ${fmtDate(row.end_date)}.`,
+        });
+      }
+    } catch (e) {
+      console.warn("[pace-assign] student notification failed:", e.message);
+    }
+  }
+
   return { sp_id: saved.sp_id };
 };
 

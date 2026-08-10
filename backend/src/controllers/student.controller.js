@@ -106,10 +106,13 @@ export const requestPaceTest = asyncHandler(async (req, res) => {
 });
 
 export const importStudents = asyncHandler(async (req, res) => {
-  const { students } = req.body;
+  const { students, overwrite } = req.body;
   if (!Array.isArray(students) || students.length === 0) {
     return sendError(res, "No student data provided", 400);
   }
-  const result = await StudentService.importStudents(students);
-  sendSuccess(res, result, `${result.imported} student(s) imported successfully`);
+  const result = await StudentService.importStudents(students, { overwrite: overwrite === true });
+  const msg = result.overwritten
+    ? `${result.imported} imported, ${result.overwritten} updated`
+    : `${result.imported} student(s) imported successfully`;
+  sendSuccess(res, result, msg);
 });

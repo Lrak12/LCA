@@ -30,6 +30,10 @@ export const getAcademicConfig = async () => {
   return { schoolYear, quarters, gradeLevels };
 };
 
+// A school year supports at most Grade 1-12 (MAX_GRADE_LEVELS). Checked up front in
+// addGradeLevel so principals/admins get this message instead of a raw database error.
+const MAX_GRADE_LEVELS = 12;
+
 export const addGradeLevel = async ({ level_name, level_order, sy_id }) => {
   if (!level_name || !String(level_name).trim()) {
     throw new Error("Grade level name is required.");
@@ -42,6 +46,15 @@ export const addGradeLevel = async ({ level_name, level_order, sy_id }) => {
       .from("school_year").select("sy_id").eq("is_active", true).single();
     if (syErr) throw new Error("No active school year found.");
     syId = sy.sy_id;
+  }
+
+  const { count, error: countErr } = await supabaseAdmin
+    .from("grade_level")
+    .select("gl_id", { count: "exact", head: true })
+    .eq("sy_id", syId);
+  if (countErr) throw new Error(countErr.message);
+  if ((count ?? 0) >= MAX_GRADE_LEVELS) {
+    throw new Error(`Maximum of ${MAX_GRADE_LEVELS} grade levels reached.`);
   }
 
   // Default level_order to the next slot for this school year (places it last).

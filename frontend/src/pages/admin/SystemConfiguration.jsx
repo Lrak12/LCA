@@ -336,14 +336,23 @@ function SchoolYearTab({ setBanner }) {
           </div>
         </div>
 
+        {/* A school year supports at most 12 grade levels (matches the backend check in
+            settings.service.js > addGradeLevel) — disable the button at the cap instead
+            of letting the principal/admin hit a server error. */}
         <button
           onClick={() => setShowAddGl(true)}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-white text-sm font-bold hover:bg-primary/90 shrink-0"
+          disabled={gradeLevels.length >= 12}
+          title={gradeLevels.length >= 12 ? "Maximum of 12 grade levels reached." : undefined}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-white text-sm font-bold hover:bg-primary/90 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-primary"
         >
           <span className="material-symbols-outlined text-base">add</span>
           Add Grade Level
         </button>
       </div>
+
+      {gradeLevels.length >= 12 && (
+        <p className="text-xs text-amber-600 font-semibold mb-3">Maximum of 12 grade levels reached.</p>
+      )}
 
       {glLoading ? (
         <Skeleton className="h-10 w-full" />

@@ -14,17 +14,15 @@ import { isPhMobile, PH_MOBILE_HINT } from "../../utils/phone.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
 import { fetchAccount, updateAccount, changeAccountPassword, fetchSupportRequests, submitSupportRequest } from "../../api/settings.js";
-import { loadSettings, saveSettings, applySettings } from "../../utils/accessibility.js";
+import { loadSettings, saveSettings, applySettings, DEFAULT_SETTINGS } from "../../utils/accessibility.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
-// the three left-nav tabs
-const TABS = [
-  { key: "profile",       icon: "lock_person", label: "Profile Information & Security" },
-  { key: "accessibility", icon: "settings",    label: "Accessibility" },
-  // Hidden: Contact Administrator tab (panel view). Panel + handlers remain below, just no nav entry.
-  // { key: "contact",       icon: "mail",        label: "Contact Administrator" },
-];
+// No left nav anymore — Accessibility is no longer its own tab (Text Size + Color Mode
+// now sit in their own card below Profile; High Contrast Mode + Font Style were removed
+// entirely, High Contrast is still reachable via the Color Mode dropdown) and Contact
+// Administrator stays hidden (panel + handlers remain below, just unreachable), so
+// `activeTab` never changes from "profile" — same layout as the student Account Settings page.
 
 const CONTACT_REASONS = ["Technical Issue", "Account Access", "Data Correction", "Other"];
 
@@ -57,7 +55,7 @@ export default function Settings() {
   const navigate         = useNavigate();
   const schoolYearLabel  = useSchoolYear();
 
-  const [activeTab, setActiveTab] = useState("profile"); // which settings tab is shown
+  const [activeTab] = useState("profile"); // always "profile" — no left nav; Contact stays hidden (see top-of-file note)
   const [form,  setForm]  = useState({ first_name: "", last_name: "", email: "", contact_number: "" }); // editable profile
   const [saved, setSaved] = useState({ first_name: "", last_name: "", email: "", contact_number: "" }); // last-saved snapshot (for Discard)
   const [pwd,   setPwd]   = useState({ current: "", new: "", confirm: "" }); // change-password fields
@@ -190,36 +188,18 @@ export default function Settings() {
           </div>
         )}
 
-        {/* Body grid */}
-        <div className="grid grid-cols-1 xl:grid-cols-[230px_1fr_260px] gap-6">
-
-          {/* Left nav -> setActiveTab(key) switches the Profile / Accessibility / Contact tabs */}
-          <aside className="space-y-1">
-            {TABS.map((t) => {
-              const active = activeTab === t.key;
-              return (
-                <button
-                  key={t.key}
-                  onClick={() => { setActiveTab(t.key); setError(""); setOkMsg(""); }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-all ${
-                    active ? "bg-white text-primary font-extrabold border-l-4 border-secondary shadow-sm" : "text-on-surface-variant hover:bg-surface-container-low border-l-4 border-transparent"
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-lg" style={active ? fillStyle : undefined}>{t.icon}</span>
-                  <span className="text-sm font-bold leading-tight">{t.label}</span>
-                </button>
-              );
-            })}
-          </aside>
+        {/* Body grid — no left nav: Profile is the only tab now (Accessibility folded in,
+            Contact hidden), so the section content runs full width next to the sidebar. */}
+        <div className="grid grid-cols-1 xl:grid-cols-[1fr_260px] gap-6">
 
           {/* Panel */}
-          <section>
-            <article className="bg-white rounded-2xl p-7 shadow-sm">
-              {activeTab === "profile" && (
-                <>
+          <section className="space-y-6">
+            {activeTab === "profile" && (
+              <>
+                <article className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-6">
                   <div className="flex items-center gap-3 mb-6">
-                    <span className="w-1.5 h-7 rounded-full bg-secondary" />
-                    <h3 className="font-headline text-xl font-extrabold text-primary">Profile Information &amp; Security</h3>
+                    <span className="w-1 h-5 rounded-full bg-secondary" />
+                    <h3 className="text-base font-extrabold text-on-surface">Profile Information &amp; Security</h3>
                   </div>
 
                   {loading ? (
@@ -247,23 +227,33 @@ export default function Settings() {
                         <input className={inputClass} value={form.contact_number} onChange={(e) => set("contact_number", e.target.value)} />
                       </div>
 
-                      <div className="pt-6 mt-2 border-t border-outline-variant/15">
-                        <h4 className="font-bold text-on-surface mb-4">Change Password</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                          <PasswordField label="Current Password" value={pwd.current} onChange={(v) => setP("current", v)} />
-                          <PasswordField label="New Password"     value={pwd.new}     onChange={(v) => setP("new", v)} />
-                          <PasswordField label="Confirm Password" value={pwd.confirm} onChange={(v) => setP("confirm", v)} />
-                        </div>
-                        <p className="text-[11px] text-on-surface-variant mt-2">Leave password fields blank to keep your current password. New password must be at least 8 characters.</p>
+                      <h4 className="text-base font-extrabold text-on-surface mt-2">Change Password</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                        <PasswordField label="Current Password" value={pwd.current} onChange={(v) => setP("current", v)} />
+                        <PasswordField label="New Password"     value={pwd.new}     onChange={(v) => setP("new", v)} />
+                        <PasswordField label="Confirm Password" value={pwd.confirm} onChange={(v) => setP("confirm", v)} />
                       </div>
+                      <p className="text-[11px] text-on-surface-variant -mt-2">Leave password fields blank to keep your current password. New password must be at least 8 characters.</p>
                     </div>
                   )}
-                </>
-              )}
+                </article>
 
-              {activeTab === "accessibility" && <AccessibilityTab />}
-              {activeTab === "contact"       && <ContactAdminTab account={saved} onSubmitted={loadSupport} />}
-            </article>
+                {/* Accessibility — its own card, same as the student Account Settings page */}
+                <article className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-6">
+                  <div className="flex items-center gap-3 mb-6">
+                    <span className="w-1 h-5 rounded-full bg-secondary" />
+                    <h3 className="text-base font-extrabold text-on-surface">Accessibility</h3>
+                  </div>
+                  <AccessibilityTab />
+                </article>
+              </>
+            )}
+
+            {activeTab === "contact" && (
+              <article className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-6">
+                <ContactAdminTab account={saved} onSubmitted={loadSupport} />
+              </article>
+            )}
           </section>
 
           {/* Preferences Overview */}
@@ -318,7 +308,6 @@ export default function Settings() {
 // ─── Accessibility (fully functional — applies app-wide + persists) ───────────
 const TEXT_SIZES   = ["Small", "Medium", "Large"];
 const COLOR_MODES  = ["Default", "Dark", "Color Blind"];
-const FONT_STYLES  = ["Default", "Serif", "Monospace", "Dyslexic-Friendly"];
 
 function A11yRow({ icon, iconBg, iconColor, glyphText, title, desc, children }) {
   return (
@@ -340,9 +329,14 @@ function A11yRow({ icon, iconBg, iconColor, glyphText, title, desc, children }) 
   );
 }
 
-// Local accessibility prefs (text size, contrast, colour/font); stored client-side only.
+// Local accessibility prefs (text size, colour); stored client-side only. High Contrast
+// Mode and Font Style were removed as standalone controls — high contrast is still
+// reachable via the Color Mode dropdown below.
 function AccessibilityTab() {
-  const [s, setS] = useState(loadSettings);            // seeded from localStorage
+  // Seed from localStorage, but force the two removed controls to their defaults so a
+  // value saved before the removal (e.g. High Contrast left on) can't stay stuck with no
+  // way to turn it off from here.
+  const [s, setS] = useState(() => ({ ...loadSettings(), highContrast: false, fontStyle: DEFAULT_SETTINGS.fontStyle }));
 
   // apply a preference change: update state, live-preview it, and persist
   const update = (patch) => {
@@ -356,12 +350,6 @@ function AccessibilityTab() {
 
   return (
     <>
-      <div className="flex items-center gap-3 mb-2">
-        <span className="w-1.5 h-7 rounded-full bg-secondary" />
-        <h3 className="font-headline text-xl font-extrabold text-primary">Accessibility Features</h3>
-      </div>
-      <p className="text-sm text-on-surface-variant mb-4">Customize your experience to fit your needs.</p>
-
       <A11yRow icon="format_size" iconBg="bg-blue-50" iconColor="text-blue-500" title="Text Size" desc="Adjust the size of text across the application.">
         <div className="flex items-center gap-1 bg-surface-container-low rounded-xl p-1">
           {TEXT_SIZES.map((t) => (
@@ -378,26 +366,20 @@ function AccessibilityTab() {
         </div>
       </A11yRow>
 
-      <A11yRow icon="contrast" iconBg="bg-teal-50" iconColor="text-teal-500" title="High Contrast Mode" desc="Increase contrast for better visibility.">
-        <button
-          onClick={() => update({ highContrast: !s.highContrast })}
-          className={`relative w-11 h-6 rounded-full transition-colors ${s.highContrast ? "bg-primary" : "bg-outline-variant/50"}`}
-        >
-          <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${s.highContrast ? "translate-x-5" : ""}`} />
-        </button>
-      </A11yRow>
-
       <A11yRow icon="palette" iconBg="bg-purple-50" iconColor="text-purple-500" title="Color Mode" desc="Choose a color mode that works best for you.">
         <select className={selectClass} value={s.colorMode} onChange={(e) => update({ colorMode: e.target.value })}>
           {COLOR_MODES.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
       </A11yRow>
 
-      <A11yRow glyphText="Aa" iconBg="bg-orange-50" iconColor="text-orange-500" title="Font Style" desc="Choose a font style that improves readability.">
-        <select className={selectClass} value={s.fontStyle} onChange={(e) => update({ fontStyle: e.target.value })}>
-          {FONT_STYLES.map((f) => <option key={f} value={f}>{f}</option>)}
-        </select>
-      </A11yRow>
+      <div className="pt-4 flex justify-end">
+        <button
+          onClick={() => update({ textSize: DEFAULT_SETTINGS.textSize, colorMode: DEFAULT_SETTINGS.colorMode, worksheetScale: DEFAULT_SETTINGS.worksheetScale })}
+          className="text-xs font-bold text-on-surface-variant hover:text-on-surface border border-outline-variant/30 rounded-xl px-4 py-2 hover:bg-surface-container-low transition-colors"
+        >
+          Reset to defaults
+        </button>
+      </div>
     </>
   );
 }

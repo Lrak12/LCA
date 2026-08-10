@@ -6,9 +6,10 @@
 //   (getStudentSummary reuses buildRecommendation + getPaceAnalytics internally, so the numbers
 //    here match the Records/Recommendations/Analytics tabs.)
 import { useState, useEffect } from "react";
-import { fetchStudentSummary } from "../api/studentMonitoring.js";
-import StudentProfileModal from "./StudentProfileModal.jsx";
+import { fetchStudentSummary, fetchStudentProfile } from "../api/studentMonitoring.js";
+import ProjectedPacePlanModal from "../pages/principal/ProjectedPacePlanModal.jsx";
 import EditStudentModal from "./EditStudentModal.jsx";
+import { useSchoolYear } from "../hooks/useSchoolYear.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
@@ -61,13 +62,16 @@ const SkeletonLine = ({ className = "" }) => (
 );
 
 // Shows student info, PACE progress summary, projected plan, and ranking.
-// "View Full Plan" opens StudentProfileModal (the per-subject grade grid).
+// "View Full Plan" opens the editable ProjectedPacePlanModal (the per-quarter PACE grid).
 // `studentId` = the row's id (set by the page's setSelectedStudent); onClose = () => setSelectedStudent(null).
 export default function StudentSummaryModal({ studentId, onClose, onUpdated }) {
+  const schoolYearLabel = useSchoolYear();
   const [data, setData]       = useState(null);    // getStudentSummary payload
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState("");
-  const [showFullPlan, setShowFullPlan] = useState(false); // is the nested full-plan modal open?
+  const [showFullPlan, setShowFullPlan] = useState(false); // is the nested projected-plan modal open?
+  const [planProjection, setPlanProjection] = useState(null); // subjectPaces seed for the plan grid
+  const [planLoading, setPlanLoading]       = useState(false); // fetching the projection before opening
   const [editing, setEditing] = useState(false);   // is the Edit Information modal open?
   const [reloadKey, setReloadKey] = useState(0);   // bump to refetch after an edit
 
@@ -94,6 +98,22 @@ export default function StudentSummaryModal({ studentId, onClose, onUpdated }) {
   const pace = data?.paceSummary;      // counts + completion rate + status + points
   const plan = data?.projectedPlan ?? []; // per-subject projected PACE range
   const rank = data?.ranking;          // current + grade-level rank
+
+  // Load the saved projection (subjectPaces shape) the plan modal needs to seed its
+  // editable grid, then open it. Falls back to defaults if the fetch fails.
+  const openFullPlan = async () => {
+    setPlanLoading(true);
+    try {
+      const res = await fetchStudentProfile(studentId);
+      setPlanProjection(res.data?.subjectPaces ?? {});
+    } catch {
+      setPlanProjection({});
+    } finally {
+      setPlanLoading(false);
+      setShowFullPlan(true);
+    }
+  };
+  const closeFullPlan = () => { setShowFullPlan(false); setPlanProjection(null); };
 
   return (
     <div
@@ -174,14 +194,6 @@ export default function StudentSummaryModal({ studentId, onClose, onUpdated }) {
                   <Field label="Complete with Extension">{"—"}</Field>
                   <Field label="Completed PACEs">{pace.completed}</Field>
                   <Field label="PACE Test not Passed">{pace.testNotPassed}</Field>
-                  <div className="flex items-center text-sm gap-2">
-                    <span className="text-on-surface-variant min-w-[120px] shrink-0">Completion Rate</span>
-                    <span className="text-on-surface-variant">:</span>
-                    <span className="font-bold text-on-surface">{pace.completionRate}%</span>
-                    <div className="flex-1 h-2 rounded-full bg-surface-container-high overflow-hidden ml-2 max-w-[120px]">
-                      <div className="h-full bg-green-500 rounded-full" style={{ width: `${Math.min(pace.completionRate, 100)}%` }} />
-                    </div>
-                  </div>
                   <Field label="PACE Status"><Pill tone={statusTone(pace.paceStatus)}>{pace.paceStatus}</Pill></Field>
                   <Field label="Completed On-Time">{pace.completedOnTime}</Field>
                   <Field label="Performance Points">{pace.pointsEarned}</Field>
@@ -216,14 +228,17 @@ export default function StudentSummaryModal({ studentId, onClose, onUpdated }) {
                         </tbody>
                       </table>
                     </div>
-                    {/* View Full Plan -> setShowFullPlan(true) opens the nested <StudentProfileModal> */}
+                    {/* View Full Plan -> openFullPlan() fetches the projection then opens <ProjectedPacePlanModal> */}
                     <div className="flex justify-center mt-4">
                       <button
-                        onClick={() => setShowFullPlan(true)}
-                        className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-outline-variant/40 text-sm font-bold text-primary hover:bg-surface-container-low transition-colors"
+                        onClick={openFullPlan}
+                        disabled={planLoading}
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-outline-variant/40 text-sm font-bold text-primary hover:bg-surface-container-low transition-colors disabled:opacity-60"
                       >
-                        <span className="material-symbols-outlined text-base" style={fillStyle}>visibility</span>
-                        View Full Plan
+                        <span className={`material-symbols-outlined text-base ${planLoading ? "animate-spin" : ""}`} style={fillStyle}>
+                          {planLoading ? "progress_activity" : "visibility"}
+                        </span>
+                        {planLoading ? "Loading…" : "View Full Plan"}
                       </button>
                     </div>
                   </>
@@ -252,11 +267,23 @@ export default function StudentSummaryModal({ studentId, onClose, onUpdated }) {
         </div>
       </div>
 
-      {/* nested full-plan modal: `showFullPlan` -> StudentProfileModal; onClose = () => setShowFullPlan(false) */}
-      {showFullPlan && s && (
-        <StudentProfileModal
-          student={{ student_id: s.student_id }}
-          onClose={() => setShowFullPlan(false)}
+      {/* nested full-plan modal: `showFullPlan` -> editable ProjectedPacePlanModal (same as the
+          Projected PACE Plan tab). Saving persists the projection, then refetches this summary. */}
+      {showFullPlan && s && planProjection && (
+        <ProjectedPacePlanModal
+          student={{
+            student_id: s.student_id,
+            grade_level: s.grade_level,   // string label; modal falls back to it for display
+            first_name: s.full_name,      // modal builds its display name from first + last
+            last_name: "",
+          }}
+          studentId={s.student_id}
+          initialProjection={planProjection}
+          hideBackToRecommendation
+          schoolYearLabel={schoolYearLabel}
+          onBack={closeFullPlan}
+          onCancel={closeFullPlan}
+          onSaved={() => { closeFullPlan(); setReloadKey((k) => k + 1); onUpdated?.(); }}
         />
       )}
 

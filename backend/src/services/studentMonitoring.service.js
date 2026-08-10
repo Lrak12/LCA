@@ -144,6 +144,24 @@ const buildRecommendation = (gradeLabel, studentPaces, diags, counts, scoresBySp
   return null;
 };
 
+// True when the student's CURRENT PACE (highest-numbered active one, falling back to the
+// highest overall) has a recorded latest test score below the pass mark — i.e. they
+// attempted it and failed, with no passing retake yet. Mirrors buildRecommendation's
+// REMEDIATE condition, exposed per-row so the Student Progress tab can flag "Needs
+// Intervention".
+const isCurrentPaceFailed = (studentPaces, scoresBySpId) => {
+  const numbered = (studentPaces || []).filter((p) => typeof p.pace_module?.module_number === "number");
+  if (!numbered.length) return false;
+  const active = numbered.filter((p) => p.status !== "Completed");
+  const pool   = active.length ? active : numbered;
+  const currentSp = pool.reduce(
+    (max, p) => (!max || p.pace_module.module_number > max.pace_module.module_number ? p : max),
+    null,
+  );
+  const score = currentSp ? scoresBySpId.get(currentSp.sp_id) ?? null : null;
+  return score != null && score < PACE_PASS_MARK;
+};
+
 const getGradeLabel = (student, paces, gradeByStudent) => {
   if (student.grade_level) return student.grade_level;
   if (student.grade) return `Grade ${student.grade}`;
@@ -246,6 +264,7 @@ export const getStudentMonitoring = async () => {
       totalPaces:      counts.total,
       remainingPaces:  Math.max(counts.total - counts.completed, 0),
       progress:        counts.progress,
+      currentPaceFailed: isCurrentPaceFailed(studentPaces, scoresBySpId),
       status,
       recommendation,
     };

@@ -27,3 +27,4 @@ project-structure.md
 
 # Claude Code local files
 .claude/
+"backend/src/db/remove_supervisors.sql" 

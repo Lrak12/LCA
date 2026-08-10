@@ -126,14 +126,6 @@ export default function StudentMonitoring() {
               <span className="material-symbols-outlined text-secondary text-base" style={fillStyle}>calendar_month</span>
               <span className="text-sm font-bold text-on-surface">{formatDate()}</span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-on-surface-variant">Grade Level</span>
-              <select value={grade} onChange={(e) => setGrade(e.target.value)}
-                className="text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl pl-3 pr-8 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
-                <option value="all">All Grades</option>
-                {gradeLevels.map((g) => <option key={g} value={g}>{g}</option>)}
-              </select>
-            </div>
           </div>
         </header>
 
@@ -151,16 +143,10 @@ export default function StudentMonitoring() {
           <TopStat label="Not Assessed (Not Yet Taken)" value={stats.notAssessed ?? 0} sub={`${total0(stats.totalStudents) ? pct((stats.notAssessed / stats.totalStudents) * 100) : "0%"} of total`} subColor="text-on-surface-variant" icon="remove_circle" iconBg="bg-slate-100" iconColor="text-slate-500" />
         </div>
 
-        {/* Second stat row */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
-          <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 p-5 flex items-center gap-4">
-            <Donut value={stats.paceCompletionRate ?? 0} />
-            <div>
-              <p className="text-[11px] font-extrabold uppercase tracking-widest text-on-surface-variant">PACE Completion Rate</p>
-              <p className="text-2xl font-extrabold text-on-surface mt-1">{pct(stats.paceCompletionRate)}</p>
-              <p className="text-[11px] text-green-600 font-bold">Average completion rate</p>
-            </div>
-          </div>
+        {/* Second stat row — PACE Completion Rate removed; Top Performer hidden (kept
+            below, commented out, so it's easy to bring back) but not rendered. */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
+          {/*
           <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 p-5">
             <div className="flex items-center gap-2 mb-1">
               <span className="material-symbols-outlined text-amber-500" style={fillStyle}>emoji_events</span>
@@ -169,6 +155,7 @@ export default function StudentMonitoring() {
             <p className="text-xl font-extrabold text-on-surface leading-tight">{stats.topPerformer?.name ?? "—"}</p>
             <p className="text-[11px] text-purple-600 font-bold mt-1">{stats.topPerformer ? `${pct(stats.topPerformer.completionRate)} Completion Rate` : "No data"}</p>
           </div>
+          */}
           <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 p-5">
             <div className="flex items-center gap-2 mb-1">
               <span className="material-symbols-outlined text-blue-500" style={fillStyle}>insights</span>
@@ -353,16 +340,3 @@ export default function StudentMonitoring() {
 
 // helper: guard against divide-by-zero on totals
 function total0(n) { return n != null && n > 0; }
-
-// Small donut for completion rate
-function Donut({ value }) {
-  const r = 22, c = 2 * Math.PI * r;
-  const off = c - (Math.min(100, Math.max(0, value)) / 100) * c;
-  return (
-    <svg width="56" height="56" viewBox="0 0 56 56" className="shrink-0">
-      <circle cx="28" cy="28" r={r} fill="none" stroke="currentColor" strokeWidth="6" className="text-surface-container-high" />
-      <circle cx="28" cy="28" r={r} fill="none" stroke="currentColor" strokeWidth="6" strokeLinecap="round"
-        className="text-green-500" strokeDasharray={c} strokeDashoffset={off} transform="rotate(-90 28 28)" />
-    </svg>
-  );
-}

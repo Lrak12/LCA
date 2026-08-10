@@ -117,11 +117,12 @@ const StatusIndicator = ({ status, onClick }) => {
   );
 };
 
-// ─── PACE Cell ────────────────────────────────────────────────────────────────
+// ─── PACE Line ────────────────────────────────────────────────────────────────
+// one PACE number + its status icon (an inline input when editable). Used inside
+// a PaceCellStack — three of these stack vertically in one table cell.
 // `editable` (Individual View only) turns the PACE number into an inline input
 // on click; committing calls onCommit(newNumber).
-// one grid cell: status icon + PACE number (an inline input when editable)
-const PaceCell = ({ pace, compact = false, editable = false, onCommit, onStatusClick }) => {
+const PaceLine = ({ pace, editable = false, onCommit, onStatusClick }) => {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState("");
 
@@ -137,37 +138,61 @@ const PaceCell = ({ pace, compact = false, editable = false, onCommit, onStatusC
   };
 
   return (
-    <td className={`${compact ? "px-1 py-1.5" : "px-1 py-2"} text-center border-r border-slate-100 last:border-0`}>
-      <div className="flex items-center justify-center gap-0.5 flex-nowrap">
-        {editing ? (
-          <input
-            type="number"
-            min="1001"
-            max="9999"
-            value={val}
-            autoFocus
-            onChange={(e) => setVal(e.target.value)}
-            onBlur={commit}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") { e.preventDefault(); commit(); }
-              if (e.key === "Escape") setEditing(false);
-            }}
-            className="w-14 text-center text-[11px] font-bold border border-primary/50 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary/40"
-          />
-        ) : (
-          <span
-            className={`text-[11px] font-bold text-slate-700 whitespace-nowrap ${editable ? "cursor-pointer hover:text-primary transition-colors" : ""}`}
-            onClick={startEdit}
-            title={editable ? "Click to edit PACE number" : undefined}
-          >
-            {pace.num !== "—" ? `- ${pace.num}` : "—"}
-          </span>
-        )}
-        <StatusIndicator status={pace.status} onClick={onStatusClick} />
-      </div>
-    </td>
+    <div className="flex items-center justify-center gap-0.5 flex-nowrap">
+      {editing ? (
+        <input
+          type="number"
+          min="1001"
+          max="9999"
+          value={val}
+          autoFocus
+          onChange={(e) => setVal(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); commit(); }
+            if (e.key === "Escape") setEditing(false);
+          }}
+          className="w-14 text-center text-[11px] font-bold border border-primary/50 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary/40"
+        />
+      ) : (
+        <span
+          className={`text-[11px] font-bold text-slate-700 whitespace-nowrap ${editable ? "cursor-pointer hover:text-primary transition-colors" : ""}`}
+          onClick={startEdit}
+          title={editable ? "Click to edit PACE number" : undefined}
+        >
+          {pace.num !== "—" ? `- ${pace.num}` : "—"}
+        </span>
+      )}
+      <StatusIndicator status={pace.status} onClick={onStatusClick} />
+    </div>
   );
 };
+
+// ─── PACE Cell Stack ────────────────────────────────────────────────────────
+// One table cell holding all 3 PACEs for a (quarter, subject) pair, stacked
+// vertically with no separators between them — replaces the old layout of 3
+// separate table rows per quarter. `paces` = [pace1, pace2, pace3]; `onCommit` /
+// `onStatusClick` are called with the PACE's index (0-2) so the caller can tell
+// which of the 3 was edited/clicked.
+const PLACEHOLDER_PACE = { num: "—", status: "not-started" };
+const PaceCellStack = ({ paces, compact = false, editable = false, onCommit, onStatusClick }) => (
+  <td className={`${compact ? "px-1 py-1.5" : "px-1 py-2"} text-center border-r border-slate-100 last:border-0`}>
+    <div className="flex flex-col items-center gap-1">
+      {paces.map((pace, i) => {
+        const p = pace ?? PLACEHOLDER_PACE;
+        return (
+          <PaceLine
+            key={i}
+            pace={p}
+            editable={editable}
+            onCommit={(newNum) => onCommit?.(i, newNum)}
+            onStatusClick={() => onStatusClick?.(i, p.status)}
+          />
+        );
+      })}
+    </div>
+  </td>
+);
 
 // ─── Legend ───────────────────────────────────────────────────────────────────
 // icon/colour key for the 5 statuses
@@ -489,14 +514,14 @@ function IndividualView({ student, quarters, onPaceEdit, onStatusClick, onAssign
       )}
 
       {/* PACE Monitoring Table */}
-      <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant/20 flex-wrap gap-3">
+      <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/25 overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant/25 flex-wrap gap-3">
           <div className="flex items-center gap-3">
-            <h3 className="font-headline text-sm font-extrabold text-primary uppercase tracking-widest">
+            <h3 className="font-headline text-[20] font-extrabold text-primary uppercase tracking-widest">
               Projected PACE Monitoring
             </h3>
             {hasProjection && (
-              <span className="text-[10px] text-on-surface-variant italic">Click any PACE number to edit it</span>
+              <span className="text-[13px] text-on-surface-variant italic">Click any PACE number to edit it</span>
             )}
           </div>
           <Legend />
@@ -504,44 +529,43 @@ function IndividualView({ student, quarters, onPaceEdit, onStatusClick, onAssign
         <div className="overflow-x-auto">
           <table className="w-full text-sm border-collapse">
             <thead>
-              <tr className="bg-surface-container-lowest border-b border-outline-variant/20">
-                <th className="px-4 py-3 text-left text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant whitespace-nowrap w-28 border-r border-slate-100">
+              <tr className="bg-surface-container-lowest border-b-2 border-outline-variant/25">
+                <th className="px-4 py-3 text-left text-[14px] font-extrabold uppercase tracking-widest text-on-surface-variant whitespace-nowrap w-28 border-r border-slate-100">
                   Quarter
                 </th>
                 {SUBJECTS.map((s) => (
-                  <th key={s.key} className="px-2 py-3 text-center text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant border-r border-slate-100 last:border-0">
+                  <th key={s.key} className="px-2 py-3 text-center text-[14px] font-extrabold uppercase tracking-widest text-on-surface-variant border-r border-slate-100 last:border-0">
                     {s.label}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {quarters.map((quarter) =>
-                quarter.paces.map((paceRow, ri) => (
-                  <tr key={`${quarter.label}-${ri}`} className="border-b border-outline-variant/10 hover:bg-surface-container-lowest/40 transition-colors">
-                    {ri === 0 && (
-                      <td rowSpan={3} className="px-4 py-3 text-[11px] font-extrabold text-on-surface-variant border-r border-slate-100 whitespace-nowrap align-middle">
-                        {quarter.label}
-                      </td>
-                    )}
-                    {paceRow.map((pace, si) => (
-                      <PaceCell key={si} pace={pace} editable onCommit={(newNum) =>onPaceEdit(
-                            SUBJECT_LABELS[si],
-                            quarter.num,
-                            ri,
-                            newNum,
-                            quarter.paces[0][si]?.count ?? DEFAULT_COUNT,
-                          )
-                        }
-                        onStatusClick={() => onStatusClick(SUBJECT_LABELS[si], quarter.num, ri, pace.status)}
-                      />
-                    ))}
-                  </tr>
-                ))
-              )}
+              {quarters.map((quarter) => (
+                <tr key={quarter.label} className="border-b-2 border-outline-variant/25 hover:bg-surface-container-lowest/40 transition-colors">
+                  <td className="px-4 py-3 text-[13px] font-extrabold text-on-surface-variant border-r border-slate-100 whitespace-nowrap align-middle">
+                    {quarter.label}
+                  </td>
+                  {SUBJECT_LABELS.map((label, si) => (
+                    <PaceCellStack
+                      key={si}
+                      paces={[0, 1, 2].map((ri) => quarter.paces[ri]?.[si])}
+                      editable
+                      onCommit={(ri, newNum) => onPaceEdit(
+                        label,
+                        quarter.num,
+                        ri,
+                        newNum,
+                        quarter.paces[0][si]?.count ?? DEFAULT_COUNT,
+                      )}
+                      onStatusClick={(ri, status) => onStatusClick(label, quarter.num, ri, status)}
+                    />
+                  ))}
+                </tr>
+              ))}
               {/* Ready for Next PACE footer */}
               {quarters.length > 0 && (
-                <tr className="bg-surface-container-lowest border-t-2 border-outline-variant/30">
+                <tr className="bg-surface-container-lowest border-t-2 border-outline-variant/25">
                   <td className="px-4 py-3 text-[9px] font-extrabold uppercase tracking-widest text-on-surface-variant leading-snug border-r border-slate-100">
                     Ready for<br />Next PACE<br />(Per Subject)
                   </td>
@@ -591,7 +615,7 @@ function ClassView({ students, quarter }) {
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 overflow-hidden">
       <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant/20 flex-wrap gap-3">
-        <h3 className="font-headline text-sm font-extrabold text-primary uppercase tracking-widest">
+        <h3 className="font-headline text-[20px] font-extrabold text-primary uppercase tracking-widest">
           CLASS VIEW (All Students)
         </h3>
         <Legend />
@@ -600,16 +624,16 @@ function ClassView({ students, quarter }) {
       <div className="overflow-x-auto">
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-surface-container-lowest border-b border-outline-variant/20">
-              <th className="px-4 py-3 text-left text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant whitespace-nowrap border-r border-slate-100 min-w-[130px]">
+            <tr className="bg-surface-container-lowest border-b-2 border-outline-variant/25">
+              <th className="px-4 py-3 text-left text-[13px] font-extrabold uppercase tracking-widest text-on-surface-variant whitespace-nowrap border-r border-slate-100 min-w-[130px]">
                 Student Name
               </th>
               {SUBJECTS.map((s) => (
-                <th key={s.key} className="px-2 py-3 text-center text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant border-r border-slate-100">
+                <th key={s.key} className="px-2 py-3 text-center text-[13px] font-extrabold uppercase tracking-widest text-on-surface-variant border-r border-slate-100">
                   {s.label}
                 </th>
               ))}
-              <th className="px-3 py-3 text-center text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant whitespace-nowrap min-w-[110px] leading-tight">
+              <th className="px-3 py-3 text-center text-[13px] font-extrabold uppercase tracking-widest text-on-surface-variant whitespace-nowrap min-w-[110px] leading-tight">
                 Proceed to<br />Next PACE<br /><span className="text-[9px] font-semibold normal-case tracking-normal">(Overall Readiness)</span>
               </th>
             </tr>
@@ -617,21 +641,20 @@ function ClassView({ students, quarter }) {
           <tbody>
             {visible.map((student) => {
               const qData = student.quarters[quarter] ?? { readiness: "Not Ready", rows: [] };
-              return (qData.rows).map((paceRow, ri) => (
-                <tr key={`${student.student_id}-${ri}`} className="border-b border-outline-variant/10 hover:bg-surface-container-lowest/40 transition-colors">
-                  {ri === 0 && (
-                    <td rowSpan={3} className="px-4 py-3 text-[12px] font-extrabold text-on-surface border-r border-slate-100 align-middle whitespace-nowrap">
-                      {student.name}
-                    </td>
-                  )}
-                  {paceRow.map((pace, si) => <PaceCell key={si} pace={pace} compact />)}
-                  {ri === 0 && (
-                    <td rowSpan={3} className="px-3 py-3 text-center align-middle border-l border-slate-100">
-                      <ReadinessBadge value={qData.readiness} />
-                    </td>
-                  )}
+              const rows = qData.rows ?? [];
+              return (
+                <tr key={student.student_id} className="border-b-2 border-outline-variant/25 hover:bg-surface-container-lowest/40 transition-colors">
+                  <td className="px-4 py-3 text-[13px] font-extrabold text-on-surface border-r border-slate-100 align-middle whitespace-nowrap">
+                    {student.name}
+                  </td>
+                  {SUBJECTS.map((s, si) => (
+                    <PaceCellStack key={s.key} paces={[0, 1, 2].map((ri) => rows[ri]?.[si])} compact />
+                  ))}
+                  <td className="px-3 py-3 text-center align-middle border-l border-slate-100">
+                    <ReadinessBadge value={qData.readiness} />
+                  </td>
                 </tr>
-              ));
+              );
             })}
           </tbody>
         </table>
@@ -817,16 +840,17 @@ export default function PaceMonitoring() {
           </div>
         </header>
 
-        {/* ── Returning Student Placement ─────────────────────────────── */}
+        {/* ── Returning Student Placement (hidden — feature not ready; code kept for easy restore) ───────
         <div className="flex justify-end mb-6">
           <button
-            /*onClick={() => navigate("/teacher/pace/returning-placement")}*/
+            onClick={() => navigate("/teacher/pace/returning-placement")}
             className="flex items-center gap-2 px-5 py-2.5 bg-[#0d1b2e] text-white text-sm font-bold rounded-xl hover:opacity-90 transition-opacity whitespace-nowrap shadow-sm"
           >
             <span className="material-symbols-outlined text-base">add</span>
             Returning Student PACE Placement
           </button>
         </div>
+        */}
 
         {/* ── Error ──────────────────────────────────────────────────── */}
         {error && (
@@ -880,17 +904,6 @@ export default function PaceMonitoring() {
             </div>
           )}
 
-          <div className="relative shrink-0">
-            <select
-              value={quarter}
-              onChange={(e) => setQuarter(e.target.value)}
-              className="text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl px-4 py-2.5 pr-8 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer"
-            >
-              {QUARTER_KEYS.map((q) => (
-                <option key={q} value={q}>{QUARTER_LABELS[q]}</option>
-              ))}
-            </select>
-          </div>
 
           <div className="flex rounded-xl overflow-hidden border border-outline-variant/20 shadow-sm shrink-0">
             {["individual", "class"].map((v) => (

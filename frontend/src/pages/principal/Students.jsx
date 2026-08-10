@@ -102,6 +102,8 @@ function ImportModal({ onClose, onSuccess }) {
   const [parseError, setParseError] = useState("");       // client-side parse/validation error
   const [result,     setResult]     = useState(null);     // backend import result { imported, failed[] }
   const [fileName,   setFileName]   = useState("");
+  const [duplicates, setDuplicates] = useState([]);       // existing students found on import
+  const [baseResult, setBaseResult] = useState(null);     // first-pass result held while confirming overwrite
   const fileRef = useRef();                               // hidden <input type=file> ref
 
   // read + validate the chosen file, then move to the preview step
@@ -135,24 +137,68 @@ function ImportModal({ onClose, onSuccess }) {
     handleFile(e.dataTransfer.files[0]);
   };
 
-  // send the previewed rows to the backend and capture the result
+  // Row payload sent to the API (only the required columns, in order).
+  const buildPayload = () =>
+    rows.map((r) => REQUIRED_COLS.reduce((obj, col) => { obj[col] = r[col]; return obj; }, {}));
+
+  // First pass: creates the genuinely new students. Anyone already in the system comes
+  // back in `duplicates` (untouched) so we can ask the principal what to do with them.
   const confirmImport = async () => {
     setStep("importing");
     try {
-      const payload = rows.map((r) =>                    // keep only the required columns per row
-        REQUIRED_COLS.reduce((obj, col) => { obj[col] = r[col]; return obj; }, {})
-      );
-      const res = await importStudentsCSV(payload);      // POST import to the backend
-      setResult(res.data);
-      onSuccess();                                       // parent reloads the student list
+      const res  = await importStudentsCSV(buildPayload());
+      const data = res.data;
+      onSuccess();                          // new students are already saved — refresh the list
+      if (data.duplicates?.length) {
+        setBaseResult(data);
+        setDuplicates(data.duplicates);
+        setStep("confirm");
+        return;
+      }
+      setResult(data);
+      setStep("result");
     } catch (err) {
       setResult({ imported: 0, failed: [{ name: "All rows", reason: err.message }] }); // whole batch failed
+      setStep("result");
     }
+  };
+
+  // Overwrite chosen: re-send only the duplicate rows with the overwrite flag, then merge
+  // the counts from both passes into one result summary.
+  const confirmOverwrite = async () => {
+    setStep("importing");
+    try {
+      const payload = buildPayload();
+      const dupRows = duplicates.map((d) => payload[d.index]).filter(Boolean);
+      const res  = await importStudentsCSV(dupRows, { overwrite: true });
+      const data = res.data;
+      onSuccess();
+      setResult({
+        imported:    baseResult?.imported ?? 0,
+        overwritten: data.overwritten ?? 0,
+        failed:      [...(baseResult?.failed ?? []), ...(data.failed ?? [])],
+      });
+      setStep("result");
+    } catch (err) {
+      setResult({
+        imported: baseResult?.imported ?? 0,
+        failed: [...(baseResult?.failed ?? []), { name: "Overwrite", reason: err.message }],
+      });
+      setStep("result");
+    }
+  };
+
+  // Keep existing chosen: leave the duplicates as they are and show the first-pass result.
+  const skipDuplicates = () => {
+    setResult(baseResult);
     setStep("result");
   };
 
   // start over from the upload step
-  const reset = () => { setStep("upload"); setRows([]); setParseError(""); setFileName(""); setResult(null); };
+  const reset = () => {
+    setStep("upload"); setRows([]); setParseError(""); setFileName("");
+    setResult(null); setDuplicates([]); setBaseResult(null);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
@@ -170,6 +216,7 @@ function ImportModal({ onClose, onSuccess }) {
                 {step === "upload"    && "Upload a CSV file with student data"}
                 {step === "preview"   && `${rows.length} row(s) ready to import — review before confirming`}
                 {step === "importing" && "Importing students, please wait…"}
+                {step === "confirm"   && "Existing students found — choose how to proceed"}
                 {step === "result"    && "Import complete"}
               </p>
             </div>
@@ -182,7 +229,7 @@ function ImportModal({ onClose, onSuccess }) {
         {/* Step indicator */}
         <div className="flex items-center gap-0 px-7 py-3 border-b border-outline-variant/10 shrink-0">
           {["Upload", "Preview", "Import", "Result"].map((label, i) => {
-            const idx    = ["upload", "preview", "importing", "result"].indexOf(step);
+            const idx    = ["upload", "preview", "importing", "result"].indexOf(step === "confirm" ? "importing" : step);
             const active = i === idx;
             const done   = i < idx;
             return (
@@ -332,25 +379,67 @@ function ImportModal({ onClose, onSuccess }) {
             </div>
           )}
 
+          {/* ── Overwrite-confirmation step ── */}
+          {step === "confirm" && (
+            <div className="space-y-5">
+              <div className="flex items-start gap-4 p-5 rounded-2xl bg-amber-50 border border-amber-100">
+                <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+                  <span className="material-symbols-outlined text-2xl text-amber-600" style={fillStyle}>warning</span>
+                </div>
+                <div>
+                  <p className="font-extrabold text-lg text-amber-800">
+                    {duplicates.length} student(s) already exist in the system
+                  </p>
+                  <p className="text-sm text-amber-700 mt-0.5">
+                    Do you want to overwrite their existing records with the data from this file?
+                    {baseResult?.imported > 0 && ` The ${baseResult.imported} new student(s) have already been added.`}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-2">Existing students</p>
+                <div className="space-y-2 max-h-52 overflow-y-auto">
+                  {duplicates.map((d, i) => (
+                    <div key={i} className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-surface-container-low border border-outline-variant/20">
+                      <span className="material-symbols-outlined text-amber-500 text-base shrink-0" style={fillStyle}>person</span>
+                      <p className="text-sm font-bold text-on-surface">{d.name}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2 px-4 py-3 rounded-lg bg-blue-50 border border-blue-100 text-sm text-blue-800">
+                <span className="material-symbols-outlined text-base shrink-0 mt-0.5" style={fillStyle}>info</span>
+                <span><strong>Overwrite</strong> updates their profile details (grade level, address, contact, etc.) — their login and academic records are kept. <strong>Keep existing</strong> leaves them unchanged.</span>
+              </div>
+            </div>
+          )}
+
           {/* ── Result step ── */}
           {step === "result" && result && (
             <div className="space-y-5">
               {/* Summary banner */}
-              <div className={`flex items-center gap-4 p-5 rounded-2xl ${result.imported > 0 ? "bg-green-50 border border-green-100" : "bg-error-container border border-error/20"}`}>
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${result.imported > 0 ? "bg-green-100" : "bg-error-container"}`}>
-                  <span className={`material-symbols-outlined text-2xl ${result.imported > 0 ? "text-green-600" : "text-error"}`} style={fillStyle}>
-                    {result.imported > 0 ? "check_circle" : "cancel"}
+              {(() => {
+                const ok = (result.imported ?? 0) + (result.overwritten ?? 0) > 0;
+                return (
+              <div className={`flex items-center gap-4 p-5 rounded-2xl ${ok ? "bg-green-50 border border-green-100" : "bg-error-container border border-error/20"}`}>
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${ok ? "bg-green-100" : "bg-error-container"}`}>
+                  <span className={`material-symbols-outlined text-2xl ${ok ? "text-green-600" : "text-error"}`} style={fillStyle}>
+                    {ok ? "check_circle" : "cancel"}
                   </span>
                 </div>
                 <div>
-                  <p className={`font-extrabold text-lg ${result.imported > 0 ? "text-green-800" : "text-error"}`}>
-                    {result.imported} student(s) imported successfully
+                  <p className={`font-extrabold text-lg ${ok ? "text-green-800" : "text-error"}`}>
+                    {result.imported} student(s) imported{result.overwritten ? `, ${result.overwritten} updated` : ""}
                   </p>
                   {result.failed.length > 0 && (
                     <p className="text-sm text-on-surface-variant mt-0.5">{result.failed.length} row(s) failed — see details below</p>
                   )}
                 </div>
               </div>
+                );
+              })()}
 
               {/* Failed rows */}
               {result.failed.length > 0 && (
@@ -399,6 +488,24 @@ function ImportModal({ onClose, onSuccess }) {
                 >
                   <span className="material-symbols-outlined text-base" style={fillStyle}>upload</span>
                   Confirm Import ({rows.length} students)
+                </button>
+              </>
+            )}
+            {/* Overwrite confirmation: Keep existing (skip) or Overwrite the duplicates */}
+            {step === "confirm" && (
+              <>
+                <button
+                  onClick={skipDuplicates}
+                  className="text-sm font-bold text-on-surface border border-outline-variant/30 rounded-lg px-4 py-2 hover:bg-surface-container-low transition-colors"
+                >
+                  Keep existing
+                </button>
+                <button
+                  onClick={confirmOverwrite}
+                  className="text-sm font-bold bg-amber-500 text-white rounded-lg px-5 py-2 hover:bg-amber-600 transition-colors flex items-center gap-2 shadow-sm shadow-amber-500/20"
+                >
+                  <span className="material-symbols-outlined text-base" style={fillStyle}>sync</span>
+                  Overwrite ({duplicates.length})
                 </button>
               </>
             )}

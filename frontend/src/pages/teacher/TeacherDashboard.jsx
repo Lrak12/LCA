@@ -2,6 +2,7 @@
 // quick actions, recent activity. Data from GET /teacher/dashboard
 // (teacher.service.getTeacherDashboard).
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import TeacherLayout from "../../components/TeacherLayout.jsx";
 import { fetchTeacherDashboard } from "../../api/teacher.js";
 import { useAuth } from "../../context/AuthContext.jsx";
@@ -87,6 +88,7 @@ const QuickAction = ({ icon, iconBg, iconColor, title, sub }) => (
 // Loads once on mount via fetchTeacherDashboard(); `data` = { teacher, stats,
 // attendance, recentActivity }.
 export default function TeacherDashboard() {
+  const navigate               = useNavigate();
   const { user }              = useAuth();               // logged-in user (for the greeting name)
   const schoolYearLabel       = useSchoolYear();         // active school-year label for the layout header
   const [data, setData]       = useState(null);          // the API response ({stats, attendance, ...}) or null
@@ -202,19 +204,17 @@ export default function TeacherDashboard() {
             </div>
           </article>
 
-          {/* Quick Actions - static shortcut buttons (labels/icons hard-coded
-              below). NOTE: these are display-only right now; they have no onClick
-              navigation wired yet. */}
+          {/* Quick Actions - each navigates to its matching teacher page. */}
           <article className="bg-white rounded-2xl p-6 shadow-sm border border-outline-variant/20">
             <h3 className="font-headline text-lg font-extrabold text-primary mb-4">Quick Actions</h3>
             <div className="space-y-1">
               {[
-                { icon: "assignment",      iconBg: "bg-blue-100",   iconColor: "text-blue-600",   title: "Record Assessment",    sub: "Check-ups, Self-tests, PACE tests"              },
-                { icon: "bar_chart",       iconBg: "bg-amber-100",  iconColor: "text-amber-600",  title: "Student Monitoring",   sub: "Projected, Completed, Ongoing, Remaining"       },
-                { icon: "event_available", iconBg: "bg-green-100",  iconColor: "text-green-600",  title: "Record Attendance",    sub: "Student class attendance performance"           },
-                { icon: "description",     iconBg: "bg-purple-100", iconColor: "text-purple-600", title: "View/Generate Reports",sub: "Student Performance and progress reports"       },
+                { icon: "assignment",      iconBg: "bg-blue-100",   iconColor: "text-blue-600",   title: "Record Assessment",    sub: "Check-ups, Self-tests, PACE tests",        to: "/teacher/assessments" },
+                { icon: "bar_chart",       iconBg: "bg-amber-100",  iconColor: "text-amber-600",  title: "Student Monitoring",   sub: "Projected, Completed, Ongoing, Remaining", to: "/teacher/students"    },
+                { icon: "event_available", iconBg: "bg-green-100",  iconColor: "text-green-600",  title: "Record Attendance",    sub: "Student class attendance performance",     to: "/teacher/attendance"  },
+                { icon: "description",     iconBg: "bg-purple-100", iconColor: "text-purple-600", title: "View/Generate Reports",sub: "Student Performance and progress reports", to: "/teacher/reports"     },
               ].map((a) => (
-                <button key={a.title} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-surface-container-lowest transition-colors text-left">
+                <button key={a.title} onClick={() => navigate(a.to)} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-surface-container-lowest transition-colors text-left">
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${a.iconBg}`}>
                     <span className={`material-symbols-outlined text-base ${a.iconColor}`} style={fillStyle}>{a.icon}</span>
                   </div>

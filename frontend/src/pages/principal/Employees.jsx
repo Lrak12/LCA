@@ -717,11 +717,11 @@ export default function Employees() {
         </div>
 
         {/* Table */}
-        <div className="bg-surface-container-lowest rounded-[2rem] border border-outline-variant/20 shadow-sm overflow-hidden">
+        <div className="bg-surface-container-lowest rounded-[2rem] border border-outline-variant/50 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
-                <tr className="text-[13px] font-extrabold text-on-surface-variant uppercase tracking-widest bg-surface-container/30 border-b border-surface-container">
+                <tr className="text-[13px] font-extrabold text-on-surface-variant uppercase tracking-widest bg-surface-container/100 border-b border-surface-container">
                   <th className="px-6 py-4">Supervisor ID</th>
                   <th className="px-6 py-4">
                     {/* Clickable header: toggles A→Z / Z→A by last name, first name */}

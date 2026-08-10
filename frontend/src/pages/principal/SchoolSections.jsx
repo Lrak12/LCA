@@ -51,7 +51,7 @@ function CardAction({ icon, label, primary, onClick }) {
       onClick={onClick}
       className={`flex flex-col items-center justify-center gap-1 py-3 text-[11px] font-bold transition-colors ${
         primary
-          ? "bg-primary text-white hover:bg-primary/90"
+          ? "text-white hover:bg-primary/90"
           : "text-on-surface-variant hover:bg-surface-container-lowest"
       }`}
     >
@@ -69,10 +69,10 @@ function GradeLevelCard({ level, onManageStudents, onAssignSupervisor, onView })
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 flex flex-col overflow-hidden">
-      <div className="p-5 flex-1">
+      <div className="p-5 flex-1 ">
         {/* Grade label + student count */}
         <div className="flex items-start justify-between mb-5">
-          <span className="text-[20px] font-extrabold tracking-widest uppercase bg-red-100 text-on-surface-variant px-2.5 py-1 ">
+          <span className="text-[20px] font-extrabold tracking-widest uppercase bg-blue-100 text-on-surface-variant px-2.5 py-1 rounded-lg">
             {level.grade}
           </span>
           <div className="text-right leading-none">
@@ -87,7 +87,7 @@ function GradeLevelCard({ level, onManageStudents, onAssignSupervisor, onView })
         </p>
         <div className="flex items-center justify-between gap-2">
           {headline ? (
-            <span className="text-sm font-bold text-on-surface truncate">
+            <span className="text-xl font-black text-on-surface truncate">
               {headline}
               {extra > 0 && <span className="text-on-surface-variant font-medium"> +{extra} more</span>}
             </span>
@@ -103,9 +103,9 @@ function GradeLevelCard({ level, onManageStudents, onAssignSupervisor, onView })
       </div>
 
       {/* Action footer: Manage -> onManageStudents (Enroll modal); Assign -> onAssignSupervisor; View -> onView (all set page-level state) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 border-t border-outline-variant/15 divide-x divide-outline-variant/15">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 border-t border-outline-variant/100 divide-x divide-outline-variant/100">
         <CardAction icon="group"      label="Manage" onClick={() => onManageStudents(level)} />
-        <CardAction icon="group_add"  label="Assign" primary onClick={() => onAssignSupervisor(level)} />
+        <CardAction icon="group_add"  label="Assign" onClick={() => onAssignSupervisor(level)} />
         <CardAction icon="visibility" label="View"   onClick={() => onView(level)} />
       </div>
     </div>
@@ -704,15 +704,24 @@ export default function SchoolSections() {
               Manage grade levels, student assignments, and supervisor assignments for the active school year.
             </p>
           </div>
-          {/* Add Grade Level -> setShowAdd(true) opens <AddGradeLevelModal> */}
+          {/* Add Grade Level -> setShowAdd(true) opens <AddGradeLevelModal>. A school year
+              supports at most 12 grade levels (matches the backend check in
+              settings.service.js > addGradeLevel) — disable here instead of letting the
+              principal hit a server error. */}
           <button
             onClick={() => setShowAdd(true)}
-            className="flex items-center gap-2 shrink-0 px-5 py-3 rounded-xl bg-primary text-white text-sm font-bold hover:bg-primary/90 transition-colors shadow-sm"
+            disabled={levels.length >= 12}
+            title={levels.length >= 12 ? "Maximum of 12 grade levels reached." : undefined}
+            className="flex items-center gap-2 shrink-0 px-5 py-3 rounded-xl bg-primary text-white text-sm font-bold hover:bg-primary/90 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-primary"
           >
             <span className="material-symbols-outlined text-lg" style={fillStyle}>add</span>
             Add Grade Level
           </button>
         </div>
+
+        {levels.length >= 12 && (
+          <p className="text-xs text-amber-600 font-semibold -mt-4 mb-6">Maximum of 12 grade levels reached.</p>
+        )}
 
         {/* Stat Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">

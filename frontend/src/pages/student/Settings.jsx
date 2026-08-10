@@ -10,21 +10,6 @@ import { fetchStudentAccount, updateStudentAccount, changeStudentAccountPassword
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
-// ─── Toggle switch ────────────────────────────────────────────────────────────
-const Toggle = ({ value, onChange }) => (
-  <button
-    onClick={() => onChange(!value)}
-    aria-pressed={value}
-    className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${value ? "bg-green-500" : "bg-slate-300"}`}
-  >
-    <span
-      className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all duration-200 ${
-        value ? "left-[22px]" : "left-[2px]"
-      }`}
-    />
-  </button>
-);
-
 // ─── Accessibility feature row ────────────────────────────────────────────────
 const AccessRow = ({ icon, iconBg, title, desc, children }) => (
   <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 py-5 border-b border-outline-variant/10 last:border-0">
@@ -75,8 +60,9 @@ const PasswordField = ({ label, value, onChange, placeholder }) => {
 
 // ─── Left sub-nav ─────────────────────────────────────────────────────────────
 const NAV = [
-  { key: "profile",       icon: "person",   title: "Profile",       sub: "Information & Security" },
-  { key: "accessibility", icon: "settings", title: "Accessibility", sub: ""                       },
+  { key: "profile",       icon: "person",   title: "Profile",       sub: "Information, Security & Accessibility" },
+  // Accessibility is no longer its own tab — the remaining controls (Text Size, Color Mode)
+  // now live inside the Profile section below.
   // Hidden: Contact Administrator tab (panel view). Panel + handlers remain below, just no nav entry.
   // { key: "contact",       icon: "mail",     title: "Contact",       sub: "Administrator"          },
 ];
@@ -286,10 +272,13 @@ export default function Settings() {
 
     const s = loadSettings();
     setTextSize(s.textSize);
-    setHighContrast(s.highContrast);
     setColorMode(s.colorMode);
     setWorksheetScale(s.worksheetScale);
-    setFontStyle(s.fontStyle);
+    // High Contrast toggle + Font Style controls were removed. Force them to default so a
+    // value saved before the removal can't stay stuck (high contrast is now reachable only
+    // through the Color Mode dropdown).
+    setHighContrast(false);
+    setFontStyle("Default");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -404,7 +393,6 @@ export default function Settings() {
         {/* ── Three-column layout (stacks on < lg) ─────────────────────── */}
         <div className="flex flex-col lg:flex-row gap-6 lg:items-start">
 
-          <SubNav active={activeTab} onSelect={setActiveTab} />
 
           {/* ── CENTER: section content ──────────────────────────────── */}
           <div className="flex-1 min-w-0">
@@ -459,64 +447,87 @@ export default function Settings() {
                   <PasswordField label="Confirm Password" value={confirmPw} onChange={setConfirmPw} placeholder="Confirm new password" />
                 </div>
                 <p className="text-[11px] text-on-surface-variant mt-2">Leave the password fields blank to keep your current password.</p>
+
               </div>
             )}
+             {/* ── Accessibility ── */}
+              <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-6 mt-6">
+                <div className="flex items-center gap-3 mb-6">
+                  <span className="w-1 h-5 rounded-full bg-secondary" />
+                  <h2 className="text-lg font-bold text-on-surface">
+                    Accessibility
+                  </h2>
+                </div>
 
-            {/* ════ ACCESSIBILITY ════ */}
-            {activeTab === "accessibility" && (
-              <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-6">
-                <h3 className="text-base font-extrabold text-on-surface">Accessibility Features</h3>
-                <p className="text-[12px] text-on-surface-variant mt-0.5 mb-2">Customize your experience to fit your needs. Changes apply immediately and are saved automatically.</p>
-
-                <AccessRow icon="format_size" iconBg="bg-indigo-500" title="Text Size" desc="Adjust the size of text across the application.">
-                  <div className="flex rounded-xl overflow-hidden border border-outline-variant/30">
-                    {["Small", "Medium", "Large"].map((sz) => (
-                      <button key={sz} onClick={() => setTextSize(sz)}
-                        className={`px-4 py-1.5 text-sm font-bold transition-colors ${textSize === sz ? "bg-on-surface text-white" : "bg-white text-on-surface-variant hover:bg-surface-container-low"}`}>
-                        {sz}
-                      </button>
-                    ))}
-                  </div>
-                </AccessRow>
-
-                <AccessRow icon="wb_sunny" iconBg="bg-teal-500" title="High Contrast Mode" desc="Increase contrast for better visibility.">
-                  <Toggle value={highContrast} onChange={setHighContrast} />
-                </AccessRow>
-
-                <AccessRow icon="palette" iconBg="bg-purple-500" title="Color Mode" desc="Choose a color mode that works best for you.">
-                  <div className="relative">
-                    <select value={colorMode} onChange={(e) => setColorMode(e.target.value)} className={selectCls}>
-                      {["Default", "Dark", "High Contrast", "Color Blind"].map((o) => <option key={o}>{o}</option>)}
-                    </select>
-                    <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1 pointer-events-none text-lg leading-none text-on-surface-variant" style={{ fontSize: 18 }}>expand_more</span>
-                  </div>
-                </AccessRow>
-
-                <AccessRow icon="text_fields" iconBg="bg-green-500" title="Font Style" desc="Choose a font style that improves readability.">
-                  <div className="relative">
-                    <select value={fontStyle} onChange={(e) => setFontStyle(e.target.value)} className={selectCls}>
-                      {["Default", "Serif", "Monospace", "Dyslexic-Friendly"].map((o) => <option key={o}>{o}</option>)}
-                    </select>
-                    <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1 pointer-events-none text-lg leading-none text-on-surface-variant" style={{ fontSize: 18 }}>expand_more</span>
-                  </div>
-                </AccessRow>
-
-                <div className="pt-4 flex justify-end">
-                  <button
-                    onClick={() => {
-                      setTextSize(DEFAULT_SETTINGS.textSize);
-                      setHighContrast(DEFAULT_SETTINGS.highContrast);
-                      setColorMode(DEFAULT_SETTINGS.colorMode);
-                      setWorksheetScale(DEFAULT_SETTINGS.worksheetScale);
-                      setFontStyle(DEFAULT_SETTINGS.fontStyle);
-                    }}
-                    className="text-xs font-bold text-on-surface-variant hover:text-on-surface border border-outline-variant/30 rounded-xl px-4 py-2 hover:bg-surface-container-low transition-colors"
+                <div className="divide-y divide-outline-variant/20">
+                  {/* Text Size */}
+                  <AccessRow
+                    icon="format_size"
+                    iconBg="bg-indigo-500"
+                    title="Text Size"
+                    desc="Adjust the size of text across the application."
                   >
-                    Reset to defaults
-                  </button>
+                    <div className="flex overflow-hidden rounded-xl border border-outline-variant/30">
+                      {["Small", "Medium", "Large"].map((sz) => (
+                        <button key={sz} type="button" onClick={() => setTextSize(sz)} className={`px-4 py-2 text-sm font-bold transition-colors ${   textSize === sz? "bg-on-surface text-white": "bg-white text-on-surface-variant hover:bg-surface-container-low"}`}>
+                          {sz}
+                        </button>
+                      ))}
+                    </div>
+                  </AccessRow>
+
+                  {/* Color Mode */}
+                  <AccessRow
+                    icon="palette"
+                    iconBg="bg-purple-500"
+                    title="Color Mode"
+                    desc="Choose a color mode that works best for you."
+                  >
+                    <div className="relative w-36">
+                      <select
+                        value={colorMode}
+                        onChange={(e) => setColorMode(e.target.value)}
+                        className="w-full  appearance-none  rounded-xl  border border-outline-variant/30  bg-white  px-3 py-2.5 pr-9  text-sm font-bold  text-on-surface  cursor-pointer  hover:bg-surface-container-low focus:outline-none">
+                        {["Default", "Dark", "High Contrast", "Color Blind"].map((o) => (
+                          <option key={o} value={o}>
+                            {o}
+                          </option>
+                        ))}
+                      </select>
+                      <span
+                        className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1 pointer-events-none text-lg text-on-surface-variant">
+                        expand_more
+                      </span>
+                    </div>
+                  </AccessRow>
+
+                  {/* Reset */}
+                  <div className="flex justify-end pt-4">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTextSize(DEFAULT_SETTINGS.textSize);
+                        setHighContrast(DEFAULT_SETTINGS.highContrast);
+                        setColorMode(DEFAULT_SETTINGS.colorMode);
+                        setWorksheetScale(DEFAULT_SETTINGS.worksheetScale);
+                        setFontStyle(DEFAULT_SETTINGS.fontStyle);
+                      }}
+                      className="
+                        rounded-xl
+                        border border-outline-variant/30
+                        px-4 py-2
+                        text-xs font-bold
+                        text-on-surface-variant
+                        transition-colors
+                        hover:bg-surface-container-low
+                        hover:text-on-surface
+                      "
+                    >
+                      Reset to defaults
+                    </button>
+                  </div>
                 </div>
               </div>
-            )}
 
             {/* ════ CONTACT ADMINISTRATOR ════ */}
             {activeTab === "contact" && (
