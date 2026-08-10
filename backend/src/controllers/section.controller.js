@@ -23,3 +23,8 @@ export const assignTeacher = asyncHandler(async (req, res) => {
   const data = await SectionService.assignTeacher(req.params.id, teacher_id);
   sendSuccess(res, data, "Teacher assigned to grade level");
 });
+
+export const unassignTeacher = asyncHandler(async (req, res) => {
+  const data = await SectionService.unassignTeacher(req.params.id, req.params.teacherId);
+  sendSuccess(res, data, "Supervisor removed from grade level");
+});

@@ -101,6 +101,24 @@ export const removeStudent = async (gl_id, student_id) => {
 };
 
 export const assignTeacher = async (gl_id, teacher_id) => {
+  const sy = await getActiveSY();
+
+  // Guardrail: a teacher can supervise only one grade level per school year.
+  // This backs up the UI, which greys out supervisors already assigned elsewhere.
+  const { data: heldElsewhere, error: chkErr } = await supabaseAdmin
+    .from("grade_level")
+    .select("gl_id, level_name")
+    .eq("sy_id", sy.sy_id)
+    .eq("teacher_id", teacher_id)
+    .neq("gl_id", gl_id)
+    .maybeSingle();
+  if (chkErr) throw new Error(chkErr.message);
+  if (heldElsewhere) {
+    throw new Error(
+      `This supervisor is already assigned to ${heldElsewhere.level_name}. Remove them from that grade level first.`,
+    );
+  }
+
   const { data, error } = await supabaseAdmin
     .from("grade_level")
     .update({ teacher_id })
@@ -109,4 +127,22 @@ export const assignTeacher = async (gl_id, teacher_id) => {
     .single();
   if (error) throw new Error(error.message);
   return data;
+};
+
+// Unassign the supervisor from a grade level: clears teacher_id so the grade has
+// no supervisor and that teacher becomes available for another grade level.
+// Scoped to teacher_id when given, so a stale request can't unassign a supervisor
+// who has since been replaced.
+export const unassignTeacher = async (gl_id, teacher_id) => {
+  let query = supabaseAdmin
+    .from("grade_level")
+    .update({ teacher_id: null })
+    .eq("gl_id", gl_id)
+    .not("teacher_id", "is", null);
+  if (teacher_id) query = query.eq("teacher_id", teacher_id);
+
+  const { data, error } = await query.select("gl_id, level_name").maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("This grade level has no supervisor assigned.");
+  return { unassigned: true, ...data };
 };

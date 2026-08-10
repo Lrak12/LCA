@@ -787,10 +787,15 @@ export const getStudentMonitoringOverview = async (user_id, { grade, search, pac
   // Stats over the full (unfiltered) overall set
   const totalStudents = baseRows.length;
   const assessed      = takenSet.size;
-  // Scheduled-but-not-taken, excluding anyone already counted as assessed, so the
-  // three buckets (assessed / scheduled / not assessed) partition the students and
-  // their counts sum to the total.
-  const scheduledToTake = [...scheduledSet].filter((sid) => !takenSet.has(sid)).length;
+  // "Scheduled to Take Test" = students with an upcoming, not-yet-scored PACE test.
+  // It is NOT reduced by `assessed`: a student who already sat an earlier test and
+  // has another one booked is genuinely both, and subtracting them here made the
+  // card read 0 for any class that has been testing for a while.
+  const scheduledToTake = scheduledSet.size;
+  // Leftover bucket: students with neither a scored test nor a pending schedule.
+  // Derived from the union (not total - assessed - scheduled) so the overlap
+  // between the two buckets can't push this negative.
+  const engagedSet = new Set([...takenSet, ...scheduledSet]);
   const avg = (arr) => (arr.length ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 10) / 10 : 0);
   const top = [...baseRows].sort((a, b) => b.completion - a.completion || b.performancePoints - a.performancePoints)[0] ?? null;
 
@@ -798,7 +803,7 @@ export const getStudentMonitoringOverview = async (user_id, { grade, search, pac
     totalStudents,
     assessed,
     scheduledToTake,
-    notAssessed:        totalStudents - assessed - scheduledToTake,
+    notAssessed:        Math.max(0, totalStudents - engagedSet.size),
     paceCompletionRate: avg(baseRows.map((r) => r.completion)),
     avgPaceProgress:    avg(baseRows.map((r) => r.progress)),
     needingAttention:   baseRows.filter((r) => r.completion < ON_TRACK_MARK).length,
@@ -1234,15 +1239,85 @@ function _deriveStatus(proj) {
   return "in-progress";
 }
 
-// Build "Ready for Next PACE" footer row
-function _buildReadiness(subjectMap) {
+// Per-subject PACE-TEST outcome for the "Ready for Next PACE" row, from the recorded
+// pace_test_result attempts. The subject is judged at its BLOCKING PACE: the
+// lowest-numbered student_pace row the student has not passed. Walking upward (rather
+// than reading the newest row) is what stops a freshly assigned next PACE from hiding
+// an unresolved earlier one — e.g. English 1013 failed while 1014 is already assigned
+// must still report 1013.
+//   Ready       every assigned PACE in the subject has a passing attempt
+//               (>= ASSESS_PASS_MARK, or passed = true) — `pace` is the next number
+//               after the highest one assigned
+//   Failed      the blocking PACE has scored attempts, none passing — `pace` is it
+//   In Progress the blocking PACE has no scored attempt yet (a booked-but-unscored
+//               test counts as not sat), or the subject has no student_pace row at
+//               all — `pace` is null
+// NOTE ON ATTEMPT COUNTS: this reports Failed on the first non-passing result rather
+// than after MAX_ATTEMPTS, unlike _buildAssessmentRows / updatePaceProjectionCell.
+// Attempt rows accumulate inconsistently — bulkSavePaceTestResults upserts by
+// (sp_id, quarter), but rows written with a null quarter never match that filter and
+// so insert duplicates — which makes a 3-attempt gate fire unpredictably here.
+// Returns Map(subject → { label, pace }).
+async function _paceTestReadinessForStudent(student_id) {
+  const { data: sp } = await supabaseAdmin
+    .from("student_pace")
+    .select("sp_id, pace_module!inner(subject, module_number)")
+    .eq("student_id", student_id);
+  if (!sp?.length) return new Map();
+
+  // Only SCORED attempts count. A Requested/Scheduled row carries no score yet and
+  // must not be mistaken for a sat exam.
+  const spIds = sp.map((r) => r.sp_id);
+  const { data: tests } = await supabaseAdmin
+    .from("pace_test_result")
+    .select("sp_id, score, passed")
+    .in("sp_id", spIds);
+  const attemptsBySp = new Map();
+  (tests ?? []).forEach((t) => {
+    if (t.score == null && t.passed !== true) return;
+    const arr = attemptsBySp.get(t.sp_id) ?? [];
+    arr.push(t);
+    attemptsBySp.set(t.sp_id, arr);
+  });
+  const isPassed = (sp_id) => (attemptsBySp.get(sp_id) ?? [])
+    .some((a) => a.passed === true || (a.score != null && a.score >= ASSESS_PASS_MARK));
+
+  // subject → PACE rows, lowest number first
+  const bySubject = new Map();
+  sp.forEach((r) => {
+    const subject = r.pace_module?.subject;
+    if (!subject) return;
+    const arr = bySubject.get(subject) ?? [];
+    arr.push({ sp_id: r.sp_id, num: r.pace_module?.module_number ?? 0 });
+    bySubject.set(subject, arr);
+  });
+
+  const out = new Map();
+  bySubject.forEach((rows, subject) => {
+    rows.sort((a, b) => a.num - b.num);
+    // The PACE the student is actually held at = the lowest-numbered one they have
+    // NOT passed. Assigning the next PACE must not mask an unresolved earlier one —
+    // that is why this walks upward instead of taking the newest row.
+    const blocking = rows.find((r) => !isPassed(r.sp_id));
+    if (!blocking) {
+      // Every assigned PACE passed → cleared for the one after the highest.
+      out.set(subject, { label: "Ready", pace: rows[rows.length - 1].num + 1 });
+      return;
+    }
+    const attempts = attemptsBySp.get(blocking.sp_id) ?? [];
+    out.set(subject, attempts.length
+      ? { label: "Failed",      pace: blocking.num }   // sat it, did not pass
+      : { label: "In Progress", pace: null });         // not sat yet
+  });
+  return out;
+}
+
+// Build the "Ready for Next PACE (Per Subject)" footer row from that Map.
+// Subjects the student has no PACE row for fall through to In Progress.
+function _buildReadiness(readinessBySubject) {
   return PACE_SUBJECT_ORDER.map((subj) => {
-    const proj   = subjectMap[subj];
-    const status = _deriveStatus(proj);
-    if (status === "not-started") return { label: "In Progress", pct: 0 };
-    if (status === "completed")   return { label: "Yes",         pct: null };
-    const done = [proj.status_r0, proj.status_r1, proj.status_r2].filter((s) => s === "completed").length;
-    return { label: "In Progress", pct: Math.round((done / 3) * 100) };
+    const r = readinessBySubject.get(subj);
+    return { subject: subj, label: r?.label ?? "In Progress", pace: r?.pace ?? null };
   });
 }
 
@@ -1381,6 +1456,10 @@ export const getPaceMonitoring = async (user_id, { student_id } = {}) => {
       planGenerated = null;
     }
 
+    // Readiness is per CURRENT PACE, not per quarter, so the same row is attached
+    // to all four quarters (the UI renders quarters[0].readiness).
+    const readinessRow = _buildReadiness(await _paceTestReadinessForStudent(targetStudent.student_id));
+
     individual = {
       student_id:        targetStudent.student_id,
       name:              `${targetStudent.first_name} ${targetStudent.last_name}`.trim(),
@@ -1397,7 +1476,7 @@ export const getPaceMonitoring = async (user_id, { student_id } = {}) => {
         label:     PACE_QUARTER_LABELS[i],
         num:       q,
         paces:     _buildPaceRows(qMap[q] ?? {}),
-        readiness: _buildReadiness(qMap[q] ?? {}),
+        readiness: readinessRow,
       })),
     };
   }

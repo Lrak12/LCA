@@ -4,12 +4,13 @@
 //   list:   GET  /grade-levels           -> controllers/section.controller.js > getAll (~line 5)          -> services/section.service.js > getAllGradeLevels (~line 13)
 //   enroll: POST /grade-levels/:id/students -> controllers/section.controller.js > enrollStudents (~line 10) -> services/section.service.js > enrollStudents (~line 55)
 //   assign: POST /grade-levels/:id/teacher  -> controllers/section.controller.js > assignTeacher (~line 16)  -> services/section.service.js > assignTeacher (~line 72)
+//   unassign: DELETE /grade-levels/:id/teacher/:teacherId -> controllers/section.controller.js > unassignTeacher -> services/section.service.js > unassignTeacher
 //   remove: DELETE /grade-levels/:id/students/:studentId -> controllers/section.controller.js > removeStudent -> services/section.service.js > removeStudent
 //   modals also read api/student.js fetchAllStudents + api/teacher.js fetchAllTeachers.
 import { useState, useEffect, useCallback } from "react";
 import PrincipalLayout from "../../components/PrincipalLayout.jsx";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
-import { fetchAllSections, enrollStudentsInLevel, removeStudentFromLevel, assignTeacherToSection } from "../../api/sections.js";
+import { fetchAllSections, enrollStudentsInLevel, removeStudentFromLevel, assignTeacherToSection, unassignTeacherFromSection } from "../../api/sections.js";
 import { fetchAllStudents } from "../../api/student.js";
 import { fetchAllTeachers } from "../../api/teacher.js";
 import AddGradeLevelModal from "../../components/AddGradeLevelModal.jsx";
@@ -311,13 +312,28 @@ function EnrollStudentsModal({ level, onClose, onConfirm }) {
 // Pick one available supervisor (teacher) to assign to this grade level.
 // Rendered by <SchoolSections> (assignTarget). onClose = () => setAssignTarget(null);
 // onConfirm = handleAssignTeacher (calls assignTeacherToSection, then reloads).
-function AssignTeacherModal({ level, onClose, onConfirm }) {
+// onUnassign = handleUnassignTeacher (calls unassignTeacherFromSection, then reloads).
+// `levels` is the full grade-level list, used to tell which teachers already
+// supervise another grade — a teacher may only supervise one grade level.
+function AssignTeacherModal({ level, levels, onClose, onConfirm, onUnassign }) {
   const [search,   setSearch]   = useState("");
   const [teachers, setTeachers] = useState([]);       // teachers not already on this level
   const [selected, setSelected] = useState(null);      // chosen teacher_id
   const [loading,  setLoading]  = useState(true);
   const [saving,   setSaving]   = useState(false);
-  const [error,    setError]    = useState(null);
+  const [error,    setError]    = useState(null);      // load error (replaces the list)
+  const [saveError, setSaveError] = useState(null);    // assign error (shown above the footer)
+  const [confirmRemove, setConfirmRemove] = useState(false); // Remove clicked once?
+  const [removing, setRemoving] = useState(false);
+
+  const current = level.faculty?.[0] ?? null;          // supervisor currently on this level
+
+  // teacher_id -> name of the OTHER grade level they already supervise
+  const assignedElsewhere = new Map();
+  (levels ?? []).forEach((l) => {
+    if (l.id === level.id) return;
+    (l.faculty ?? []).forEach((f) => assignedElsewhere.set(f.id, l.name));
+  });
 
   // load teachers, excluding ones already assigned to this level
   useEffect(() => {
@@ -339,8 +355,27 @@ function AssignTeacherModal({ level, onClose, onConfirm }) {
   const handleConfirm = async () => {
     if (!selected) return;
     setSaving(true);
+    setSaveError(null);
     try { await onConfirm(level.id, selected); }
+    catch (err) {
+      // surface the backend guardrail (e.g. teacher already supervises another grade)
+      setSaveError(err?.response?.data?.message ?? "Failed to assign supervisor.");
+    }
     finally { setSaving(false); }
+  };
+
+  // clear this level's supervisor (two-step: Remove -> Confirm)
+  const handleRemove = async () => {
+    if (!current) return;
+    if (!confirmRemove) { setConfirmRemove(true); return; }
+    setRemoving(true);
+    setSaveError(null);
+    try { await onUnassign(level.id, current.id); }
+    catch (err) {
+      setSaveError(err?.response?.data?.message ?? "Failed to remove supervisor.");
+      setConfirmRemove(false);
+    }
+    finally { setRemoving(false); }
   };
 
   return (
@@ -360,9 +395,53 @@ function AssignTeacherModal({ level, onClose, onConfirm }) {
         <div className="px-6 pt-4 shrink-0">
           <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-blue-50 border border-blue-100 text-sm text-blue-800">
             <span className="material-symbols-outlined text-base shrink-0" style={fillStyle}>info</span>
-            Each grade level can have one primary supervisor.
+            Each grade level can have one primary supervisor, and a supervisor can only handle one grade level.
           </div>
         </div>
+
+        {/* Current supervisor + Remove (unassign). Removing clears grade_level.teacher_id,
+            which frees this teacher up to be assigned to another grade level. */}
+        {current && (
+          <div className="px-6 pt-4 shrink-0">
+            <label className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant">
+              Current Supervisor
+            </label>
+            <div className="mt-1.5 flex items-center gap-3 px-3 py-3 rounded-xl border border-outline-variant/20 bg-surface-container-lowest">
+              <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-extrabold shrink-0 ${avatarBg(initials(current.name))}`}>
+                {initials(current.name)}
+              </div>
+              <p className="flex-1 min-w-0 text-sm font-bold text-on-surface truncate">{current.name}</p>
+              {confirmRemove && !removing && (
+                <button
+                  onClick={() => setConfirmRemove(false)}
+                  className="text-xs font-bold text-on-surface-variant hover:underline shrink-0"
+                >
+                  Cancel
+                </button>
+              )}
+              {/* Remove -> handleRemove() -> onUnassign(level.id, current.id) = page's handleUnassignTeacher() */}
+              <button
+                onClick={handleRemove}
+                disabled={removing}
+                className={`shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 ${
+                  confirmRemove
+                    ? "bg-error text-white hover:bg-error/90"
+                    : "text-error border border-error/30 hover:bg-error/5"
+                }`}
+              >
+                {removing
+                  ? <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
+                  : <span className="material-symbols-outlined text-sm">person_remove</span>}
+                {confirmRemove ? "Confirm Remove" : "Remove"}
+              </button>
+            </div>
+            {confirmRemove && !removing && (
+              <p className="mt-1.5 text-[11px] text-on-surface-variant">
+                {level.name} will have no supervisor, and {current.name} becomes available for another grade level.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Search */}
         <div className="px-6 pt-4 pb-2 shrink-0">
@@ -396,27 +475,41 @@ function AssignTeacherModal({ level, onClose, onConfirm }) {
                 const name       = `${t.first_name} ${t.last_name}`;
                 const subtitle   = t.users?.email ?? t.email ?? null;
                 const isSelected = selected === t.teacher_id;
+                // already supervising another grade -> not selectable here
+                const takenBy    = assignedElsewhere.get(t.teacher_id) ?? null;
                 return (
                   <button
                     key={t.teacher_id}
+                    disabled={!!takenBy}
+                    title={takenBy ? `Already supervising ${takenBy}.` : undefined}
                     onClick={() => setSelected(t.teacher_id)}
                     className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-colors border text-left ${
-                      isSelected ? "bg-primary/5 border-primary/30" : "hover:bg-surface-container-lowest border-outline-variant/20"
+                      takenBy
+                        ? "opacity-60 cursor-not-allowed border-outline-variant/20"
+                        : isSelected
+                          ? "bg-primary/5 border-primary/30"
+                          : "hover:bg-surface-container-lowest border-outline-variant/20"
                     }`}
                   >
                     <span
-                      className={`material-symbols-outlined text-xl shrink-0 ${isSelected ? "text-primary" : "text-on-surface-variant"}`}
-                      style={isSelected ? fillStyle : undefined}
+                      className={`material-symbols-outlined text-xl shrink-0 ${isSelected && !takenBy ? "text-primary" : "text-on-surface-variant"}`}
+                      style={isSelected && !takenBy ? fillStyle : undefined}
                     >
-                      {isSelected ? "radio_button_checked" : "radio_button_unchecked"}
+                      {isSelected && !takenBy ? "radio_button_checked" : "radio_button_unchecked"}
                     </span>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-on-surface truncate">{name}</p>
                       {subtitle && <p className="text-[11px] text-on-surface-variant truncate">{subtitle}</p>}
                     </div>
-                    <span className="text-[10px] font-extrabold uppercase tracking-wide bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full shrink-0">
-                      Available
-                    </span>
+                    {takenBy ? (
+                      <span className="text-[10px] font-extrabold uppercase tracking-wide bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full shrink-0 max-w-[45%] truncate">
+                        Assigned · {takenBy}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-extrabold uppercase tracking-wide bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full shrink-0">
+                        Available
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -424,6 +517,9 @@ function AssignTeacherModal({ level, onClose, onConfirm }) {
           )}
         </div>
 
+        {saveError && (
+          <p className="px-6 pt-3 shrink-0 text-xs font-medium text-error">{saveError}</p>
+        )}
         <div className="px-6 py-4 border-t border-outline-variant/20 flex gap-3 justify-end shrink-0">
           <button onClick={onClose} className="px-5 py-2.5 text-sm font-bold text-on-surface border border-outline-variant/30 rounded-xl hover:bg-surface-container-low transition-colors">
             Cancel
@@ -686,6 +782,14 @@ export default function SchoolSections() {
     loadLevels();
   };
 
+  // clear a level's supervisor. The modal stays open (with the current supervisor
+  // cleared) so the principal can pick a replacement right away.
+  const handleUnassignTeacher = async (levelId, teacherId) => {
+    await unassignTeacherFromSection(levelId, teacherId);
+    setAssignTarget((prev) => (prev && prev.id === levelId ? { ...prev, faculty: [] } : prev));
+    loadLevels();
+  };
+
   // totals shown in the stat cards
   const totalStudents = levels.reduce((a, l) => a + l.students, 0);
   const totalTeachers = levels.reduce((a, l) => a + l.faculty.length, 0);
@@ -791,8 +895,10 @@ export default function SchoolSections() {
       {assignTarget && (
         <AssignTeacherModal
           level={assignTarget}
+          levels={levels}
           onClose={() => setAssignTarget(null)}
           onConfirm={handleAssignTeacher}
+          onUnassign={handleUnassignTeacher}
         />
       )}
       {viewTarget && (

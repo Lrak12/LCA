@@ -11,7 +11,8 @@
 //       -> controllers/teacher.controller.js > getPaceMonitoring (~line 331)
 //       -> services/teacher.service.js > getPaceMonitoring (~line 1241)
 //            reads pace_quarterly_projection + student + student_pace + pace_module
-//            + pace_test_result -> the 7x4x3 grid, statuses, and quarter readiness
+//            + pace_test_result -> the 7x4x3 grid, statuses, quarter readiness, and
+//            the per-subject "Ready for Next PACE" row (PACE-test pass/fail)
 //   assign (initial)   assignStudentPace          POST /teacher/assign-pace
 //       -> controllers/reports.controller.js > assignPace
 //       -> services/reports.service.js > generatePaceProjection (~line 615)
@@ -68,6 +69,13 @@ const SUBJECT_LABELS = [
 const QUARTER_KEYS   = ["Q1", "Q2", "Q3", "Q4"];
 const QUARTER_LABELS = { Q1: "1st Quarter", Q2: "2nd Quarter", Q3: "3rd Quarter", Q4: "4th Quarter" };
 const DEFAULT_COUNT  = 6;
+
+// Badge colours for the "Ready for Next PACE" footer (labels come from the API).
+const READINESS_STYLES = {
+  "Ready":       "bg-green-100  text-green-700",
+  "Failed":      "bg-red-100    text-red-700",
+  "In Progress": "bg-orange-100 text-orange-700",
+};
 
 // buildAutoProjectPaces - given Q1 { start, count } per subject, project Q2-Q4 by
 //   advancing `count` PACEs each quarter (Q1 start=N > Q2 start=N+count, ...). This
@@ -563,7 +571,12 @@ function IndividualView({ student, quarters, onPaceEdit, onStatusClick, onAssign
                   ))}
                 </tr>
               ))}
-              {/* Ready for Next PACE footer */}
+              {/* Ready for Next PACE footer — the recorded PACE-TEST outcome on each
+                  subject's current PACE (teacher.service _paceTestReadinessForStudent):
+                  Ready (passed → shows the next PACE number), Failed (all 3 attempts
+                  recorded, none passing → shows the PACE they failed at), or In Progress.
+                  Keyed to the current PACE, not the quarter, so every quarter carries
+                  the same row. */}
               {quarters.length > 0 && (
                 <tr className="bg-surface-container-lowest border-t-2 border-outline-variant/25">
                   <td className="px-4 py-3 text-[9px] font-extrabold uppercase tracking-widest text-on-surface-variant leading-snug border-r border-slate-100">
@@ -571,16 +584,15 @@ function IndividualView({ student, quarters, onPaceEdit, onStatusClick, onAssign
                   </td>
                   {(quarters[0].readiness ?? []).map((rs, i) => (
                     <td key={i} className="px-1 py-3 text-center border-r border-slate-100 last:border-0">
-                      {rs.label === "Yes" ? (
-                        <span className="bg-green-100 text-green-700 text-[10px] font-extrabold px-2 py-1 rounded-full">Yes</span>
-                      ) : (
-                        <div className="flex flex-col items-center gap-0.5">
-                          <span className="bg-orange-100 text-orange-700 text-[10px] font-extrabold px-2 py-0.5 rounded-full">In Progress</span>
-                          {rs.pct !== null && rs.pct > 0 && (
-                            <span className="text-[10px] font-bold text-on-surface-variant">{rs.pct}%</span>
-                          )}
-                        </div>
-                      )}
+                      <div className="flex flex-col items-center gap-0.5">
+                        <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${READINESS_STYLES[rs.label] ?? READINESS_STYLES["In Progress"]}`}>
+                          {rs.label}
+                        </span>
+                        {/* PACE number: the one they're cleared for (Ready) or stuck on (Failed) */}
+                        {rs.pace != null && (
+                          <span className="text-[10px] font-bold text-on-surface-variant">PACE {rs.pace}</span>
+                        )}
+                      </div>
                     </td>
                   ))}
                 </tr>
@@ -616,7 +628,7 @@ function ClassView({ students, quarter }) {
     <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 overflow-hidden">
       <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant/20 flex-wrap gap-3">
         <h3 className="font-headline text-[20px] font-extrabold text-primary uppercase tracking-widest">
-          CLASS VIEW (All Students)
+          CLASS VIEW (All Students) — {QUARTER_LABELS[quarter] ?? quarter}
         </h3>
         <Legend />
       </div>
@@ -693,7 +705,7 @@ export default function PaceMonitoring() {
   const navigate = useNavigate();
 
   const [view,              setView]              = useState("individual"); // "individual" | "class"
-  const [quarter,           setQuarter]           = useState("Q1");         // selected quarter (grid + class view)
+  const [quarter,           setQuarter]           = useState("Q1");         // Class View quarter filter ("Q1".."Q4")
   const [search,            setSearch]            = useState("");           // Class View name search
   const [loading,           setLoading]           = useState(true);
   const [error,             setError]             = useState("");
@@ -904,6 +916,26 @@ export default function PaceMonitoring() {
             </div>
           )}
 
+          {/* Quarter filter — Class View only. The Individual View already shows all
+              four quarters stacked in its grid, so it has nothing to filter. */}
+          {view === "class" && (
+            <div className="relative shrink-0 min-w-[170px]">
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1 text-base text-on-surface-variant pointer-events-none" style={fillStyle}>calendar_month</span>
+              <select
+                value={quarter}
+                onChange={(e) => setQuarter(e.target.value)}
+                disabled={loading}
+                aria-label="Filter by quarter"
+                className="w-full pl-9 pr-10 py-2.5 text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer shadow-sm disabled:opacity-60"
+                style={{ WebkitAppearance: "none", MozAppearance: "none", appearance: "none" }}
+              >
+                {QUARTER_KEYS.map((q) => (
+                  <option key={q} value={q}>{QUARTER_LABELS[q]}</option>
+                ))}
+              </select>
+              <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1 text-base text-on-surface-variant pointer-events-none">expand_more</span>
+            </div>
+          )}
 
           <div className="flex rounded-xl overflow-hidden border border-outline-variant/20 shadow-sm shrink-0">
             {["individual", "class"].map((v) => (

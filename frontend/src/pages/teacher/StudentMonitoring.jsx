@@ -29,15 +29,16 @@ const PaceStatusBadge = ({ status }) => (
 );
 
 // Top row stat card (big number + sub %)
+// Sized to stay readable with all four cards on one row on narrower screens.
 const TopStat = ({ label, value, sub, subColor, icon, iconBg, iconColor }) => (
-  <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 p-5">
-    <div className="flex items-start justify-between">
+  <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 p-4 xl:p-5 min-w-0">
+    <div className="flex items-start justify-between gap-2">
       <p className="text-xs font-bold text-on-surface-variant max-w-[70%] leading-snug">{label}</p>
-      <span className={`w-8 h-8 rounded-lg flex items-center justify-center ${iconBg}`}>
+      <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${iconBg}`}>
         <span className={`material-symbols-outlined text-base ${iconColor}`} style={fillStyle}>{icon}</span>
       </span>
     </div>
-    <p className="text-4xl font-extrabold text-on-surface mt-3">{value}</p>
+    <p className="text-3xl xl:text-4xl font-extrabold text-on-surface mt-3">{value}</p>
     {sub && <p className={`text-xs font-bold mt-1 ${subColor ?? "text-on-surface-variant"}`}>{sub}</p>}
   </div>
 );
@@ -135,46 +136,41 @@ export default function StudentMonitoring() {
           </div>
         )}
 
-        {/* Top stat cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-5">
+        {/* Top stat cards — all five on a single row at every width (no stacking).
+            "Students Needing Attention" used to sit in its own row below; it is now
+            the 5th card here, rendered through TopStat so the row is uniform. */}
+        <div className="grid grid-cols-5 gap-4 mb-6">
           <TopStat label="Total Students Monitored" value={stats.totalStudents ?? 0} sub="All grade levels" icon="groups" iconBg="bg-blue-50" iconColor="text-blue-600" />
           <TopStat label="Assessed (Tests Taken)" value={stats.assessed ?? 0} sub={`${total0(stats.totalStudents) ? pct((stats.assessed / stats.totalStudents) * 100) : "0%"} of total`} subColor="text-green-600" icon="task_alt" iconBg="bg-green-50" iconColor="text-green-600" />
           <TopStat label="Scheduled to Take Test" value={stats.scheduledToTake ?? 0} sub={`${total0(stats.totalStudents) ? pct((stats.scheduledToTake / stats.totalStudents) * 100) : "0%"} of total`} subColor="text-amber-600" icon="event" iconBg="bg-amber-50" iconColor="text-amber-600" />
           <TopStat label="Not Assessed (Not Yet Taken)" value={stats.notAssessed ?? 0} sub={`${total0(stats.totalStudents) ? pct((stats.notAssessed / stats.totalStudents) * 100) : "0%"} of total`} subColor="text-on-surface-variant" icon="remove_circle" iconBg="bg-slate-100" iconColor="text-slate-500" />
+          <TopStat label="Students Needing Attention" value={stats.needingAttention ?? 0} sub="Below 50% completion" subColor="text-red-500" icon="error" iconBg="bg-red-50" iconColor="text-red-500" />
         </div>
 
-        {/* Second stat row — PACE Completion Rate removed; Top Performer hidden (kept
-            below, commented out, so it's easy to bring back) but not rendered. */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-6">
-          {/*
-          <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 p-5">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="material-symbols-outlined text-amber-500" style={fillStyle}>emoji_events</span>
-              <p className="text-[11px] font-extrabold uppercase tracking-widest text-on-surface-variant">Top Performer</p>
+        {/* Hidden second stat row (feature not shown — code kept for easy restore).
+            PACE Completion Rate was removed outright; Top Performer and Average PACE
+            Progress are parked here. The old standalone "Students Needing Attention"
+            card also lived here — it is now the 5th TopStat above.
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-6">
+              <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 p-5">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="material-symbols-outlined text-amber-500" style={fillStyle}>emoji_events</span>
+                  <p className="text-[11px] font-extrabold uppercase tracking-widest text-on-surface-variant">Top Performer</p>
+                </div>
+                <p className="text-xl font-extrabold text-on-surface leading-tight">{stats.topPerformer?.name ?? "—"}</p>
+                <p className="text-[11px] text-purple-600 font-bold mt-1">{stats.topPerformer ? `${pct(stats.topPerformer.completionRate)} Completion Rate` : "No data"}</p>
+              </div>
+              <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 p-5">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="material-symbols-outlined text-blue-500" style={fillStyle}>insights</span>
+                  <p className="text-[11px] font-extrabold uppercase tracking-widest text-on-surface-variant">Average PACE Progress</p>
+                </div>
+                <p className="text-2xl font-extrabold text-on-surface mt-1">{pct(stats.avgPaceProgress)}</p>
+                <p className="text-[11px] text-on-surface-variant font-bold">Across all students</p>
+              </div>
             </div>
-            <p className="text-xl font-extrabold text-on-surface leading-tight">{stats.topPerformer?.name ?? "—"}</p>
-            <p className="text-[11px] text-purple-600 font-bold mt-1">{stats.topPerformer ? `${pct(stats.topPerformer.completionRate)} Completion Rate` : "No data"}</p>
-          </div>
-          */}
-          {/*
-          <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 p-5">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="material-symbols-outlined text-blue-500" style={fillStyle}>insights</span>
-              <p className="text-[11px] font-extrabold uppercase tracking-widest text-on-surface-variant">Average PACE Progress</p>
-            </div>
-            <p className="text-2xl font-extrabold text-on-surface mt-1">{pct(stats.avgPaceProgress)}</p>
-            <p className="text-[11px] text-on-surface-variant font-bold">Across all students</p>
-          </div>
-           */}
-          <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 p-5">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="material-symbols-outlined text-red-500" style={fillStyle}>error</span>
-              <p className="text-[11px] font-extrabold uppercase tracking-widest text-on-surface-variant">Students Needing Attention</p>
-            </div>
-            <p className="text-4xl font-extrabold text-on-surface mt-1">{stats.needingAttention ?? 0}</p>
-            <p className="text-[11px] text-red-500 font-bold">Below 50% completion</p>
-          </div>
-        </div>
+        */}
 
         {/* Tabs + content */}
         <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 overflow-hidden">

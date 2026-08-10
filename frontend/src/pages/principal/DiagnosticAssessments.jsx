@@ -30,7 +30,6 @@ const BASIS_STYLES = {
   "Supervisor Recommendation":   "bg-purple-50 text-purple-600",
   "Historical PACE Performance": "bg-orange-50 text-orange-600",
 };
-const BASIS_OPTIONS = Object.keys(BASIS_STYLES);
 const DEFAULT_BASIS = "Diagnostic Assessment";
 
 // Render a student's name as "Last, First" (falls back to whatever parts exist).
@@ -464,7 +463,6 @@ export default function DiagnosticAssessments() {
   const [error,       setError]       = useState("");
   const [search,      setSearch]      = useState("");
   const [gradeFilter, setGradeFilter] = useState("");
-  const [basisFilter, setBasisFilter] = useState("");
   const [nameSort,    setNameSort]    = useState("asc"); // "asc" | "desc": Name column A→Z / Z→A
   const [page,        setPage]        = useState(1);
   const [openMenu,    setOpenMenu]    = useState(null); // student_id of open kebab
@@ -510,13 +508,12 @@ export default function DiagnosticAssessments() {
     diagnosticStudents.map((s) => s.grade_level?.level_name).filter(Boolean)
   )].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
-  // apply search + grade + basis filters
+  // apply search + grade filters
   const filtered = diagnosticStudents.filter((s) => {
     const name  = `${s.first_name ?? ""} ${s.last_name ?? ""}`.toLowerCase();
     const matchSearch = name.includes(search.toLowerCase()) || String(s.student_id).includes(search);
     const matchGrade  = !gradeFilter || s.grade_level?.level_name === gradeFilter;
-    const matchBasis  = !basisFilter || basisOf(s) === basisFilter;
-    return matchSearch && matchGrade && matchBasis;
+    return matchSearch && matchGrade;
   });
 
   // sort the filtered rows by "last name, first name" (A→Z or Z→A)
@@ -528,13 +525,13 @@ export default function DiagnosticAssessments() {
   const startIndex   = (currentPage - 1) * PAGE_SIZE;
   const pageRows     = sorted.slice(startIndex, startIndex + PAGE_SIZE);
 
-  // Stats (computable; "Accepted" is a placeholder until an acceptance workflow exists)
+  // Stats
   const totalRecords  = diagnosticStudents.length;
   const generated     = diagnosticStudents.filter((s) => diagMap[s.student_id]?.start_pace != null).length; // have a generated start PACE
-  const accepted      = "—";
+  // const accepted   = "—";  // paired with the hidden "PACE Recommendations Accepted" card below
   const assessedYear  = diagnosticStudents.length;
 
-  const resetFilters = () => { setSearch(""); setGradeFilter(""); setBasisFilter(""); setPage(1); };
+  const resetFilters = () => { setSearch(""); setGradeFilter(""); setPage(1); };
 
   return (
     <PrincipalLayout schoolYearLabel={loading ? "..." : schoolYearLabel}>
@@ -580,15 +577,19 @@ export default function DiagnosticAssessments() {
           </button>
         </header>
 
-        {/* Stat cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-6">
+        {/* Stat cards. NOTE: 3 columns / 3 skeletons because "PACE Recommendations
+            Accepted" is hidden below — restore both to 4 when that card comes back. */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 mb-6">
           {loading ? (
-            Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-36" />)
+            Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-36" />)
           ) : (
             <>
               <StatCard label="Total Diagnostic Records" value={totalRecords} sub="Total students with diagnostic records" icon="description" tint="bg-blue-50 text-blue-500" />
               <StatCard label="PACE Recommendations Generated" value={generated} sub="System recommendations generated for students" icon="description" tint="bg-orange-50 text-orange-500" />
+              {/* PACE Recommendations Accepted (hidden — no acceptance workflow yet, so the
+                  value was always a placeholder dash; code kept for easy restore)
               <StatCard label="PACE Recommendations Accepted" value={accepted} sub="Accepted by the principal (Principal Recommendation)" icon="task_alt" tint="bg-green-50 text-green-500" />
+              */}
               <StatCard label="Students Assessed This School Year" value={assessedYear} sub="Students with diagnostic records this school year" icon="groups" tint="bg-purple-50 text-purple-500" />
             </>
           )}
@@ -629,18 +630,7 @@ export default function DiagnosticAssessments() {
               {gradeOptions.map((g) => <option key={g} value={g}>{g}</option>)}
             </select>
           </div>
-          <div>
-            <label className="block text-[13px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1.5">Placement Basis</label>
-            <select
-              value={basisFilter}
-              onChange={(e) => { setBasisFilter(e.target.value); setPage(1); }}
-              className="px-3.5 py-2.5 rounded-xl border-2 border-outline-variant/30 text-sm focus:outline-none focus:border-primary bg-white min-w-[170px]"
-            >
-              <option value="">All Placement Basis</option>
-              {BASIS_OPTIONS.map((b) => <option key={b} value={b}>{b}</option>)}
-            </select>
-          </div>
-          {/* Reset Filters -> resetFilters() clears search/grade/basis + page 1 */}
+          {/* Reset Filters -> resetFilters() clears search/grade + page 1 */}
           <button
             onClick={resetFilters}
             className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border-2 border-outline-variant/30 text-sm font-bold text-on-surface hover:bg-surface-container-low transition-colors"
@@ -671,11 +661,11 @@ export default function DiagnosticAssessments() {
               </div>
               <h3 className="text-lg font-bold text-primary font-headline mb-1">No diagnostic records</h3>
               <p className="text-on-surface-variant text-sm max-w-sm mb-6">
-                {search || gradeFilter || basisFilter
+                {search || gradeFilter
                   ? "No students match the current filters."
                   : "Click \"Create New Student Assessment\" to enroll a student for diagnostic testing."}
               </p>
-              {!(search || gradeFilter || basisFilter) && (
+              {!(search || gradeFilter) && (
                 <button onClick={() => setShowModal(true)}
                   className="flex items-center gap-2 px-6 py-3 bg-primary text-white font-bold text-sm rounded-xl hover:bg-primary/90 transition-colors">
                   <span className="material-symbols-outlined text-lg" style={fillStyle}>add</span>
