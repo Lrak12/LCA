@@ -90,7 +90,7 @@ export default function ForgotPassword() {
                       required
                       className="w-full px-4 py-3 bg-surface-container-lowest border border-outline-variant/40 rounded-lg focus:ring-2 focus:ring-primary/20 focus:outline-none transition-all font-body text-on-surface placeholder:text-outline pr-11"
                     />
-                    <span className="material-symbols-outlined absolute inset-y-0 right-3 flex items-center text-outline">person</span>
+                    <span className="material-symbols-outlined absolute inset-y-3 right-3 flex items-center text-outline">person</span>
                   </div>
                   <p className="flex items-center gap-1.5 text-xs text-on-surface-variant">
                     <span className="material-symbols-outlined text-sm">info</span>

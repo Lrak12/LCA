@@ -80,7 +80,7 @@ export default function MathIntermediateDiagnosticModal({ student, existing, onC
 
         {/* Header */}
         <div className="bg-primary px-4 sm:px-8 py-4 flex items-center justify-between shrink-0">
-          <h2 className="text-white font-bold text-lg tracking-widest uppercase">Record Diagnostic</h2>
+          <h2 className="text-white font-bold text-lg tracking-widest uppercase">Math Intermediate</h2>
           <button onClick={onClose} className="text-white/70 hover:text-white transition-colors">
             <span className="material-symbols-outlined">close</span>
           </button>

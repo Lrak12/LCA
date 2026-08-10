@@ -705,7 +705,7 @@ export default function Employees() {
             setStatusFilter(e.target.value);
             setPage(1);
           }}
-          className="appearance-none h-11 bg-surface-container-lowest border border-outline-variant/20 rounded-xl pl-4 pr-10 text-sm font-semibold text-on-surface cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20">
+          className="h-11 bg-surface-container-lowest border border-outline-variant/20 rounded-xl pl-4 pr-10 text-sm font-semibold text-on-surface cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20">
           <option value="all">All Status</option>
           <option value="active">Active</option>
           <option value="inactive">Inactive</option>

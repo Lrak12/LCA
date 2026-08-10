@@ -36,6 +36,12 @@ export default function EditStudentModal({ student, onClose, onSaved }) {
     if (!form.first_name.trim() || !form.last_name.trim()) {
       setError("First name and last name are required."); return;
     }
+    if (!form.date_of_birth) {
+      setError("Date of birth is required."); return;
+    }
+    if (!form.address.trim()) {
+      setError("Address is required."); return;
+    }
     // Only enforce the PH-mobile format when the contact was actually changed, so a
     // legacy/non-conforming number doesn't block edits to other fields.
     const contactChanged = form.contact_number.trim() !== (student.contact_number ?? "").trim();
@@ -49,8 +55,8 @@ export default function EditStudentModal({ student, onClose, onSaved }) {
         first_name:     form.first_name.trim(),
         last_name:      form.last_name.trim(),
         gender:         form.gender || null,
-        date_of_birth:  form.date_of_birth || null,
-        address:        form.address.trim() || null,
+        date_of_birth:  form.date_of_birth,
+        address:        form.address.trim(),
         contact_number: form.contact_number.trim() || null,
       });
       onSaved?.();
@@ -103,11 +109,11 @@ export default function EditStudentModal({ student, onClose, onSaved }) {
               </select>
             </div>
             <div>
-              <label className={labelClass}>Date of Birth</label>
+              <label className={labelClass}>Date of Birth <span className="text-red-500">*</span></label>
               <input type="date" value={form.date_of_birth} onChange={set("date_of_birth")} className={inputClass} />
             </div>
             <div className="sm:col-span-2">
-              <label className={labelClass}>Address</label>
+              <label className={labelClass}>Address <span className="text-red-500">*</span></label>
               <input value={form.address} onChange={set("address")} placeholder="e.g., Dumaguete City" className={inputClass} />
             </div>
             <div className="sm:col-span-2">

@@ -56,7 +56,7 @@ const syLabel = (label) => (label ? (/^sy\s/i.test(label) ? label : `SY ${label}
 
 const Skeleton = ({ className }) => <div className={`animate-pulse bg-surface-container-high rounded-lg ${className}`} />;
 
-const inputCls = "rounded-lg border border-outline-variant/40 pl-4 pr-10 py-2.5 text-sm font-bold text-on-surface-variant hover:bg-surface-container-low cursor-pointer bg-white";
+const inputCls = "rounded-lg border border-outline-variant/40 px-3 py-2.5 text-sm font-bold text-on-surface-variant hover:bg-surface-container-low cursor-pointer bg-white";
 const labelCls = "block text-[15px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1.5";
 
 // ── Edit School Year modal ────────────────────────────────────────────────────

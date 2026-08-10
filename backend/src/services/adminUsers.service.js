@@ -1,4 +1,5 @@
 import { supabase, supabaseAdmin } from "../config/supabase.js";
+import { describeAuthCreateError } from "../helpers/authErrors.js";
 
 // Role profile tables. The role-table primary key doubles as the login "school ID".
 const ROLE_SOURCES = [
@@ -124,7 +125,11 @@ export const listUsers = async ({
     );
   }
 
-  filtered.sort((a, b) => a.name.localeCompare(b.name)); // alphabetical by name
+  // Alphabetical by "Lastname, Firstname" to match how the table displays names.
+  filtered.sort((a, b) =>
+    `${a.last_name ?? ""} ${a.first_name ?? ""}`.trim()
+      .localeCompare(`${b.last_name ?? ""} ${b.first_name ?? ""}`.trim(), undefined, { sensitivity: "base" })
+  );
 
   // paginate the filtered set in JS (clamped so page is always in range)
   const total      = filtered.length;
@@ -302,7 +307,7 @@ export const createUser = async ({
     email_confirm: false,
     user_metadata: { username: username || email.split("@")[0], role },
   });
-  if (authErr) throw new Error(authErr.message);
+  if (authErr) throw new Error(describeAuthCreateError(authErr));
   const authId = authData.user.id;
 
   // if anything below fails, delete the auth user so we don't leave an orphan

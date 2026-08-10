@@ -49,6 +49,14 @@ const Skeleton = ({ className }) => (
   <div className={`animate-pulse bg-surface-container-high rounded-xl ${className}`} />
 );
 
+// Display name as "Lastname, Firstname"; falls back to whatever we have.
+const lastFirst = (u) => {
+  const last  = (u.last_name  ?? "").trim();
+  const first = (u.first_name ?? "").trim();
+  if (last && first) return `${last}, ${first}`;
+  return last || first || u.name || "—";
+};
+
 // last-login timestamp for the table, or "Never" if none/invalid
 const formatLastLogin = (iso) => {
   if (!iso) return "Never";
@@ -167,10 +175,10 @@ function AddUserModal({ onClose, onCreated }) {
   const withIcon  = `${inputBase} pl-10 pr-3.5`;
   const withBoth  = `${inputBase} pl-10 pr-10`;
   const selectCls = `${inputBase} px-3.5 pr-9 appearance-none cursor-pointer`;
-  const chevron   = <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-outline text-lg pointer-events-none">expand_more</span>;
+  const chevron   = <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1 text-outline text-lg pointer-events-none">expand_more</span>;
   const eye = (shown, toggle) => (
     <button type="button" onClick={toggle} className="absolute right-3 top-1/2 -translate-y-1 flex items-center justify-center text-on-surface-variant hover:text-on-surface">
-      <span className="material-symbols-outlined leading-none text-xl">{shown ? "visibility_off" : "visibility"}</span>
+      <span className="material-symbols-outlined leading-none text-xl">{shown ? "visibility" : "visibility_off"}</span>
     </button>
   );
 
@@ -316,7 +324,7 @@ function EditUserModal({ user, onClose, onSaved }) {
 
   const inputBase = "w-full bg-white border border-outline-variant/40 rounded-lg py-2.5 px-3.5 text-sm text-on-surface placeholder:text-outline focus:ring-2 focus:ring-primary/20 focus:border-primary/40 focus:outline-none";
   const selectCls = `${inputBase} pr-9 appearance-none cursor-pointer`;
-  const chevron   = <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-outline text-lg pointer-events-none">expand_more</span>;
+  const chevron   = <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1 text-outline text-lg pointer-events-none">expand_more</span>;
   const labelCls  = "block text-[13px] font-bold text-on-surface mb-1.5";
   const eye = (shown, toggle) => (
     <button type="button" onClick={toggle} className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-primary">
@@ -367,7 +375,7 @@ function EditUserModal({ user, onClose, onSaved }) {
                   <select value={user.role} disabled className={`${selectCls} opacity-70 cursor-not-allowed`}>
                     <option value={user.role}>{roleLabel}</option>
                   </select>
-                  {chevron}
+                  {/* {chevron} para ma edit na pud siya*/}
                 </div>
               </div>
             </div>
@@ -609,7 +617,7 @@ export default function UserManagement() {
           <div className="overflow-x-auto"><table className="w-full text-left">
             <thead>
               <tr className="border-b border-outline-variant/20 text-[15px] uppercase tracking-wider text-on-surface-variant">
-                <th className="px-6 py-3.5 font-bold">User</th>
+                <th className="px-6 py-3.5 font-bold">Name</th>
                 <th className="px-6 py-3.5 font-bold">Role</th>
                 <th className="px-6 py-3.5 font-bold">Email</th>
                 <th className="px-6 py-3.5 font-bold">Status</th>
@@ -636,7 +644,7 @@ export default function UserManagement() {
                           {(u.first_name?.[0] ?? "") + (u.last_name?.[0] ?? "") || "?"}
                         </div>
                         <div className="min-w-0">
-                          <p className="text-sm font-bold text-on-surface leading-tight truncate">{u.name}</p>
+                          <p className="text-sm font-bold text-on-surface leading-tight truncate">{lastFirst(u)}</p>
                           <p className="text-[11px] text-on-surface-variant">ID {u.school_id}</p>
                         </div>
                       </div>

@@ -152,7 +152,7 @@ export default function Login() {
                   className="absolute inset-y-0 right-3 flex items-center justify-center text-outline hover:text-primary transition-colors"
                 >
                   <span className="material-symbols-outlined text-xl leading-none">
-                    {showPassword ? "visibility_off" : "visibility"}
+                    {showPassword ? "visibility" : "visibility_off"}
                   </span>
                 </button>
               </div>

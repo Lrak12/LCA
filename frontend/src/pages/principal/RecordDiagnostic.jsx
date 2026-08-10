@@ -168,10 +168,6 @@ export default function RecordDiagnostic() {
               Diagnostic Assessment Management
             </button>
             <span className="material-symbols-outlined text-sm text-on-surface-variant">chevron_right</span>
-            <button onClick={() => navigate("/admin/diagnostic")} className="text-on-surface-variant hover:text-primary transition-colors">
-              Select Student for Diagnostic Assessment
-            </button>
-            <span className="material-symbols-outlined text-sm text-on-surface-variant">chevron_right</span>
             <span className="text-secondary">Record Diagnostic Assessment</span>
           </nav>
           <button

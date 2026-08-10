@@ -78,8 +78,6 @@ export default function ProjectedPaceRecommendation() {
           <nav className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest flex-wrap">
             <button onClick={() => navigate("/admin/diagnostic")} className="text-on-surface-variant hover:text-primary transition-colors">Diagnostic Assessment Management</button>
             <span className="material-symbols-outlined text-sm text-on-surface-variant">chevron_right</span>
-            <button onClick={() => navigate("/admin/diagnostic")} className="text-on-surface-variant hover:text-primary transition-colors">Select Student for Diagnostic Assessment</button>
-            <span className="material-symbols-outlined text-sm text-on-surface-variant">chevron_right</span>
             <button onClick={() => navigate(`/admin/diagnostic/record/${studentId}`)} className="text-on-surface-variant hover:text-primary transition-colors">Record Diagnostic Assessment</button>
             <span className="material-symbols-outlined text-sm text-on-surface-variant">chevron_right</span>
             <span className="text-secondary">Projected PACE Recommendation</span>

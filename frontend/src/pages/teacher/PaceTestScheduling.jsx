@@ -169,6 +169,15 @@ export default function PaceTestScheduling() {
     <TeacherLayout schoolYearLabel={schoolYearLabel}>
       <main className="p-4 sm:p-8 max-w-full mx-auto w-full">
 
+        {/* Back button */}
+        <button
+          onClick={() => navigate("/teacher/pace")}
+          className="inline-flex items-center gap-1.5 text-sm font-bold text-on-surface-variant hover:text-primary transition-colors mb-3"
+        >
+          <span className="material-symbols-outlined text-base">arrow_back</span>
+          Back to PACE Monitoring
+        </button>
+
         {/* Breadcrumb */}
         <nav className="flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-widest mb-2">
           <button onClick={() => navigate("/teacher/pace")} className="text-on-surface-variant hover:text-primary transition-colors">

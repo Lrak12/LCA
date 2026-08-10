@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "../config/supabase.js";
+import { describeAuthCreateError } from "../helpers/authErrors.js";
 
 export const getEmployees = async () => {
   const [{ data: teachers }, { data: admins }] = await Promise.all([
@@ -188,7 +189,7 @@ export const createEmployee = async ({
       role: role === "principal" ? "principal" : "teacher",
     },
   });
-  if (authErr) throw new Error(authErr.message);
+  if (authErr) throw new Error(describeAuthCreateError(authErr));
 
   const authId = authData.user.id;
 

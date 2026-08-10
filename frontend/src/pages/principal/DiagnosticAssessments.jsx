@@ -253,7 +253,7 @@ function NewStudentModal({ onClose, onCreated }) {
           {/* First / Last Name */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">First Name</label>
+              <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">First Name <span className="text-red-500">*</span></label>
               <input
                 type="text" required value={form.first_name} onChange={(e) => set("first_name", e.target.value)}
                 placeholder="e.g. Josiah"
@@ -261,7 +261,7 @@ function NewStudentModal({ onClose, onCreated }) {
               />
             </div>
             <div>
-              <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Last Name</label>
+              <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Last Name <span className="text-red-500">*</span></label>
               <input
                 type="text" required value={form.last_name} onChange={(e) => set("last_name", e.target.value)}
                 placeholder="e.g. Miller"
@@ -274,7 +274,7 @@ function NewStudentModal({ onClose, onCreated }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                Date of Birth
+                Date of Birth <span className="text-red-500">*</span>
                 <span className="ml-1 text-primary normal-case font-normal tracking-normal">— used as password</span>
               </label>
               <input
@@ -283,7 +283,7 @@ function NewStudentModal({ onClose, onCreated }) {
               />
             </div>
             <div>
-              <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Gender</label>
+              <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Gender <span className="text-red-500">*</span></label>
               <select
                 required value={form.gender} onChange={(e) => set("gender", e.target.value)}
                 className="w-full border border-outline-variant rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white"
@@ -297,7 +297,7 @@ function NewStudentModal({ onClose, onCreated }) {
 
           {/* Grade Level */}
           <div>
-            <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Grade Level</label>
+            <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Grade Level <span className="text-red-500">*</span></label>
             <select
               required value={form.gl_id} onChange={(e) => set("gl_id", Number(e.target.value))}
               className="w-full border border-outline-variant rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white"
@@ -311,7 +311,7 @@ function NewStudentModal({ onClose, onCreated }) {
 
           {/* Enrollment Date */}
           <div>
-            <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Enrollment Date</label>
+            <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Enrollment Date <span className="text-red-500">*</span></label>
             <input
               type="date" required value={form.enrollment_date} onChange={(e) => set("enrollment_date", e.target.value)}
               className="w-full border border-outline-variant rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
@@ -335,7 +335,7 @@ function NewStudentModal({ onClose, onCreated }) {
 
           {/* Home Address */}
           <div>
-            <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Home Address</label>
+            <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Home Address <span className="text-red-500">*</span></label>
             <input
               type="text" required value={form.address} onChange={(e) => set("address", e.target.value)}
               placeholder="Street, Barangay, City, Province, Zip Code"
@@ -348,13 +348,13 @@ function NewStudentModal({ onClose, onCreated }) {
             <h3 className="text-sm font-extrabold text-on-surface mb-3">Parent / Guardian</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">First Name</label>
+                <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">First Name <span className="text-red-500">*</span></label>
                 <input type="text" required value={form.p_first} onChange={(e) => set("p_first", e.target.value)}
                   placeholder="e.g. Maria"
                   className="w-full border border-outline-variant rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
               <div>
-                <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Last Name</label>
+                <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Last Name <span className="text-red-500">*</span></label>
                 <input type="text" required value={form.p_last} onChange={(e) => set("p_last", e.target.value)}
                   placeholder="e.g. Miller"
                   className="w-full border border-outline-variant rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
@@ -362,7 +362,7 @@ function NewStudentModal({ onClose, onCreated }) {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
               <div>
-                <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Relationship</label>
+                <label className="block text-[11px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Relationship <span className="text-red-500">*</span></label>
                 <select required value={form.relationship} onChange={(e) => set("relationship", e.target.value)}
                   className="w-full border border-outline-variant rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white">
                   <option value="">Select</option>

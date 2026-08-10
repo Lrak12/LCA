@@ -3,6 +3,7 @@ import * as UserModel from "../models/user.model.js";
 import * as StudentParentContactModel from "../models/studentParentContact.model.js";
 import * as NotificationService from "./notification.service.js";
 import { supabase, supabaseAdmin } from "../config/supabase.js";
+import { describeAuthCreateError } from "../helpers/authErrors.js";
 
 // School wall-clock timezone. PACE test schedules are stored as real instants
 // anchored to the school offset (see teacher.service.js SCHOOL_TZ_OFFSET), so
@@ -146,6 +147,37 @@ export const getStudentByUserId = async (user_id) => {
 };
 
 export const createStudent = async (authPayload, profilePayload, extras = {}) => {
+  // Duplicate-person guard. The login email is auto-uniquified below (a repeat
+  // name just gets the ID appended), so the users.email UNIQUE constraint no
+  // longer blocks enrolling the same person twice. Guard here instead: reject a
+  // new student when an ACTIVE student already has the same first + last name.
+  // Deactivated students are allowed through so a genuine re-enrolment can go on.
+  const nameKey = (s) => String(s ?? "").toLowerCase().trim().replace(/\s+/g, " ");
+  const fnNew = nameKey(profilePayload.first_name);
+  const lnNew = nameKey(profilePayload.last_name);
+  if (fnNew && lnNew) {
+    const { data: sameName } = await supabaseAdmin
+      .from("student")
+      .select("student_id, first_name, last_name, grade_level(level_name), users(is_active)")
+      .ilike("first_name", profilePayload.first_name.trim())
+      .ilike("last_name", profilePayload.last_name.trim());
+    const clash = (sameName ?? []).find(
+      (s) =>
+        nameKey(s.first_name) === fnNew &&
+        nameKey(s.last_name) === lnNew &&
+        s.users?.is_active !== false, // treat missing/true as active
+    );
+    if (clash) {
+      const grade = clash.grade_level?.level_name ? ` in ${clash.grade_level.level_name}` : "";
+      const err = new Error(
+        `A student named ${profilePayload.first_name.trim()} ${profilePayload.last_name.trim()} already exists (ID ${clash.student_id}${grade}). ` +
+        `If this is a different person, add a distinguishing detail; otherwise edit the existing record instead of creating a new one.`,
+      );
+      err.statusCode = 409; // Conflict — a validation rejection, not a server fault
+      throw err;
+    }
+  }
+
   // Assign the formatted student ID (YYNN). YY = enrollment year. This stays the
   // student's LOGIN ID — they sign in with the number (login looks the account up
   // by student_id).
@@ -171,7 +203,7 @@ export const createStudent = async (authPayload, profilePayload, extras = {}) =>
     },
   });
 
-  if (authError) throw new Error(authError.message);
+  if (authError) throw new Error(describeAuthCreateError(authError));
 
   const { data: userProfile, error: userError } = await UserModel.findByAuthId(authData.user.id);
   if (userError) {
@@ -1413,7 +1445,7 @@ export const importStudents = async (rows) => {
           succeeded.push(fullName);
           continue;
         }
-        throw new Error(authError.message);
+        throw new Error(describeAuthCreateError(authError));
       }
 
       let userProfile;

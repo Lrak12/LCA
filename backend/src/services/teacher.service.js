@@ -4,6 +4,7 @@ import * as SelfTestModel from "../models/selfTestResult.model.js";
 import * as PaceTestModel from "../models/paceTestResult.model.js";
 import * as NotificationService from "./notification.service.js";
 import { supabaseAdmin } from "../config/supabase.js";
+import { describeAuthCreateError } from "../helpers/authErrors.js";
 
 export const getAllTeachers = async () => {
   const { data, error } = await TeacherModel.findAll();
@@ -34,7 +35,7 @@ export const createTeacher = async (authPayload, profilePayload) => {
     },
   });
 
-  if (authError) throw new Error(authError.message);
+  if (authError) throw new Error(describeAuthCreateError(authError));
 
   const { data: userProfile, error: userError } = await UserModel.findByAuthId(authData.user.id);
   if (userError) {
