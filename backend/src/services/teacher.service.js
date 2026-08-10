@@ -2393,12 +2393,23 @@ export const getStudentPaceManage = async (user_id, student_id) => {
     const cur = currentBySubject.get(subj);
     const defaultPaceNumber = cur?.pace_module?.module_number ?? projectedStart[subj] ?? paces[0]?.paceNumber ?? null;
 
-    // Dropdown shows ONLY the current quarter's PACEs for this subject.
+    // currentQuarter = the projected quarter the current PACE falls in, or null when the
+    // assigned PACE is "off-plan" (outside every projected quarter block, e.g. catch-up
+    // PACEs assigned below the projected plan).
     const currentQuarter = paces.find((p) => p.paceNumber === defaultPaceNumber)?.quarter ?? null;
-    const quarterPaces = currentQuarter != null ? paces.filter((p) => p.quarter === currentQuarter) : paces;
 
-    return { subject: subj, defaultPaceNumber, currentQuarter, paces: quarterPaces };
+    // OFF-PLAN subjects: return ONLY the actually-assigned PACEs so the whole projected
+    // range never leaks into the dropdown (the original bug). ON-PLAN subjects: return
+    // every quarter's PACEs; the frontend's quarter filter narrows them per selection.
+    const outPaces = currentQuarter != null ? paces : paces.filter((p) => p.sp_id != null);
+
+    return { subject: subj, defaultPaceNumber, currentQuarter, paces: outPaces };
   });
+
+  // Default quarter for the modal's quarter filter: the lowest "current" quarter across
+  // the on-plan subjects, else the 1st quarter.
+  const onPlanQuarters = rows.map((r) => r.currentQuarter).filter((q) => q != null);
+  const defaultQuarter = onPlanQuarters.length ? Math.min(...onPlanQuarters) : 1;
 
   const all = paces ?? [];
   const stats = {
@@ -2419,6 +2430,7 @@ export const getStudentPaceManage = async (user_id, student_id) => {
     stats,
     rows,
     moduleOptions,
+    defaultQuarter,
   };
 };
 

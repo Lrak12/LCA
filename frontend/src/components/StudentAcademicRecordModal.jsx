@@ -333,41 +333,6 @@ export default function StudentAcademicRecordModal({ studentId, onClose }) {
               </div>
             </div>
 
-            {/* Recommendations */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <RecCard accent="border-blue-200 bg-blue-50/40" icon="psychology" iconColor="text-blue-500" title="Diagnostic Recommendation">
-                {data?.diagnostic ? (<>
-                  <p className="text-xl font-extrabold text-blue-600">{data.diagnostic.level}</p>
-                  <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mt-3">Placement Basis</p>
-                  <p className="text-xs font-bold text-on-surface">{data.diagnostic.basis}</p>
-                </>) : <p className="text-sm text-on-surface-variant">No diagnostic on record.</p>}
-              </RecCard>
-              <RecCard accent="border-purple-200 bg-purple-50/40" icon="auto_awesome" iconColor="text-purple-500" title="Projected PACE (System Suggestion)">
-                {data?.projected?.pace ? (<>
-                  <p className="text-xl font-extrabold text-purple-600">{data.projected.pace}{data.projected.title ? ` – ${data.projected.title}` : ""}</p>
-                  <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mt-3">Placement Basis</p>
-                  <p className="text-xs font-bold text-on-surface">{data.projected.basis}</p>
-                  <p className="text-xs text-on-surface-variant mt-2">Suggested Start Date: {fmtDate(data.projected.suggestedStart)}</p>
-                </>) : <p className="text-sm text-on-surface-variant">Not enough completion history yet.</p>}
-              </RecCard>
-              <RecCard accent="border-amber-200 bg-amber-50/40" icon="warning" iconColor="text-amber-500" title="Academic Monitoring Recommendation">
-                <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant">System Recommendation</p>
-                <p className="text-xs text-on-surface mb-2">
-                  {data?.monitoring?.needsAttention
-                    ? `Student has ${data.monitoring.overdue} ongoing PACE(s) beyond the expected completion period and ${data.monitoring.notPassed} PACE test(s) not passed.`
-                    : "Student is on track. No monitoring flags."}
-                </p>
-                {data?.monitoring?.needsAttention && (
-                  <ul className="text-xs text-on-surface-variant list-disc pl-4 space-y-0.5">
-                    <li>Provide closer monitoring for ongoing PACEs.</li>
-                    <li>Schedule a progress review this week.</li>
-                    <li>Encourage timely completion before assigning new PACEs.</li>
-                  </ul>
-                )}
-                <p className="text-[10px] text-on-surface-variant/60 mt-2">Generated {fmtDate(data?.monitoring?.generated)}</p>
-              </RecCard>
-            </div>
-
             {/* Bottom: brought home / 100s / notes */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <ListCard icon="home" iconColor="text-green-500" title="Paces Brought Home" count={data?.broughtHome?.count ?? 0} countLabel="Brought Home"
@@ -443,15 +408,6 @@ const LegendItem = ({ color, title, desc }) => (
       <p className="text-xs font-bold text-on-surface">{title}</p>
       <p className="text-[10px] text-on-surface-variant leading-tight">{desc}</p>
     </div>
-  </div>
-);
-const RecCard = ({ accent, icon, iconColor, title, children }) => (
-  <div className={`border rounded-xl p-4 ${accent}`}>
-    <div className="flex items-center gap-2 mb-2">
-      <span className={`material-symbols-outlined text-base ${iconColor}`} style={fillStyle}>{icon}</span>
-      <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant">{title}</p>
-    </div>
-    {children}
   </div>
 );
 const ListCard = ({ icon, iconColor, title, count, countLabel, rows, dateLabel }) => (

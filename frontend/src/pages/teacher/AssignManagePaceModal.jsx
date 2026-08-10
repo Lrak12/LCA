@@ -17,6 +17,20 @@ const STATUS_OPTS = [
   { value: "Completed",   label: "Completed" },
 ];
 
+const QUARTER_LABELS = { 1: "1st Quarter", 2: "2nd Quarter", 3: "3rd Quarter", 4: "4th Quarter" };
+
+// PACEs shown for one subject given the selected quarter. On-plan subjects
+// (currentQuarter set) filter to the chosen quarter; off-plan subjects (currentQuarter
+// null — assigned PACEs that fall outside the projected plan, e.g. catch-up PACEs) show
+// only their actually-assigned PACEs so the whole projected range never leaks in. Never
+// returns an empty list.
+const visiblePaces = (row, quarter) => {
+  const list = row.currentQuarter != null
+    ? row.paces.filter((p) => p.quarter === quarter)
+    : row.paces.filter((p) => p.sp_id != null);
+  return list.length ? list : row.paces;
+};
+
 const fmtDate = (iso) => {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -70,6 +84,7 @@ export default function AssignManagePaceModal({ studentId, onClose, onSaved }) {
   const [saving,  setSaving]  = useState(false);
   const [formErr, setFormErr] = useState("");
   const [selPace, setSelPace] = useState({});       // subject -> selected pace number (dropdown state)
+  const [quarterFilter, setQuarterFilter] = useState(1); // which quarter's PACEs the dropdowns show
 
   const load = useCallback(() => {
     if (!studentId) return;
@@ -82,18 +97,27 @@ export default function AssignManagePaceModal({ studentId, onClose, onSaved }) {
 
   useEffect(() => { load(); }, [load]);
 
-  // Default the per-subject PACE selection (keep a valid existing choice across reloads)
+  // Sync the quarter filter to the backend's suggested default when data loads.
+  useEffect(() => {
+    if (data?.defaultQuarter != null) setQuarterFilter(data.defaultQuarter);
+  }, [data?.defaultQuarter]);
+
+  // Default the per-subject PACE selection to a pace visible in the selected quarter.
+  // Recomputed when the data OR the quarter filter changes (so switching quarters resets
+  // each subject's dropdown to that quarter's current/first PACE).
   useEffect(() => {
     if (!data?.rows) return;
-    setSelPace((prev) => {
-      const next = { ...prev };
+    setSelPace(() => {
+      const next = {};
       data.rows.forEach((r) => {
-        const valid = r.paces.some((p) => p.paceNumber === next[r.subject]);
-        if (!valid) next[r.subject] = r.defaultPaceNumber;
+        const vis = visiblePaces(r, quarterFilter);
+        next[r.subject] = vis.some((p) => p.paceNumber === r.defaultPaceNumber)
+          ? r.defaultPaceNumber
+          : vis[0]?.paceNumber ?? null;
       });
       return next;
     });
-  }, [data]);
+  }, [data, quarterFilter]);
 
   // Open the details form for a specific PACE (Manage / View / Assign)
   const openForm = (subject, pace) => {
@@ -188,9 +212,19 @@ export default function AssignManagePaceModal({ studentId, onClose, onSaved }) {
               </div>
             </div>
 
-            {/* Legend */}
+            {/* Legend + quarter filter */}
             <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
-              <h4 className="text-sm font-extrabold text-on-surface uppercase tracking-wide">Current PACE Modules Per Subject</h4>
+              <div className="flex items-center gap-3 flex-wrap">
+                <h4 className="text-sm font-extrabold text-on-surface uppercase tracking-wide">Current PACE Modules Per Subject</h4>
+                {/* Quarter filter: switches which quarter's PACEs the per-subject dropdowns show */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant">Quarter</span>
+                  <select value={quarterFilter} onChange={(e) => setQuarterFilter(Number(e.target.value))}
+                    className="border border-gray-200 rounded-lg pl-2 pr-7 py-1 text-xs font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer bg-white">
+                    {[1, 2, 3, 4].map((q) => <option key={q} value={q}>{QUARTER_LABELS[q]}</option>)}
+                  </select>
+                </div>
+              </div>
               <div className="flex items-center gap-4 flex-wrap text-[11px] text-on-surface-variant">
                 {LEGEND.map((l) => (
                   <span key={l.label} className="flex items-center gap-1.5"><span className={`w-2.5 h-2.5 rounded-full ${l.color}`} />{l.label}</span>
@@ -219,16 +253,17 @@ export default function AssignManagePaceModal({ studentId, onClose, onSaved }) {
                 </thead>
                 <tbody>
                   {rows.map((r) => {
-                    const sel = r.paces.find((p) => p.paceNumber === selPace[r.subject]) ?? r.paces[0];
+                    const visible = visiblePaces(r, quarterFilter);
+                    const sel = visible.find((p) => p.paceNumber === selPace[r.subject]) ?? visible[0];
                     if (!sel) return null;
                     return (
                     <tr key={r.subject} className="border-t border-outline-variant/10 hover:bg-surface-container-lowest/40">
                       <td className="px-3 py-3 font-bold text-on-surface">{r.subject}</td>
                       <td className="px-3 py-3">
-                        {r.paces.length > 1 ? (
+                        {visible.length > 1 ? (
                           <select value={sel.paceNumber ?? ""} onChange={(e) => setSelPace((m) => ({ ...m, [r.subject]: Number(e.target.value) }))}
                             className="border border-gray-200 rounded-lg pl-2 pr-8 py-1 text-xs font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer bg-white">
-                            {r.paces.map((p) => (
+                            {visible.map((p) => (
                               <option key={p.paceNumber} value={p.paceNumber}>PACE {p.paceNumber}{p.quarter ? ` · Q${p.quarter}` : ""}</option>
                             ))}
                           </select>
