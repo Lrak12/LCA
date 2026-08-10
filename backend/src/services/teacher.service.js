@@ -1472,6 +1472,37 @@ export const updatePaceProjectionCell = async (user_id, { student_id, subject, q
     }
   }
 
+  // ── Gate: block advancing past a Failed PACE in this subject ──────────────
+  // A PACE is "Failed" once all MAX_ATTEMPTS official PACE-test attempts are
+  // recorded with none passing (mirrors the status shown in Record Assessments
+  // and the Student Profile modal). Students never skip an unpassed PACE, so the
+  // plan cannot move the start number past an unresolved failed PACE in the
+  // same subject until it's retaken and passed.
+  {
+    const { data: subjSp } = await supabaseAdmin
+      .from("student_pace")
+      .select("sp_id, pace_module!inner(subject, module_number)")
+      .eq("student_id", Number(student_id))
+      .eq("pace_module.subject", subject);
+    const priorSp = (subjSp ?? []).filter((r) => (r.pace_module?.module_number ?? 0) < start);
+    if (priorSp.length) {
+      const { data: attempts } = await supabaseAdmin
+        .from("pace_test_result")
+        .select("sp_id, score, passed")
+        .in("sp_id", priorSp.map((r) => r.sp_id))
+        .not("score", "is", null);
+      const attemptsBySp = new Map();
+      (attempts ?? []).forEach((a) => { const arr = attemptsBySp.get(a.sp_id) ?? []; arr.push(a); attemptsBySp.set(a.sp_id, arr); });
+      const failedRow = priorSp.find((r) => {
+        const arr = attemptsBySp.get(r.sp_id) ?? [];
+        return arr.length >= MAX_ATTEMPTS && !arr.some((a) => a.passed === true || (a.score != null && a.score >= ASSESS_PASS_MARK));
+      });
+      if (failedRow) {
+        throw new Error(`Cannot assign PACE ${start} — ${subject} PACE ${failedRow.pace_module.module_number} was failed (${MAX_ATTEMPTS} attempts, none passing) and must be resolved before advancing`);
+      }
+    }
+  }
+
   // NOTE: pace_module/student_pace rows are no longer created here — they are
   // created lazily when a score is first recorded for a projected PACE.
 
@@ -2580,6 +2611,14 @@ function _currentQuarter(startDate) {
 
 // The "View Student" academic record modal: profile, average/points/rank, PACE
 // completion + attendance summaries, the per-subject grade grid, remarks, etc.
+// Score → remark text, kept identical to the student dashboard's Completed PACEs
+// table (student.service.paceRemark) so the per-quarter detailed view agrees with it.
+function paceRemark(score) {
+  if (!score) return "—";
+  // 90 is the pass mark: passing = "Excellent performance", failing = "Needs improvement".
+  return score >= 90 ? "Excellent performance." : "Needs improvement.";
+}
+
 export const getStudentAcademicRecord = async (user_id, student_id) => {
   const { teacher, student } = await _ownedStudent(user_id, student_id);
 
@@ -2611,7 +2650,7 @@ export const getStudentAcademicRecord = async (user_id, student_id) => {
   if (spIds.length) {
     const { data: tr } = await supabaseAdmin
       .from("pace_test_result")
-      .select("sp_id, score, date_taken, passed, quarter")
+      .select("sp_id, score, date_taken, passed, quarter, notes")
       .in("sp_id", spIds)
       .not("score", "is", null)
       .order("date_taken", { ascending: true });
@@ -2696,14 +2735,33 @@ export const getStudentAcademicRecord = async (user_id, student_id) => {
     const quarters = [1, 2, 3, 4].map((q) => {
       const start = projByKey.get(`${subj}|${q}`);
       const cells = [0, 1, 2].map((i) => {
-        if (start == null) return { pace: null, score: null, status: "Not Started" };
+        if (start == null) return { pace: null, score: null, status: "Not Started", assignedDate: null, completedDate: null, remarks: null };
         const num = start + i;
         const sp  = spBySubjModule.get(`${subj}|${num}`);
         const t   = sp ? latestTest(sp.sp_id) : null;
+        const score = t?.score ?? null;
+        // Status finalizes from the recorded PACE-test attempts (max 3). A passing
+        // attempt (>= 90) completes the PACE; once all 3 attempts are recorded with
+        // none passing it is "Failed"; before that it is still "Ongoing". This is why
+        // a failed PACE only flips to Failed after the supervisor records attempt #3.
+        const attempts  = sp ? (testsBySp.get(sp.sp_id) ?? []) : [];
+        const passedAny = attempts.some((a) => a.passed === true || (a.score != null && a.score >= ASSESS_PASS_MARK));
         const status = !sp ? "Not Started"
-          : sp.status === "Completed" ? "Completed"
-          : sp.status === "In Progress" ? "Ongoing" : "Not Started";
-        return { pace: num, score: t?.score ?? null, status };
+          : (passedAny || sp.status === "Completed") ? "Completed"
+          : attempts.length >= MAX_ATTEMPTS ? "Failed"
+          : (sp.status === "In Progress" || attempts.length > 0) ? "Ongoing"
+          : "Not Started";
+        // assignedDate/completedDate/remarks feed the per-quarter detailed table view
+        // (the matrix "All Quarters" view only reads pace/score/status). Remarks mirror
+        // the student dashboard's Completed PACEs table (paceRemark).
+        return {
+          pace: num,
+          score,
+          status,
+          assignedDate:  sp?.assigned_date ?? null,
+          completedDate: sp?.completion_date ?? null,
+          remarks:       paceRemark(score),
+        };
       });
       const scores = cells.map((c) => c.score).filter((v) => v != null);
       const total  = scores.length ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 100) / 100 : null;
@@ -2850,6 +2908,45 @@ export const saveSupervisorNote = async (user_id, student_id, note) => {
     const { error } = await supabaseAdmin
       .from("student_academic_remarks")
       .insert({ student_id: student.student_id, sy_id: sy.sy_id, recorded_by: teacher.teacher_id, quarter, supervisor_comments: note });
+    if (error) throw new Error(error.message);
+  }
+  return { saved: true };
+};
+
+// Saves the supervisor's Bible Memory rating + Reading WPM (student_academic_remarks)
+// for the current quarter — same row/upsert pattern as saveSupervisorNote.
+export const saveAcademicRemarks = async (user_id, student_id, { bible_memory_rating, reading_wpm } = {}) => {
+  const { teacher, student } = await _ownedStudent(user_id, student_id);
+  const { data: sy } = await supabaseAdmin
+    .from("school_year").select("sy_id, start_date").eq("is_active", true).maybeSingle();
+  if (!sy) throw new Error("No active school year");
+  const quarter = _currentQuarter(sy.start_date);
+
+  // Bible Memory is a numeric score (0-100), same shape as Reading WPM — not a category rating.
+  const bibleScore = bible_memory_rating === "" || bible_memory_rating == null ? null : Number(bible_memory_rating);
+  if (bibleScore != null && (isNaN(bibleScore) || bibleScore < 0 || bibleScore > 100)) throw new Error("Bible Memory score must be between 0 and 100");
+  const wpm = reading_wpm === "" || reading_wpm == null ? null : Number(reading_wpm);
+  if (wpm != null && (isNaN(wpm) || wpm < 0)) throw new Error("Reading WPM must be a non-negative number");
+  const payload = { bible_memory_rating: bibleScore, reading_wpm: wpm };
+
+  const { data: existing } = await supabaseAdmin
+    .from("student_academic_remarks")
+    .select("sar_id")
+    .eq("student_id", student.student_id)
+    .eq("sy_id", sy.sy_id)
+    .eq("quarter", quarter)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await supabaseAdmin
+      .from("student_academic_remarks")
+      .update(payload)
+      .eq("sar_id", existing.sar_id);
+    if (error) throw new Error(error.message);
+  } else {
+    const { error } = await supabaseAdmin
+      .from("student_academic_remarks")
+      .insert({ student_id: student.student_id, sy_id: sy.sy_id, recorded_by: teacher.teacher_id, quarter, ...payload });
     if (error) throw new Error(error.message);
   }
   return { saved: true };
@@ -3051,12 +3148,15 @@ export const getStudentAssessments = async (user_id, student_id) => {
       const selfNeedsIntervention = !selfReady && selfAtt.length >= MAX_ATTEMPTS; // 3 tries, none passed
       const pacePassed  = passedAny(paceAtt);
 
-      // Status precedence: PACE passed > PACE attempted > self-test ready > not ready.
+      // Status precedence: PACE passed > all 3 attempts failed > PACE attempted >
+      // self-test ready > not ready. Once the final (3rd) PACE test is recorded with
+      // none passing, the PACE is "Failed"; 1–2 failing attempts are still "In Progress".
       let status;
-      if (pacePassed)            status = "Completed";
-      else if (paceAtt.length)   status = "In Progress";
-      else if (selfReady)        status = "Ready";
-      else                       status = "Not Ready";
+      if (pacePassed)                          status = "Completed";
+      else if (paceAtt.length >= MAX_ATTEMPTS)  status = "Failed";
+      else if (paceAtt.length)                 status = "In Progress";
+      else if (selfReady)                      status = "Ready";
+      else                                     status = "Not Ready";
 
       return {
         sp_id:        p.sp_id,

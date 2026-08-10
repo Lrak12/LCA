@@ -145,7 +145,7 @@ export default function StudentMonitoring() {
 
         {/* Second stat row — PACE Completion Rate removed; Top Performer hidden (kept
             below, commented out, so it's easy to bring back) but not rendered. */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-6">
           {/*
           <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 p-5">
             <div className="flex items-center gap-2 mb-1">
@@ -156,6 +156,7 @@ export default function StudentMonitoring() {
             <p className="text-[11px] text-purple-600 font-bold mt-1">{stats.topPerformer ? `${pct(stats.topPerformer.completionRate)} Completion Rate` : "No data"}</p>
           </div>
           */}
+          {/*
           <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 p-5">
             <div className="flex items-center gap-2 mb-1">
               <span className="material-symbols-outlined text-blue-500" style={fillStyle}>insights</span>
@@ -164,6 +165,7 @@ export default function StudentMonitoring() {
             <p className="text-2xl font-extrabold text-on-surface mt-1">{pct(stats.avgPaceProgress)}</p>
             <p className="text-[11px] text-on-surface-variant font-bold">Across all students</p>
           </div>
+           */}
           <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 p-5">
             <div className="flex items-center gap-2 mb-1">
               <span className="material-symbols-outlined text-red-500" style={fillStyle}>error</span>

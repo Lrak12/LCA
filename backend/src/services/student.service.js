@@ -93,10 +93,8 @@ async function getTeacherNamesByIds(teacherIds) {
 /** Friendly remark based on a final score */
 function paceRemark(score) {
   if (!score) return "—";
-  if (score >= 90) return "Great job! Keep it up.";
-  if (score >= 80) return "Excellent performance.";
-  if (score >= 75) return "Good work!";
-  return "Needs improvement.";
+  // 90 is the pass mark: passing = "Excellent performance", failing = "Needs improvement".
+  return score >= 90 ? "Excellent performance." : "Needs improvement.";
 }
 
 /**

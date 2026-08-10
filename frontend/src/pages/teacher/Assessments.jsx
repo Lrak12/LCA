@@ -27,9 +27,10 @@ const fmtDate = (iso) => {
   return isNaN(d) ? "—" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 };
 
-// STATUS_BADGE - pill colours per PACE row status (Completed / Ready / In Progress / Not Ready).
+// STATUS_BADGE - pill colours per PACE row status (Completed / Failed / Ready / In Progress / Not Ready).
 const STATUS_BADGE = {
   "Completed":   "bg-emerald-100 text-emerald-700",
+  "Failed":      "bg-red-100 text-red-700",
   "Ready":       "bg-green-100 text-green-700",
   "In Progress": "bg-amber-100 text-amber-700",
   "Not Ready":   "bg-red-100 text-red-600",

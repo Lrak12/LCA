@@ -30,6 +30,7 @@ router.get("/account/support-requests",  requireRole("teacher"), AccountControll
 router.post("/account/support-requests", requireRole("teacher"), AccountController.createSupportRequest);
 router.get("/student-record",     requireRole("teacher"), TeacherController.getStudentAcademicRecord);
 router.post("/student-record/note", requireRole("teacher"), TeacherController.saveSupervisorNote);
+router.post("/student-record/remarks", requireRole("teacher"), TeacherController.saveAcademicRemarks);   // Bible Memory + Reading WPM
 router.post("/student-record/ready-next", requireRole("teacher"), TeacherController.markReadyForNext);
 router.patch("/student-record/:id/profile", requireRole("teacher"), TeacherController.updateStudentProfile); // supervisor edits student info
 router.patch("/student-record/grade", requireRole("teacher"), TeacherController.setPaceScore);              // inline grade edit

@@ -51,6 +51,9 @@ export const fetchStudentAcademicRecord = (student_id) =>
 export const saveSupervisorNote = (student_id, note) =>
   client.post("/teacher/student-record/note", { student_id, note });
 
+export const saveAcademicRemarks = (student_id, payload) =>
+  client.post("/teacher/student-record/remarks", { student_id, ...payload });
+
 export const markReadyForNext = (student_id) =>
   client.post("/teacher/student-record/ready-next", { student_id });
 

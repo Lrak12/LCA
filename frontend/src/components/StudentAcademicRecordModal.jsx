@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import {fetchStudentAcademicRecord,saveSupervisorNote,markReadyForNext,updateStudentProfile,setPaceScore,} from "../api/teacher.js";
+import {fetchStudentAcademicRecord,saveSupervisorNote,saveAcademicRemarks,markReadyForNext,updateStudentProfile,setPaceScore,} from "../api/teacher.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 const fmtDate = (iso) => {
@@ -24,6 +24,12 @@ export default function StudentAcademicRecordModal({ studentId, onClose }) {
   const [noteMsg, setNoteMsg] = useState(null); // { ok, text } feedback after Save Note
   const [readying, setReadying] = useState(false);
 
+  // ── Bible Memory / Reading WPM (supervisor-recorded, current quarter) ─────────
+  const [bibleMemory, setBibleMemory] = useState("");
+  const [readingWpm,  setReadingWpm]  = useState("");
+  const [savingRemarks, setSavingRemarks] = useState(false);
+  const [remarksMsg, setRemarksMsg] = useState(null); // { ok, text } feedback after Save
+
   // ── Edit mode (supervisor edits profile fields + grades) ──────────────────────
   const [editMode, setEditMode]       = useState(false);
   const [profileForm, setProfileForm] = useState(null); // { first_name, last_name, dateOfBirth, gender, address, contact }
@@ -40,6 +46,8 @@ export default function StudentAcademicRecordModal({ studentId, onClose }) {
         const d = res.data ?? null;
         setData(d);
         setNote(d?.note ?? "");
+        setBibleMemory(d?.remarks?.bibleMemory ?? "");
+        setReadingWpm(d?.remarks?.readingWpm != null ? String(d.remarks.readingWpm) : "");
         if (d?.subjects?.length) setSubject((s) => s ?? d.subjects[0]);
       })
       .catch((err) => setError(err.response?.data?.message ?? err.message ?? "Failed to load."))
@@ -58,6 +66,19 @@ export default function StudentAcademicRecordModal({ studentId, onClose }) {
       setNoteMsg({ ok: false, text: err.response?.data?.message ?? err.message ?? "Failed to save note." });
     } finally {
       setSavingNote(false);
+    }
+  };
+  const handleSaveRemarks = async () => {
+    setSavingRemarks(true);
+    setRemarksMsg(null);
+    try {
+      await saveAcademicRemarks(studentId, { bible_memory_rating: bibleMemory === "" ? null : Number(bibleMemory), reading_wpm: readingWpm === "" ? null : Number(readingWpm) });
+      setRemarksMsg({ ok: true, text: "Saved." });
+      load();
+    } catch (err) {
+      setRemarksMsg({ ok: false, text: err.response?.data?.message ?? err.message ?? "Failed to save." });
+    } finally {
+      setSavingRemarks(false);
     }
   };
   const handleReady = async () => {
@@ -251,6 +272,42 @@ export default function StudentAcademicRecordModal({ studentId, onClose }) {
                         </select>
                       </div>
                     </div>
+                    {quarter !== "all" ? (
+                      /* Per-quarter detailed view (one row per PACE) */
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant border-b border-outline-variant/15">
+                              <th className="px-3 py-2 text-left">PACE No.</th>
+                              <th className="px-3 py-2 text-left">Date Assigned</th>
+                              <th className="px-3 py-2 text-left">Date Completed</th>
+                              <th className="px-3 py-2 text-center">Score</th>
+                              <th className="px-3 py-2 text-center">Status</th>
+                              <th className="px-3 py-2 text-left">Remarks</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(quartersShown[0]?.cells ?? []).filter((c) => c.pace != null).map((c, i) => (
+                              <tr key={i} className="border-b border-outline-variant/10">
+                                <td className="px-3 py-3 text-sm font-bold text-on-surface">{c.pace}</td>
+                                <td className="px-3 py-3 text-sm text-on-surface-variant">{fmtDate(c.assignedDate)}</td>
+                                <td className="px-3 py-3 text-sm text-on-surface-variant">{fmtDate(c.completedDate)}</td>
+                                <td className="px-3 py-3 text-center">
+                                  {c.score != null
+                                    ? <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${c.score >= 90 ? "bg-green-100 text-green-700" : "bg-surface-container text-on-surface"}`}>{c.score}</span>
+                                    : <span className="text-on-surface-variant/50">—</span>}
+                                </td>
+                                <td className="px-3 py-3 text-center"><StatusPill status={c.status} /></td>
+                                <td className="px-3 py-3 text-sm text-on-surface-variant">{c.remarks || "—"}</td>
+                              </tr>
+                            ))}
+                            {(quartersShown[0]?.cells ?? []).filter((c) => c.pace != null).length === 0 && (
+                              <tr><td colSpan={6} className="px-3 py-6 text-center text-sm text-on-surface-variant">No PACEs for this quarter.</td></tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
@@ -299,9 +356,28 @@ export default function StudentAcademicRecordModal({ studentId, onClose }) {
                         </tbody>
                       </table>
                     </div>
-                    <div className="flex items-center gap-6 mt-3 text-sm">
-                      <span className="text-on-surface-variant">Bible Memory: <strong className="text-on-surface">{data?.remarks?.bibleMemory ?? "—"}</strong></span>
-                      <span className="text-on-surface-variant">Reading WPM: <strong className="text-on-surface">{data?.remarks?.readingWpm ?? "—"}</strong></span>
+                    )}
+                    <div className="flex items-end gap-4 mt-3 text-sm flex-wrap">
+                      <label className="flex items-center gap-2">
+                        <span className="text-on-surface-variant">Bible Memory:</span>
+                        <input type="number" min="0" max="100" value={bibleMemory} onChange={(e) => setBibleMemory(e.target.value)}
+                          className="w-20 text-sm font-bold text-on-surface border border-gray-200 rounded-lg px-2 py-1 text-center focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <span className="text-on-surface-variant">Reading WPM:</span>
+                        <input type="number" min="0" value={readingWpm} onChange={(e) => setReadingWpm(e.target.value)}
+                          className="w-20 text-sm font-bold text-on-surface border border-gray-200 rounded-lg px-2 py-1 text-center focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                      </label>
+                      <button onClick={handleSaveRemarks} disabled={savingRemarks}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-[#0d1b2e] text-white hover:opacity-90 disabled:opacity-50">
+                        {savingRemarks ? <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <span className="material-symbols-outlined text-sm" style={fillStyle}>save</span>}
+                        {savingRemarks ? "Saving…" : "Save"}
+                      </button>
+                      {remarksMsg && (
+                        <span className={`text-[11px] font-semibold flex items-center gap-1 ${remarksMsg.ok ? "text-green-600" : "text-red-600"}`}>
+                          <span className="material-symbols-outlined text-xs">{remarksMsg.ok ? "check_circle" : "error"}</span>{remarksMsg.text}
+                        </span>
+                      )}
                     </div>
                   </div>
                 )}
@@ -325,11 +401,6 @@ export default function StudentAcademicRecordModal({ studentId, onClose }) {
                     <span className="material-symbols-outlined text-xs">info</span>Click a grade in the table to edit it.
                   </p>
                 )}
-                <button onClick={handleReady} disabled={readying || data?.readyForNext}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold rounded-xl bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 transition-colors">
-                  <span className="material-symbols-outlined text-base" style={fillStyle}>check_circle</span>
-                  {data?.readyForNext ? "Marked Ready" : readying ? "Saving…" : "Ready for Next PACE"}
-                </button>
               </div>
             </div>
 
@@ -400,6 +471,13 @@ const Cell = ({ cell }) => {
   if (cell.status === "Completed") return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">Completed</span>;
   if (cell.status === "Ongoing") return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-600">Ongoing</span>;
   return <span className="text-[11px] text-on-surface-variant/50">Not Started</span>;
+};
+// Status pill for the per-quarter detailed table (Completed / Ongoing / Not Started).
+const StatusPill = ({ status }) => {
+  if (status === "Completed") return <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-green-100 text-green-700">Completed</span>;
+  if (status === "Ongoing")   return <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-orange-100 text-orange-600">Ongoing</span>;
+  if (status === "Failed")    return <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-red-100 text-red-700">Failed</span>;
+  return <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-500">Not Started</span>;
 };
 const LegendItem = ({ color, title, desc }) => (
   <div className="flex items-start gap-2 mb-2.5">

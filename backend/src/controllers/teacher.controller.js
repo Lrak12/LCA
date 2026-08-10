@@ -191,6 +191,14 @@ export const saveSupervisorNote = asyncHandler(async (req, res) => {
   sendSuccess(res, data, "Note saved");
 });
 
+// saveAcademicRemarks - POST /teacher/student-record/remarks { student_id, bible_memory_rating, reading_wpm }
+export const saveAcademicRemarks = asyncHandler(async (req, res) => {
+  const { student_id, bible_memory_rating, reading_wpm } = req.body;
+  if (!student_id) return res.status(400).json({ message: "student_id is required" });
+  const data = await TeacherService.saveAcademicRemarks(req.user.user_id, parseInt(student_id, 10), { bible_memory_rating, reading_wpm });
+  sendSuccess(res, data, "Remarks saved");
+});
+
 export const markReadyForNext = asyncHandler(async (req, res) => {
   const { student_id } = req.body;
   if (!student_id) return res.status(400).json({ message: "student_id is required" });
