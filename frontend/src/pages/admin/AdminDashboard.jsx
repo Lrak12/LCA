@@ -40,7 +40,9 @@ const STAT_CARDS = [
   { key: "totalUsers",  label: "Total Users",  icon: "groups",       iconBg: "bg-blue-100",   iconColor: "text-blue-600"   },
   { key: "activeUsers", label: "Active Users", icon: "verified_user", iconBg: "bg-green-100",  iconColor: "text-green-600"  },
   { key: "newUsers",    label: "New Users",    icon: "person_add",   iconBg: "bg-purple-100", iconColor: "text-purple-600" },
-  { key: "auditEvents", label: "Audit Events", icon: "description",  iconBg: "bg-amber-100",  iconColor: "text-amber-600"  },
+  // Hidden for panel — Audit Logs page is out of scope. Uncomment with the grid back at
+  // xl:grid-cols-4; the backend still returns stats.auditEvents either way.
+  // { key: "auditEvents", label: "Audit Events", icon: "description",  iconBg: "bg-amber-100",  iconColor: "text-amber-600"  },
 ];
 
 // Map an activity title to an icon
@@ -110,9 +112,9 @@ export default function AdminDashboard() {
         )}
 
         {/* Stat cards - map STAT_CARDS to the matching `stats` value (skeletons while loading) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-8">
           {loading
-            ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-32" />)
+            ? Array.from({ length: STAT_CARDS.length }).map((_, i) => <Skeleton key={i} className="h-32" />)
             : STAT_CARDS.map((c) => (
                 <div key={c.key} className="bg-white rounded-2xl p-6 border border-outline-variant/20 shadow-sm">
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-4 ${c.iconBg}`}>

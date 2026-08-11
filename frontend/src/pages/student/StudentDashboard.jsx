@@ -226,14 +226,13 @@ export default function StudentDashboard() {
             Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-40" />)
           ) : (
             <>
+              {/* No badges: the trend text was hardcoded, nothing computes a delta. */}
               <StatCard
                 icon="check_circle"
                 iconBg="bg-green-100"
                 iconColor="text-green-600"
                 label="Completed PACEs"
                 value={paceStats.completed}
-                badge="+1 This Week"
-                badgeColor="bg-green-100 text-green-700"
               />
               <StatCard
                 icon="pending"
@@ -241,8 +240,6 @@ export default function StudentDashboard() {
                 iconColor="text-amber-600"
                 label="Ongoing PACEs"
                 value={paceStats.ongoing}
-                badge="No Change"
-                badgeColor="bg-slate-100 text-slate-500"
               />
               <StatCard
                 icon="hourglass_empty"
@@ -250,8 +247,6 @@ export default function StudentDashboard() {
                 iconColor="text-blue-600"
                 label="Remaining PACEs"
                 value={paceStats.remaining}
-                badge="+1 From Last Update"
-                badgeColor="bg-blue-100 text-blue-700"
               />
               {/* Overall Score card hidden for now - the average is not school-year scoped and the
                   badge is hardcoded (see student.service.js > getStudentDashboard ~line 1610).
@@ -365,9 +360,6 @@ export default function StudentDashboard() {
           <article className="bg-white rounded-2xl p-6 shadow-sm border border-outline-variant/20">
             <div className="flex items-center justify-between mb-5">
               <h3 className="font-headline text-lg font-extrabold text-primary">Announcements</h3>
-              <span className="text-[9px] font-extrabold tracking-widest uppercase px-2.5 py-1 rounded-full bg-green-100 text-green-700">
-                Live
-              </span>
             </div>
 
             {loading ? (
