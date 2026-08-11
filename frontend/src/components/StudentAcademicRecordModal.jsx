@@ -8,6 +8,8 @@ const fmtDate = (iso) => {
   return isNaN(d) ? "—" : d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 };
 const QLABEL = ["1st Quarter", "2nd Quarter", "3rd Quarter", "4th Quarter"];
+// Each quarter holds 3 PACEs; the grid labels them by position, not by module number.
+const PACE_ORDINALS = ["1st PACE", "2nd PACE", "3rd PACE"];
 
 // "View Student" academic record modal (opened from the supervisor Student
 // Monitoring page). Loads everything from GET /teacher/student-record
@@ -142,7 +144,6 @@ export default function StudentAcademicRecordModal({ studentId, onClose }) {
   const subjects = data?.subjects ?? [];
   const g   = subject ? data?.grades?.[subject] : null;
   const quartersShown = (g?.quarters ?? []).filter((q) => quarter === "all" || String(q.quarter) === String(quarter));
-  const headerPaces = (g?.quarters?.[0]?.cells ?? []).map((c) => c.pace);
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-sm overflow-y-auto py-6">
@@ -313,7 +314,10 @@ export default function StudentAcademicRecordModal({ studentId, onClose }) {
                         <thead>
                           <tr className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant border-b border-outline-variant/15">
                             <th className="px-3 py-2 text-left"></th>
-                            {[0, 1, 2].map((i) => <th key={i} className="px-3 py-2 text-center">PACE {headerPaces[i] ?? i + 1}</th>)}
+                            {/* Ordinal headers, not PACE numbers: this table stacks every quarter and
+                                each quarter runs a different PACE range, so one quarter's numbers can
+                                never label the whole column. Column i = that quarter's i-th PACE. */}
+                            {PACE_ORDINALS.map((label, i) => <th key={i} className="px-3 py-2 text-center">{label}</th>)}
                             <th className="px-3 py-2 text-center">Total Score</th>
                           </tr>
                         </thead>

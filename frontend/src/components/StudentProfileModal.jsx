@@ -357,11 +357,12 @@ export default function StudentProfileModal({ student, onClose }) {
                         return (
                           <tr key={row.label} className="hover:bg-surface-container-lowest transition-colors">
                             <td className="px-5 py-4 text-sm font-bold text-on-surface whitespace-nowrap">{row.label}</td>
+                            {/* Columns are labelled by position (1st/2nd/3rd PACE) in the header above,
+                                so the cells no longer repeat the module number. It stays on hover for
+                                anyone who needs to know which actual PACE a score belongs to. */}
                             {row.scores.map((score, i) => (
-                              <td key={i} className="px-5 py-4 text-center">
-                                {row.paces?.[i] != null && (
-                                  <p className="text-[10px] font-bold text-slate-400 mb-1 whitespace-nowrap">PACE {row.paces[i]}</p>
-                                )}
+                              <td key={i} className="px-5 py-4 text-center"
+                                title={row.paces?.[i] != null ? `PACE ${row.paces[i]}` : undefined}>
                                 <ScoreCell value={score} />
                               </td>
                             ))}
