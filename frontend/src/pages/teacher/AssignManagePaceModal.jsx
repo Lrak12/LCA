@@ -2,6 +2,12 @@
 // manager: current PACE per subject with status, dates, extensions, completion +
 // points; a form assigns/edits one PACE. Backend: teacher.service
 // getStudentPaceManage / saveStudentPace (/teacher/student-pace-manage).
+//
+// Settled PACEs open read-only. The backend flags each PACE with `locked` (see
+// _isPaceLocked in teacher.service.js ~line 2356): a passed test, a hand-set Completed,
+// or all 3 attempts used with none passing. The flag is per sp_id, so locking one PACE
+// never freezes the rest of the subject. The lock is presentational only - the modal
+// hides Save, but /teacher/student-pace-manage itself still accepts writes.
 import { useState, useEffect, useCallback } from "react";
 import { fetchStudentPaceManage, saveStudentPace } from "../../api/teacher.js";
 
@@ -37,8 +43,13 @@ const fmtDate = (iso) => {
   return isNaN(d) ? "—" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 };
 
+// "Passed" = completed with a passing PACE test on record; "Completed" = marked complete
+// by hand with no test; "Failed" = all 3 attempts used, none passing. All three are locked
+// (read-only) - see the backend's _isPaceLocked. The wording is modal-local on purpose.
 const STATUS_BADGE = {
+  "Passed":          "bg-green-100 text-green-700",
   "Completed":       "bg-green-100 text-green-700",
+  "Failed":          "bg-red-100 text-red-700",
   "Ongoing":         "bg-orange-100 text-orange-700",
   "Overdue":         "bg-red-100 text-red-700",
   "Assigned":        "bg-blue-100 text-blue-700",
@@ -51,8 +62,8 @@ const COMPLETION_BADGE = {
 };
 
 const LEGEND = [
-  { label: "Completed/On-Time",      color: "bg-green-500"  },
-  { label: "Overdue/Incomplete",     color: "bg-red-500"    },
+  { label: "Passed/On-Time",         color: "bg-green-500"  },
+  { label: "Overdue/Failed",         color: "bg-red-500"    },
   { label: "Extended",               color: "bg-purple-500" },
   { label: "Ongoing/Late",           color: "bg-orange-500" },
   { label: "Not Yet Started",        color: "bg-blue-500"   },
@@ -119,7 +130,9 @@ export default function AssignManagePaceModal({ studentId, onClose, onSaved }) {
     });
   }, [data, quarterFilter]);
 
-  // Open the details form for a specific PACE (Manage / View / Assign)
+  // Open the details form for a specific PACE (Manage / View / Assign).
+  // locked comes from the backend per sp_id, so opening a settled PACE gives a read-only
+  // view while the other PACEs in the same subject still open editable.
   const openForm = (subject, pace) => {
     setFormErr("");
     setForm({
@@ -132,7 +145,19 @@ export default function AssignManagePaceModal({ studentId, onClose, onSaved }) {
       start_date:      pace.startDate ?? "",
       end_date:        pace.endDate ?? "",
       extension_count: pace.extensionCount ?? 0,
+      locked:          !!pace.locked,
+      displayStatus:   pace.displayStatus ?? "",
+      completionDate:  pace.completionDate ?? "",
+      attemptsUsed:    pace.attemptsUsed ?? 0,
+      testPassed:      !!pace.testPassed,
     });
+  };
+
+  // Why a PACE is read-only, shown in the form's banner.
+  const lockReason = (f) => {
+    if (f.displayStatus === "Passed") return "This PACE was passed and its result is already recorded, so its details can no longer be edited.";
+    if (f.displayStatus === "Failed") return `All ${f.attemptsUsed} PACE test attempts were recorded with no passing score, so this PACE is closed and can no longer be edited.`;
+    return "This PACE is already marked completed, so its details can no longer be edited.";
   };
 
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -304,57 +329,90 @@ export default function AssignManagePaceModal({ studentId, onClose, onSaved }) {
             {/* Details form */}
             {form && (
               <div className="mt-6 border border-outline-variant/20 rounded-2xl p-6 bg-surface-container-lowest/40">
-                <h4 className="text-sm font-extrabold text-on-surface uppercase tracking-wide mb-5">Assign / Manage PACE Details</h4>
+                <h4 className="text-sm font-extrabold text-on-surface uppercase tracking-wide mb-5">
+                  {form.locked ? "PACE Details" : "Assign / Manage PACE Details"}
+                </h4>
+
+                {/* Locked PACE: say why up front, then render every field as plain text below. */}
+                {form.locked && (
+                  <div className="mb-5 border border-amber-100 bg-amber-50 rounded-xl px-4 py-3 flex gap-2 text-xs text-amber-800">
+                    <span className="material-symbols-outlined text-base shrink-0" style={fillStyle}>lock</span>
+                    <p>{lockReason(form)}</p>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
                   {/* Subject + PACE Number + Title identify the selected PACE — shown read-only, not
                       editable. The PACE is chosen via the table's "Current Pace" selector before this
                       form opens; this form only manages its status, dates, and extensions. */}
                   <Field label="Subject">
-                    <div className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold bg-gray-100 text-on-surface-variant cursor-not-allowed select-none truncate" title={form.subject || ""}>
-                      {form.subject || "—"}
-                    </div>
+                    <ReadOnly title={form.subject || ""}>{form.subject || "—"}</ReadOnly>
                   </Field>
                   <Field label="PACE Number">
-                    <div className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold bg-gray-100 text-on-surface-variant cursor-not-allowed select-none">
-                      {form.pace_number !== "" && form.pace_number != null ? `PACE ${form.pace_number}` : "—"}
-                    </div>
+                    <ReadOnly>{form.pace_number !== "" && form.pace_number != null ? `PACE ${form.pace_number}` : "—"}</ReadOnly>
                   </Field>
                   <Field label="PACE Title">
-                    <div className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-gray-100 text-on-surface-variant cursor-not-allowed select-none truncate" title={form.pace_title || ""}>
-                      {form.pace_title || "—"}
-                    </div>
+                    <ReadOnly title={form.pace_title || ""}>{form.pace_title || "—"}</ReadOnly>
                   </Field>
+                  {/* Status shows the modal wording (Passed / Failed / Completed) once locked,
+                      not the raw student_pace status the dropdown edits. */}
                   <Field label="Status">
-                    <select value={form.status} onChange={(e) => setField("status", e.target.value)}
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20">
-                      {STATUS_OPTS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
+                    {form.locked ? (
+                      <ReadOnly>{form.displayStatus || "—"}</ReadOnly>
+                    ) : (
+                      <select value={form.status} onChange={(e) => setField("status", e.target.value)}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20">
+                        {STATUS_OPTS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    )}
                   </Field>
 
-                  <Field label="Assigned Date *">
-                    <input type="date" value={form.assigned_date ?? ""} onChange={(e) => setField("assigned_date", e.target.value)}
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                  <Field label={form.locked ? "Assigned Date" : "Assigned Date *"}>
+                    {form.locked ? (
+                      <ReadOnly>{fmtDate(form.assigned_date)}</ReadOnly>
+                    ) : (
+                      <input type="date" value={form.assigned_date ?? ""} onChange={(e) => setField("assigned_date", e.target.value)}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                    )}
                   </Field>
                   <Field label="Start Date">
-                    <input type="date" value={form.start_date ?? ""} onChange={(e) => setField("start_date", e.target.value)}
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                    {form.locked ? (
+                      <ReadOnly>{fmtDate(form.start_date)}</ReadOnly>
+                    ) : (
+                      <input type="date" value={form.start_date ?? ""} onChange={(e) => setField("start_date", e.target.value)}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                    )}
                   </Field>
                   <Field label="Expected End Date">
-                    <input type="date" value={form.end_date ?? ""} onChange={(e) => setField("end_date", e.target.value)}
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                    {form.locked ? (
+                      <ReadOnly>{fmtDate(form.end_date)}</ReadOnly>
+                    ) : (
+                      <input type="date" value={form.end_date ?? ""} onChange={(e) => setField("end_date", e.target.value)}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                    )}
                   </Field>
-                  <Field label="Extensions Granted">
-                    <input type="number" min="0" max="99" value={form.extension_count} onChange={(e) => setField("extension_count", e.target.value)}
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20" />
-                  </Field>
+                  {/* Locked view swaps the extensions counter for the completion date - the date is
+                      the useful fact once the PACE is settled, and extensions can no longer change. */}
+                  {form.locked ? (
+                    <Field label="Completion Date">
+                      <ReadOnly>{fmtDate(form.completionDate)}</ReadOnly>
+                    </Field>
+                  ) : (
+                    <Field label="Extensions Granted">
+                      <input type="number" min="0" max="99" value={form.extension_count} onChange={(e) => setField("extension_count", e.target.value)}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                    </Field>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-5">
-                  <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 flex gap-2 text-xs text-blue-800">
-                    <span className="material-symbols-outlined text-base shrink-0" style={fillStyle}>schedule</span>
-                    <p>The system determines completion status (On Time, Late, or Extended) and computes points automatically based on the actual completion date and PACE test result.</p>
-                  </div>
+                  {/* The "system will compute" note only makes sense while the PACE can still change. */}
+                  {!form.locked && (
+                    <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 flex gap-2 text-xs text-blue-800">
+                      <span className="material-symbols-outlined text-base shrink-0" style={fillStyle}>schedule</span>
+                      <p>The system determines completion status (On Time, Late, or Extended) and computes points automatically based on the actual completion date and PACE test result.</p>
+                    </div>
+                  )}
                   <div className="border border-outline-variant/20 rounded-xl px-4 py-3">
                     <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-2">Points Guideline (set by principal)</p>
                     <ul className="text-xs text-on-surface-variant space-y-1">
@@ -372,13 +430,18 @@ export default function AssignManagePaceModal({ studentId, onClose, onSaved }) {
                   </p>
                 )}
 
+                {/* Locked PACE: no Save at all, just dismiss the read-only view. */}
                 <div className="flex justify-end gap-3 mt-6">
-                  <button onClick={() => setForm(null)} className="px-5 py-2.5 text-sm font-bold rounded-xl border border-gray-200 text-on-surface-variant hover:bg-gray-50 transition-colors">Cancel</button>
-                  <button onClick={handleSave} disabled={saving}
-                    className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold rounded-xl bg-[#0d1b2e] text-white hover:opacity-90 disabled:opacity-50 transition-opacity">
-                    {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <span className="material-symbols-outlined text-base" style={fillStyle}>save</span>}
-                    {saving ? "Saving…" : "Save PACE Assignment"}
+                  <button onClick={() => setForm(null)} className="px-5 py-2.5 text-sm font-bold rounded-xl border border-gray-200 text-on-surface-variant hover:bg-gray-50 transition-colors">
+                    {form.locked ? "Close" : "Cancel"}
                   </button>
+                  {!form.locked && (
+                    <button onClick={handleSave} disabled={saving}
+                      className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold rounded-xl bg-[#0d1b2e] text-white hover:opacity-90 disabled:opacity-50 transition-opacity">
+                      {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <span className="material-symbols-outlined text-base" style={fillStyle}>save</span>}
+                      {saving ? "Saving…" : "Save PACE Assignment"}
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -392,6 +455,14 @@ export default function AssignManagePaceModal({ studentId, onClose, onSaved }) {
 const Field = ({ label, children }) => (
   <div>
     <label className="block text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-1.5">{label}</label>
+    {children}
+  </div>
+);
+
+// Greyed-out box used for anything the form shows but does not let you edit.
+const ReadOnly = ({ children, title }) => (
+  <div title={title}
+    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold bg-gray-100 text-on-surface-variant cursor-not-allowed select-none truncate">
     {children}
   </div>
 );

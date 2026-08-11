@@ -121,6 +121,11 @@ function summarizePaceSlots(rows, completedKeys = new Set()) {
       else ongoing++; // ongoing, taken-home, needs-next, etc.
     });
   });
+  // Completion rate = completed slots / every planned slot, as a whole percent.
+  // The denominator is the PLAN, not the work done: 3 slots per pace_quarterly_projection row
+  // (status_r0/r1/r2) across all 4 quarters and all subjects, so it reads as "percent of the
+  // year's PACEs finished so far" and only hits 100 once the whole projection is completed.
+  // A student with no projection rows yet gets 0, not a blank.
   const total = completed + ongoing + remaining;
   const completionRate = total ? Math.round((completed / total) * 100) : 0;
   return { completed, ongoing, remaining, completionRate };
@@ -938,6 +943,18 @@ export const getStudentPace = async (user_id) => {
   });
 
   // Overlay real completions (student_pace + passing tests) onto the projection
+  // This is what feeds the four PACE Progress stat cards, Completion Rate included.
+  //   denominator = the active-year projection slots (rows, from getPaceProjectionRows(sy_id) above)
+  //   numerator   = slots counted completed, which is the projection's own status_r0/r1/r2 PLUS any
+  //                 slot whose "subject::paceNo" is in completedKeys (student_pace.status =
+  //                 'Completed', or a pace_test_result score >= 90 - see effectiveSlotStatus ~line 105)
+  // Known gaps (left as-is for now, flagged for the panel):
+  //   - the plan rows are school-year scoped but the student_pace query (~line 892) is not, so a
+  //     returning student's older PACE with the same subject + module_number can mark this year's
+  //     slot complete. Matching is by subject + pace number, not by sp_id.
+  //   - a PACE the supervisor never planned (assigned outside the projection) does not raise the
+  //     rate at all - it is not in the denominator, so only planned slots ever count.
+  // The "100% Last Completion" badge on the card is hardcoded in the JSX, not computed here.
   const { completed, ongoing, remaining, completionRate } = summarizePaceSlots(rows, completedKeys);
 
   const teacherNames = await getTeacherNamesByIds(rows.map((r) => r.recorded_by));
@@ -1607,6 +1624,16 @@ export const getStudentDashboard = async (user_id) => {
   }
 
   // Overall score — average of all pace test results for this student
+  // Source: pace_test_result.score, joined to the student through student_pace.sp_id (spIds above).
+  // Straight unweighted mean of every row, rounded to 1 decimal; 0 when the student has no tests yet.
+  // Known gaps (left as-is for now, flagged for the panel):
+  //   - not school-year scoped. The student_pace query (~line 1567) filters on student_id only, no
+  //     sy_id, so a returning student's average still includes last year's PACE tests. paceStats and
+  //     paceChart above DO use the active sy_id, so this card can disagree with the rest of the page.
+  //   - every row counts equally, retakes and failed attempts included - there is no "latest attempt
+  //     only" or pass-only (>= 90) filter here.
+  //   - check_up_result does NOT feed this number; it only fed currentPace.latestCheckup.
+  // The "+2.4% From Last Assessment" badge on the card is hardcoded in the JSX, not computed here.
   const overallScore = allPaceTests.length
     ? Math.round((allPaceTests.reduce((s, t) => s + t.score, 0) / allPaceTests.length) * 10) / 10
     : 0;

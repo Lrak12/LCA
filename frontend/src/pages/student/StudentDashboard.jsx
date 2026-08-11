@@ -1,7 +1,7 @@
 // Student Dashboard (student): the landing page after a student logs in. Shows the
-// greeting, PACE stat cards (completed / in-progress / remaining), current-PACE
-// progress + latest check-up, an overall score, a per-quarter PACE chart, and the
-// latest student-facing announcements. Read-only - this is "View learning progress".
+// greeting, PACE stat cards (completed / in-progress / remaining), the current PACE
+// module (subject / module / status), an overall score, a per-quarter PACE chart, and
+// the latest student-facing announcements. Read-only - this is "View learning progress".
 //
 // Backend chain (dashboard load):
 //   useEffect -> fetchStudentDashboard (api/student.js)         GET /student/dashboard
@@ -13,7 +13,7 @@
 //          - pace_quarterly_projection : the 4-quarter plan slots (getPaceProjectionRows ~line 34)
 //                                        -> completed / ongoing / remaining counts + Q1-Q4 chart
 //          - student_pace + pace_module : map each PACE to its subject
-//          - pace_test_result + check_up_result : current-PACE progress + overall score
+//          - pace_test_result + check_up_result : overall score
 //          - announcement      : latest active rows for audience All/Student
 //   Returns one JSON blob; the page just renders it (no further storing).
 import { useState, useEffect } from "react";
@@ -177,8 +177,12 @@ export default function StudentDashboard() {
   ];
 
   const paceStats     = data?.paceStats     ?? { completed: 5, ongoing: 2, remaining: 3 };
+  // Overall score: average of every pace_test_result.score for this student (student.service.js
+  // > getStudentDashboard ~line 1610). Caveats are noted there - it is not school-year scoped and
+  // counts retakes. The 88.6 here is only the placeholder shown if the API returns nothing.
+  // Kept around while the Overall Score card below is commented out; the backend still sends it.
   const overallScore  = data?.overallScore  ?? 88.6;
-  const currentPace   = data?.currentPace   ?? { subject: "Mathematics", module: "Math 4B", status: "In Progress", progress: 72, latestCheckup: 85 };
+  const currentPace   = data?.currentPace   ?? { subject: "Mathematics", module: "Math 4B", status: "In Progress" };
   const announcements = data?.announcements ?? [
     { id: 1, icon: "schedule",    iconBg: "bg-slate-100",  iconColor: "text-slate-600", title: "Submission of Incomplete PACEs", meta: "30 minutes ago • Teacher"     },
     { id: 2, icon: "assignment",  iconBg: "bg-amber-100",  iconColor: "text-amber-600", title: "PACE Test Schedule Released",    meta: "45 minutes ago • Teacher"     },
@@ -217,9 +221,9 @@ export default function StudentDashboard() {
         </header>
 
         {/* ── Stat Cards ──────────────────────────────────────────── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-8">
           {loading ? (
-            Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-40" />)
+            Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-40" />)
           ) : (
             <>
               <StatCard
@@ -249,15 +253,19 @@ export default function StudentDashboard() {
                 badge="+1 From Last Update"
                 badgeColor="bg-blue-100 text-blue-700"
               />
-              <StatCard
-                icon="verified"
-                iconBg=""
-                iconColor=""
-                label="Overall Score"
-                value={`${overallScore}%`}
-                badge="+2.4% From Last Assessment"
-                dark
-              />
+              {/* Overall Score card hidden for now - the average is not school-year scoped and the
+                  badge is hardcoded (see student.service.js > getStudentDashboard ~line 1610).
+                  Uncomment with the grid back at xl:grid-cols-4 and the skeleton count back at 4.
+                <StatCard
+                  icon="verified"
+                  iconBg=""
+                  iconColor=""
+                  label="Overall Score"
+                  value={`${overallScore}%`}
+                  badge="+2.4% From Last Assessment"
+                  dark
+                />
+              */}
             </>
           )}
         </div>
@@ -313,8 +321,8 @@ export default function StudentDashboard() {
             ) : (
               <div className="overflow-x-auto">
                 {/* Column headers */}
-                <div className="grid grid-cols-5 gap-4 mb-4 min-w-[440px]">
-                  {["Subject", "Module", "Status", "Progress", "Latest Check-up Score"].map((h) => (
+                <div className="grid grid-cols-3 gap-4 mb-4 min-w-[440px]">
+                  {["Subject", "Module", "Status"].map((h) => (
                     <p key={h} className="text-[13px] font-extrabold tracking-widest uppercase text-on-surface-variant text-center">
                       {h}
                     </p>
@@ -322,7 +330,7 @@ export default function StudentDashboard() {
                 </div>
 
                 {/* Row */}
-                <div className="grid grid-cols-5 gap-4 items-center min-w-[440px]">
+                <div className="grid grid-cols-3 gap-4 items-center min-w-[440px]">
                   {/* Subject */}
                   <div className="flex flex-col items-center gap-2">
                     <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${subjectStyle.bg}`}>
@@ -347,22 +355,6 @@ export default function StudentDashboard() {
                       <span className="material-symbols-outlined text-xl text-green-600" style={fillStyle}>sync</span>
                     </div>
                     <p className="text-sm font-extrabold text-on-surface text-center">{currentPace.status}</p>
-                  </div>
-
-                  {/* Progress */}
-                  <div className="flex flex-col items-center gap-2">
-                    <div className="w-11 h-11 rounded-xl bg-amber-100 flex items-center justify-center">
-                      <span className="material-symbols-outlined text-xl text-amber-600" style={fillStyle}>bar_chart</span>
-                    </div>
-                    <p className="text-sm font-extrabold text-on-surface text-center">{currentPace.progress}%</p>
-                  </div>
-
-                  {/* Latest Checkup */}
-                  <div className="flex flex-col items-center gap-2">
-                    <div className="w-11 h-11 rounded-xl bg-purple-100 flex items-center justify-center">
-                      <span className="material-symbols-outlined text-xl text-purple-600" style={fillStyle}>bar_chart</span>
-                    </div>
-                    <p className="text-sm font-extrabold text-on-surface text-center">{currentPace.latestCheckup}%</p>
                   </div>
                 </div>
               </div>

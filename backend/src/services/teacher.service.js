@@ -2353,9 +2353,26 @@ async function _ownedStudent(user_id, student_id) {
   return { teacher, student };
 }
 
-const _displayStatus = (sp) => {
+// A PACE is settled once there is nothing left to manage on it, so the Assign/Manage
+// modal shows it read-only. Two ways to get there, both judged per PACE (per sp_id),
+// never per subject - the other PACEs in the same subject stay editable:
+//   1. status "Completed" - recordPaceTest (~line 3349) sets this on a passing test,
+//      and a supervisor can also set it by hand here.
+//   2. all MAX_ATTEMPTS official attempts recorded with none passing = failed out.
+//      Same rule as the advance-gate at ~line 1577, so both agree on what "Failed" means.
+// `test` is { attempts, passed } from the tally in getStudentPaceManage below.
+const _isPaceLocked = (sp, test) => {
+  if (!sp) return false;                                   // nothing assigned yet
+  if (sp.status === "Completed") return true;
+  return !!test && test.attempts >= MAX_ATTEMPTS && !test.passed;
+};
+// Status wording for THIS modal only (the badge + the read-only Status field).
+// "Completed" reads as "Passed" when a passing test actually backs it; a hand-set
+// Completed with no test on record keeps saying "Completed" since nothing was passed.
+const _displayStatus = (sp, test) => {
   if (!sp) return "Not Yet Started";
-  if (sp.status === "Completed") return "Completed";
+  if (sp.status === "Completed") return test?.passed ? "Passed" : "Completed";
+  if (_isPaceLocked(sp, test)) return "Failed";            // attempts used up, none passing
   // Past the expected end date and still unfinished → Overdue (regardless of
   // whether it was started). The completion status/points are computed only on
   // completion, so an incomplete PACE would otherwise sit as "Assigned" forever.
@@ -2367,9 +2384,9 @@ const _displayStatus = (sp) => {
   if (sp.status === "In Progress") return "Ongoing";
   return "Assigned";
 };
-const _action = (sp) => {
+const _action = (sp, test) => {
   if (!sp) return "Assign";
-  return sp.status === "Completed" ? "View" : "Manage";
+  return _isPaceLocked(sp, test) ? "View" : "Manage";
 };
 
 // getStudentPaceManage - data for the Assign/Manage modal. Returns { student, stats
@@ -2391,6 +2408,26 @@ export const getStudentPaceManage = async (user_id, student_id) => {
     .select("sp_id, status, assigned_date, start_date, end_date, completion_date, completion_status, extension_count, points_earned, pace_module(subject, module_number, module_name)")
     .eq("student_id", student.student_id)
     .order("assigned_date", { ascending: false });
+
+  // Official PACE-test attempts per assigned PACE, for the locked/Passed/Failed wording
+  // below. Only rows with a real score count - request/schedule rows share this table
+  // with score null and must not consume an attempt (same rule recordPaceTest enforces).
+  const testBySp = new Map();   // sp_id -> { attempts, passed }
+  const allSpIds = (paces ?? []).map((p) => p.sp_id);
+  if (allSpIds.length) {
+    const { data: attempts } = await supabaseAdmin
+      .from("pace_test_result")
+      .select("sp_id, score, passed")
+      .in("sp_id", allSpIds)
+      .not("score", "is", null);
+    (attempts ?? []).forEach((a) => {
+      const t = testBySp.get(a.sp_id) ?? { attempts: 0, passed: false };
+      t.attempts += 1;
+      // passed flag OR a score at/above the pass mark - mirrors the advance-gate check
+      if (a.passed === true || (a.score != null && a.score >= ASSESS_PASS_MARK)) t.passed = true;
+      testBySp.set(a.sp_id, t);
+    });
+  }
 
   // Projection (the plan) — for subjects not yet executed + suggested start PACE
   const { data: projections } = await supabaseAdmin
@@ -2464,27 +2501,36 @@ export const getStudentPaceManage = async (user_id, student_id) => {
   });
   const paceQuarter = (subj, n) => projectedPaces[subj]?.get(n) ?? null;
 
-  const mapPace = (subj, sp) => ({
-    sp_id:            sp.sp_id,
-    paceNumber:       sp.pace_module?.module_number ?? null,
-    paceTitle:        sp.pace_module?.module_name ?? null,
-    status:           sp.status ?? null,
-    displayStatus:    _displayStatus(sp),
-    assignedDate:     sp.assigned_date ?? null,
-    startDate:        sp.start_date ?? null,
-    endDate:          sp.end_date ?? null,
-    completionDate:   sp.completion_date ?? null,
-    completionStatus: sp.completion_status ?? null,
-    extensionCount:   sp.extension_count ?? 0,
-    points:           sp.points_earned ?? 0,
-    action:           _action(sp),
-    quarter:          paceQuarter(subj, sp.pace_module?.module_number),
-  });
+  const mapPace = (subj, sp) => {
+    const test = testBySp.get(sp.sp_id) ?? null;
+    return {
+      sp_id:            sp.sp_id,
+      paceNumber:       sp.pace_module?.module_number ?? null,
+      paceTitle:        sp.pace_module?.module_name ?? null,
+      status:           sp.status ?? null,
+      displayStatus:    _displayStatus(sp, test),
+      assignedDate:     sp.assigned_date ?? null,
+      startDate:        sp.start_date ?? null,
+      endDate:          sp.end_date ?? null,
+      completionDate:   sp.completion_date ?? null,
+      completionStatus: sp.completion_status ?? null,
+      extensionCount:   sp.extension_count ?? 0,
+      points:           sp.points_earned ?? 0,
+      action:           _action(sp, test),
+      quarter:          paceQuarter(subj, sp.pace_module?.module_number),
+      // Settled PACE: the modal opens its details read-only (see _isPaceLocked ~line 2356).
+      // attemptsUsed/testPassed are sent so the modal can say WHY it is locked.
+      locked:           _isPaceLocked(sp, test),
+      attemptsUsed:     test?.attempts ?? 0,
+      testPassed:       test?.passed ?? false,
+    };
+  };
   const synthPace = (subj, n) => ({
     sp_id: null, paceNumber: n, paceTitle: null, status: null, displayStatus: "Not Yet Started",
     assignedDate: null, startDate: null, endDate: null, completionDate: null,
     completionStatus: null, extensionCount: 0, points: 0, action: "Assign",
     quarter: paceQuarter(subj, n),
+    locked: false, attemptsUsed: 0, testPassed: false,   // nothing assigned yet = always editable
   });
 
   // Each subject row carries ALL its PACEs (projected ∪ assigned) for the dropdown.

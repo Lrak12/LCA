@@ -199,6 +199,11 @@ export default function PaceProgress() {
 
   const firstName = user?.first_name ?? user?.username ?? "Student";
 
+  // All four stat cards come from one backend tally: summarizePaceSlots (student.service.js ~line 113),
+  // called by getStudentPace (~line 941). It walks the active year's pace_quarterly_projection slots
+  // (status_r0/r1/r2) and buckets each one, so completionRate = completed / total planned slots.
+  // A PACE also counts completed when student_pace.status is 'Completed' or a test scored >= 90.
+  // Caveats are noted at that call site. These literals are only the placeholder for a failed fetch.
   const paceStats = data?.paceStats ?? { completed: 5, ongoing: 2, remaining: 3, completionRate: 62 };
 
   const completedPaces = data?.completedPaces ?? [
@@ -272,9 +277,9 @@ export default function PaceProgress() {
         </header>
 
         {/* ── Stat Cards ──────────────────────────────────────────── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-8">
           {loading ? (
-            Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-40" />)
+            Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-40" />)
           ) : (
             <>
               <StatCard
@@ -304,15 +309,19 @@ export default function PaceProgress() {
                 badge="+1 From Last Update"
                 badgeColor="bg-blue-100 text-blue-700"
               />
-              <StatCard
-                icon="verified"
-                iconBg=""
-                iconColor=""
-                label="Completion Rate"
-                value={`${paceStats.completionRate}%`}
-                badge="100% Last Completion"
-                dark
-              />
+              {/* Completion Rate card hidden for now - the badge is hardcoded and completions are
+                  matched across school years (see student.service.js > getStudentPace ~line 941).
+                  Uncomment with the grid back at xl:grid-cols-4 and the skeleton count back at 4.
+                <StatCard
+                  icon="verified"
+                  iconBg=""
+                  iconColor=""
+                  label="Completion Rate"
+                  value={`${paceStats.completionRate}%`}
+                  badge="100% Last Completion"
+                  dark
+                />
+              */}
             </>
           )}
         </div>
