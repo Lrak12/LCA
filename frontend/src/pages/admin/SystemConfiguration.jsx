@@ -234,6 +234,9 @@ function SchoolYearTab({ setBanner }) {
   }, [reloadKey]);
 
   const active = years.find((y) => y.is_active) ?? null; // the one active year (at most one)
+  const today = new Date().toISOString().slice(0, 10);
+  const currentCalendarYear = years.find((year) => year.start_date <= today && today <= year.end_date) ?? null;
+  const schoolYearCreationLocked = Boolean(currentCalendarYear);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value })); // curried onChange per create field
 
   // create a new school year from the form
@@ -242,6 +245,10 @@ function SchoolYearTab({ setBanner }) {
     setError("");
     const validationError = schoolYearFormError(form, years);
     if (validationError) { setError(validationError); return; }
+    if (schoolYearCreationLocked) {
+      setError(`A new school year cannot be created until ${syLabel(currentCalendarYear.year_label)} ends on ${fmtDate(currentCalendarYear.end_date)}.`);
+      return;
+    }
     setCreating(true);
     try {
       await createSchoolYear(form);                    // POST /admin/school-years
@@ -458,15 +465,20 @@ function SchoolYearTab({ setBanner }) {
           </div>
         </div>
         {/* create form: inputs -> set(field); submit -> onCreate() (createSchoolYear + reload) */}
+        {schoolYearCreationLocked && (
+          <div className="mb-4 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm font-semibold">
+            A new school year can be created only after {syLabel(currentCalendarYear.year_label)} ends on {fmtDate(currentCalendarYear.end_date)}.
+          </div>
+        )}
         <form onSubmit={onCreate} className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
           <div>
             <label className={labelCls}>School Year Label</label>
-            <input value={form.year_label} onChange={set("year_label")} placeholder="SY 2026-2027" pattern="SY [0-9]{4}-[0-9]{4}" maxLength={12} spellCheck={false} className={inputCls} />
+            <input value={form.year_label} onChange={set("year_label")} disabled={schoolYearCreationLocked} placeholder="SY 2026-2027" pattern="SY [0-9]{4}-[0-9]{4}" maxLength={12} spellCheck={false} className={inputCls} />
             <p className="text-[11px] text-on-surface-variant mt-1.5">Required format: SY YYYY-YYYY</p>
           </div>
-          <div><label className={labelCls}>Start Date</label><input type="date" value={form.start_date} onChange={set("start_date")} className={inputCls} /></div>
-          <div><label className={labelCls}>End Date</label><input type="date" value={form.end_date} onChange={set("end_date")} className={inputCls} /></div>
-          <button type="submit" disabled={creating} className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold bg-primary text-white shadow-sm hover:shadow-lg disabled:opacity-60">
+          <div><label className={labelCls}>Start Date</label><input type="date" value={form.start_date} onChange={set("start_date")} disabled={schoolYearCreationLocked} className={inputCls} /></div>
+          <div><label className={labelCls}>End Date</label><input type="date" value={form.end_date} onChange={set("end_date")} disabled={schoolYearCreationLocked} className={inputCls} /></div>
+          <button type="submit" disabled={creating || schoolYearCreationLocked} className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold bg-primary text-white shadow-sm hover:shadow-lg disabled:opacity-60">
             <span className="material-symbols-outlined text-base">add</span>{creating ? "Creating…" : "Create School Year"}
           </button>
         </form>

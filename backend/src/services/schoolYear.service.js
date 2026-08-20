@@ -27,6 +27,21 @@ export const listSchoolYears = async () => {
 
 export const createSchoolYear = async ({ year_label, start_date, end_date }) => {
   const clean = validateSchoolYear({ year_label, start_date, end_date });
+
+  const { data: existingYears, error: yearsError } = await SchoolYearModel.findAll();
+  if (yearsError) throw new Error(yearsError.message);
+  const today = new Date().toISOString().slice(0, 10);
+  const currentYear = (existingYears ?? []).find(
+    (year) => year.start_date <= today && today <= year.end_date,
+  );
+  if (currentYear) {
+    const err = new Error(
+      `A new school year cannot be created until the current school year ${currentYear.year_label} ends on ${currentYear.end_date}.`,
+    );
+    err.statusCode = 409;
+    throw err;
+  }
+
   await checkDuplicate(clean.year_label, clean.start_date, clean.end_date);
 
   const { data, error } = await SchoolYearModel.create({
