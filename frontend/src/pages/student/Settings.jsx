@@ -63,8 +63,7 @@ const NAV = [
   { key: "profile",       icon: "person",   title: "Profile",       sub: "Information, Security & Accessibility" },
   // Accessibility is no longer its own tab — the remaining controls (Text Size, Color Mode)
   // now live inside the Profile section below.
-  // Hidden: Contact Administrator tab (panel view). Panel + handlers remain below, just no nav entry.
-  // { key: "contact",       icon: "mail",     title: "Contact",       sub: "Administrator"          },
+  { key: "contact",       icon: "mail",     title: "Contact",       sub: "Administrator"          },
 ];
 
 const SubNav = ({ active, onSelect }) => (
@@ -393,6 +392,8 @@ export default function Settings() {
         {/* ── Three-column layout (stacks on < lg) ─────────────────────── */}
         <div className="flex flex-col lg:flex-row gap-6 lg:items-start">
 
+          {/* ── LEFT: settings navigation ───────────────────────────── */}
+          <SubNav active={activeTab} onSelect={setActiveTab} />
 
           {/* ── CENTER: section content ──────────────────────────────── */}
           <div className="flex-1 min-w-0">
@@ -450,7 +451,8 @@ export default function Settings() {
 
               </div>
             )}
-             {/* ── Accessibility ── */}
+            {activeTab === "profile" && (
+              /* ── Accessibility ── */
               <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-6 mt-6">
                 <div className="flex items-center gap-3 mb-6">
                   <span className="w-1 h-5 rounded-full bg-secondary" />
@@ -528,6 +530,7 @@ export default function Settings() {
                   </div>
                 </div>
               </div>
+            )}
 
             {/* ════ CONTACT ADMINISTRATOR ════ */}
             {activeTab === "contact" && (

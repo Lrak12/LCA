@@ -3047,12 +3047,18 @@ export const saveAcademicRemarks = async (user_id, student_id, { bible_memory_ra
   if (!sy) throw new Error("No active school year");
   const quarter = _currentQuarter(sy.start_date);
 
-  // Bible Memory is a numeric score (0-100), same shape as Reading WPM — not a category rating.
-  const bibleScore = bible_memory_rating === "" || bible_memory_rating == null ? null : Number(bible_memory_rating);
-  if (bibleScore != null && (isNaN(bibleScore) || bibleScore < 0 || bibleScore > 100)) throw new Error("Bible Memory score must be between 0 and 100");
+  const bibleRatings = ["Excellent", "Very Good", "Good", "Satisfactory", "Needs Improvement"];
+  const bibleRating = bible_memory_rating === "" || bible_memory_rating == null
+    ? null
+    : String(bible_memory_rating).trim();
+  if (bibleRating != null && !bibleRatings.includes(bibleRating)) {
+    throw new Error("Please select a valid Bible Memory rating");
+  }
   const wpm = reading_wpm === "" || reading_wpm == null ? null : Number(reading_wpm);
-  if (wpm != null && (isNaN(wpm) || wpm < 0)) throw new Error("Reading WPM must be a non-negative number");
-  const payload = { bible_memory_rating: bibleScore, reading_wpm: wpm };
+  if (wpm != null && (!Number.isInteger(wpm) || wpm < 0)) {
+    throw new Error("Reading WPM must be a non-negative whole number");
+  }
+  const payload = { bible_memory_rating: bibleRating, reading_wpm: wpm };
 
   const { data: existing } = await supabaseAdmin
     .from("student_academic_remarks")

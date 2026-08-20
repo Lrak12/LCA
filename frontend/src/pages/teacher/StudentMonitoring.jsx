@@ -17,9 +17,7 @@ const fmtDate = (iso) => {
 };
 const pct = (n) => `${(n ?? 0).toFixed(2)}%`;
 
-// Panel view: only the Student Records tab is shown. Full set was
-// ["Student Records", "Student Progress", "PACE Analytics", "Ranking"].
-const TABS = ["Student Records"];
+const TABS = ["Student Records", "Student Progress", "PACE Analytics", "Ranking"];
 
 const GenderBadge = ({ gender }) => (
   <span className={`text-[11px] font-bold px-3 py-0.5 rounded-full ${gender === "Female" ? "bg-pink-100 text-pink-600" : gender === "Male" ? "bg-blue-100 text-blue-600" : "bg-slate-100 text-slate-500"}`}>{gender}</span>

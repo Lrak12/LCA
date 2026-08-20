@@ -22,12 +22,13 @@ export const create = asyncHandler(async (req, res) => {
     { email, password, username },
     profile,
     { parentContact: parent, is_active },
+    req.user?.user_id,
   );
   sendCreated(res, data, "Student created successfully");
 });
 
 export const update = asyncHandler(async (req, res) => {
-  const data = await StudentService.updateStudent(req.params.id, req.body);
+  const data = await StudentService.updateStudent(req.params.id, req.body, req.user?.user_id);
   sendSuccess(res, data, "Student updated successfully");
 });
 

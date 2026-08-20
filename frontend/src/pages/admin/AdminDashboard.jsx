@@ -59,11 +59,9 @@ const activityIcon = (title = "") => {
 const QUICK_ACTIONS = [
   { label: "Add New User",            icon: "person_add",     iconBg: "bg-blue-100",   iconColor: "text-blue-600",   path: "/sysadmin/users"   },
   { label: "Manage User Roles",       icon: "verified_user",  iconBg: "bg-green-100",  iconColor: "text-green-600",  path: "/sysadmin/users"   },
-  // Hidden for panel — Audit Logs page is out of scope.
-  // { label: "View Audit Logs",         icon: "receipt_long",   iconBg: "bg-purple-100", iconColor: "text-purple-600", path: "/sysadmin/audit"   },
+  { label: "View Audit Logs",         icon: "receipt_long",   iconBg: "bg-purple-100", iconColor: "text-purple-600", path: "/sysadmin/audit"   },
   { label: "System Preferences",      icon: "tune",           iconBg: "bg-amber-100",  iconColor: "text-amber-600",  path: "/sysadmin/config"  },
-  // Hidden for panel — User Support page is out of scope.
-  // { label: "Manage Support Requests", icon: "support_agent",  iconBg: "bg-slate-100",  iconColor: "text-slate-600",  path: "/sysadmin/support" },
+  { label: "Manage Support Requests", icon: "support_agent",  iconBg: "bg-slate-100",  iconColor: "text-slate-600",  path: "/sysadmin/support" },
 ];
 
 export default function AdminDashboard() {

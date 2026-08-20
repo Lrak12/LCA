@@ -5,7 +5,7 @@ import { supabaseAdmin } from "../config/supabase.js";
 export const findStudents = () =>
   supabaseAdmin
     .from("student")
-    .select("student_id, first_name, last_name, date_of_birth, gender, address, contact_number, grade_level(gl_id, level_name)")
+    .select("student_id, user_id, first_name, last_name, date_of_birth, gender, address, contact_number, grade_level(gl_id, level_name)")
     .order("last_name", { ascending: true });
 
 // Every student_pace row (+ its PACE module) - used to count completed/ongoing.
@@ -83,7 +83,7 @@ export const findAttendanceByStudentAndYear = (student_id, startDate, endDate) =
 export const findAllStudentsForExport = () =>
   supabaseAdmin
     .from("student")
-    .select("student_id, first_name, last_name, date_of_birth, gender, address, contact_number, enrollment_date, grade_level(level_name)")
+    .select("student_id, user_id, first_name, last_name, date_of_birth, gender, address, contact_number, enrollment_date, grade_level(level_name)")
     .order("last_name", { ascending: true });
 
 // Self-test scores for the given student_pace ids (all scored attempts).
@@ -108,4 +108,3 @@ export const findAllAttendanceInRange = (startDate, endDate) =>
     .select("student_id, status")
     .gte("date_recorded", startDate)
     .lte("date_recorded", endDate);
-

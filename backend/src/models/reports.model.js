@@ -23,17 +23,20 @@ export const countTeachers = () =>
 export const findAllTeachers = () =>
   supabaseAdmin
     .from("teacher")
-    .select("teacher_id, first_name, last_name")
+    .select("teacher_id, user_id, first_name, last_name")
     .order("last_name");
 
 // ── Teacher → grade level → students ─────────────────────────────────────────
 
 // Get grade levels assigned to a teacher
-export const findGradeLevelsByTeacherId = (teacher_id) =>
-  supabaseAdmin
+export const findGradeLevelsByTeacherId = (teacher_id, sy_id = null) => {
+  let query = supabaseAdmin
     .from("grade_level")
     .select("gl_id, level_name")
     .eq("teacher_id", teacher_id);
+  if (sy_id) query = query.eq("sy_id", Number(sy_id));
+  return query;
+};
 
 // Get students enrolled in a set of grade levels
 export const findStudentsByGradeLevelIds = (glIds) =>
@@ -108,6 +111,31 @@ export const findActiveSchoolYear = () =>
     .select("sy_id, year_label, start_date, end_date")
     .eq("is_active", true)
     .maybeSingle();
+
+export const findSchoolYearById = (sy_id) =>
+  supabaseAdmin
+    .from("school_year")
+    .select("sy_id, year_label, start_date, end_date, is_active")
+    .eq("sy_id", Number(sy_id))
+    .maybeSingle();
+
+export const findAcademicSummaryForTeacher = (teacher_id, quarter, sy_id) =>
+  supabaseAdmin
+    .from("class_academic_summary")
+    .select("*, student(first_name, last_name)")
+    .eq("recorded_by", teacher_id)
+    .eq("quarter", quarter)
+    .eq("sy_id", sy_id)
+    .order("student_id");
+
+export const findPaceProjectionForTeacher = (teacher_id, quarter, sy_id) =>
+  supabaseAdmin
+    .from("pace_quarterly_projection")
+    .select("student_id, subject, pace_start, pace_end, pace_count, status_r0, status_r1, status_r2, student(first_name, last_name)")
+    .eq("recorded_by", teacher_id)
+    .eq("quarter", quarter)
+    .eq("sy_id", sy_id)
+    .order("student_id");
 
 // ── Upsert report data into existing tables ───────────────────────────────────
 

@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 import { supabaseAdmin } from "../config/supabase.js";
+import { activateSchoolYear } from "./schoolYear.service.js";
 
 // School info + system preferences are stored in a JSON file on disk (no DB table).
 // NOTE: on ephemeral hosting (Render/Vercel/etc.) this file resets on redeploy.
@@ -78,8 +79,7 @@ export const updateSchoolConfig = async ({
   if (current_sy_id) {
     const syId = parseInt(current_sy_id, 10);
     if (!Number.isNaN(syId)) {
-      await supabaseAdmin.from("school_year").update({ is_active: false }).neq("sy_id", syId); // clear the others
-      await supabaseAdmin.from("school_year").update({ is_active: true }).eq("sy_id", syId);   // then set this one active
+      await activateSchoolYear(syId);
     }
   }
 

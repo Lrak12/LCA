@@ -8,6 +8,7 @@ router.use(authenticate);
 router.use(requireRole("principal", "administrator"));
 
 router.get("/",                                  ReportsController.getOverview);
+router.get("/school-years",                     ReportsController.getSchoolYears);
 router.get("/teachers",                          ReportsController.getTeachers);
 router.get("/submissions",                       ReportsController.getSubmissionStatuses);
 router.get("/teacher/:teacher_id/academic",      ReportsController.getTeacherAcademicReport);

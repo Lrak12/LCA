@@ -35,7 +35,9 @@ export const update = asyncHandler(async (req, res) => {
 
 export const activate = asyncHandler(async (req, res) => {
   const sy_id = parseInt(req.params.sy_id, 10);
-  const data = await SchoolYearService.activateSchoolYear(sy_id);
+  const data = await SchoolYearService.activateSchoolYear(sy_id, {
+    allowHistorical: req.body?.allow_historical === true,
+  });
   await writeAudit({
     user_id: req.user?.user_id,
     action: "UPDATE",

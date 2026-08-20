@@ -2,16 +2,18 @@ import client from "./client.js";
 
 export const fetchReportsOverview = () => client.get("/reports");
 
-export const fetchReportTeachers = () => client.get("/reports/teachers");
+export const fetchReportSchoolYears = () => client.get("/reports/school-years");
 
-export const fetchAcademicReport    = (teacher_id, quarter) =>
-  client.get(`/reports/teacher/${teacher_id}/academic?quarter=${quarter}`);
+export const fetchReportTeachers = (sy_id) => client.get("/reports/teachers", { params: sy_id ? { sy_id } : {} });
 
-export const fetchAttendanceReport  = (teacher_id, quarter) =>
-  client.get(`/reports/teacher/${teacher_id}/attendance?quarter=${quarter}`);
+export const fetchAcademicReport    = (teacher_id, quarter, sy_id) =>
+  client.get(`/reports/teacher/${teacher_id}/academic`, { params: { quarter, ...(sy_id ? { sy_id } : {}) } });
 
-export const fetchPaceReport        = (teacher_id, quarter) =>
-  client.get(`/reports/teacher/${teacher_id}/pace?quarter=${quarter}`);
+export const fetchAttendanceReport  = (teacher_id, quarter, sy_id) =>
+  client.get(`/reports/teacher/${teacher_id}/attendance`, { params: { quarter, ...(sy_id ? { sy_id } : {}) } });
+
+export const fetchPaceReport        = (teacher_id, quarter, sy_id) =>
+  client.get(`/reports/teacher/${teacher_id}/pace`, { params: { quarter, ...(sy_id ? { sy_id } : {}) } });
 
 // ── Submission (teacher) ──────────────────────────────────────────────────────
 
@@ -26,6 +28,5 @@ export const fetchMySubmittedReports = () =>
 
 // ── Submission status (principal) ─────────────────────────────────────────────
 
-export const fetchSubmissionStatuses = (quarter, type) =>
-  client.get(`/reports/submissions?quarter=${quarter}&type=${type}`);
-
+export const fetchSubmissionStatuses = (quarter, type, sy_id) =>
+  client.get("/reports/submissions", { params: { quarter, type, ...(sy_id ? { sy_id } : {}) } });

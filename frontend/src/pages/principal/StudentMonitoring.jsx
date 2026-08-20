@@ -22,9 +22,8 @@ const PAGE_SIZE = 6;
 const TABS = [
   { id: "records",       label: "Student Records"        },
   { id: "progress",      label: "Student Progress"       },
-  //{ id: "recommendations", label: "Projected PACE Plan"   },
-  // Hidden for panel view — tab content/handlers remain below, just no nav entry.
-  // { id: "analytics",     label: "PACE Analytics & Rankings" },
+  { id: "recommendations", label: "Projected PACE Plan"   },
+  { id: "analytics",     label: "PACE Analytics & Rankings" },
 ];
 
 // Render a student's name as "Last, First" (falls back to whatever parts exist).

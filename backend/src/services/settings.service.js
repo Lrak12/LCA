@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "../config/supabase.js";
+import { updateSchoolYear as updateSchoolYearRecord } from "./schoolYear.service.js";
 
 export const getSettingsOverview = async () => {
   const { data: schoolYear, error: syErr } = await supabaseAdmin
@@ -35,7 +36,8 @@ export const getAcademicConfig = async () => {
 const MAX_GRADE_LEVELS = 12;
 
 export const addGradeLevel = async ({ level_name, level_order, sy_id }) => {
-  if (!level_name || !String(level_name).trim()) {
+  const cleanName = String(level_name ?? "").trim().replace(/\s+/g, " ");
+  if (!cleanName) {
     throw new Error("Grade level name is required.");
   }
 
@@ -44,33 +46,67 @@ export const addGradeLevel = async ({ level_name, level_order, sy_id }) => {
   if (syId == null) {
     const { data: sy, error: syErr } = await supabaseAdmin
       .from("school_year").select("sy_id").eq("is_active", true).single();
-    if (syErr) throw new Error("No active school year found.");
+    if (syErr) {
+      throw new Error(syErr.code === "PGRST116" ? "No active school year found." : syErr.message);
+    }
     syId = sy.sy_id;
   }
 
-  const { count, error: countErr } = await supabaseAdmin
+  const { data: existingLevels, error: levelsErr } = await supabaseAdmin
     .from("grade_level")
-    .select("gl_id", { count: "exact", head: true })
+    .select("gl_id, level_name, level_order")
     .eq("sy_id", syId);
-  if (countErr) throw new Error(countErr.message);
-  if ((count ?? 0) >= MAX_GRADE_LEVELS) {
+  if (levelsErr) throw new Error(levelsErr.message);
+
+  const duplicate = (existingLevels ?? []).some(
+    (grade) => String(grade.level_name ?? "").trim().replace(/\s+/g, " ").toLowerCase() === cleanName.toLowerCase(),
+  );
+  if (duplicate) {
+    const err = new Error(`${cleanName} already exists for this school year.`);
+    err.statusCode = 409;
+    throw err;
+  }
+
+  if ((existingLevels?.length ?? 0) >= MAX_GRADE_LEVELS) {
     throw new Error(`Maximum of ${MAX_GRADE_LEVELS} grade levels reached.`);
   }
 
   // Default level_order to the next slot for this school year (places it last).
   let order = level_order;
   if (order == null || order === "") {
-    const { data: rows } = await supabaseAdmin
-      .from("grade_level").select("level_order").eq("sy_id", syId)
-      .order("level_order", { ascending: false }).limit(1);
-    order = (rows?.[0]?.level_order ?? 0) + 1;
+    const usedOrders = new Set((existingLevels ?? []).map((grade) => Number(grade.level_order)));
+    order = Array.from({ length: MAX_GRADE_LEVELS }, (_, index) => index + 1)
+      .find((candidate) => !usedOrders.has(candidate));
+  }
+  const numericOrder = Number(order);
+  if (!Number.isInteger(numericOrder) || numericOrder < 1 || numericOrder > MAX_GRADE_LEVELS) {
+    const err = new Error(`Level order must be a whole number from 1 to ${MAX_GRADE_LEVELS}.`);
+    err.statusCode = 400;
+    throw err;
+  }
+  const orderOwner = (existingLevels ?? []).find(
+    (grade) => Number(grade.level_order) === numericOrder,
+  );
+  if (orderOwner) {
+    const err = new Error(`Level order ${numericOrder} is already used by ${orderOwner.level_name}.`);
+    err.statusCode = 409;
+    throw err;
   }
 
   const { data, error } = await supabaseAdmin
     .from("grade_level")
-    .insert({ level_name: String(level_name).trim(), level_order: Number(order), sy_id: syId })
+    .insert({ level_name: cleanName, level_order: numericOrder, sy_id: syId })
     .select()
     .single();
+  if (error?.code === "23505") {
+    const duplicateError = new Error(
+      String(error.message).includes("uq_grade_level_sy_order")
+        ? `Level order ${numericOrder} is already used by another grade level.`
+        : `${cleanName} already exists for this school year.`,
+    );
+    duplicateError.statusCode = 409;
+    throw duplicateError;
+  }
   if (error) throw new Error(error.message);
   return data;
 };
@@ -150,12 +186,5 @@ function fmt(d) {
 }
 
 export const updateSchoolYear = async ({ sy_id, year_label, start_date, end_date }) => {
-  const { data, error } = await supabaseAdmin
-    .from("school_year")
-    .update({ year_label, start_date, end_date })
-    .eq("sy_id", sy_id)
-    .select()
-    .single();
-  if (error) throw new Error(error.message);
-  return data;
+  return updateSchoolYearRecord(sy_id, { year_label, start_date, end_date });
 };

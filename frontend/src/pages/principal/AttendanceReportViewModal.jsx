@@ -38,7 +38,7 @@ const SkeletonRow = ({ cols }) => (
 );
 
 // Embeddable report body (used standalone below and inside SupervisorReportModal)
-export function AttendanceReportContent({ teacher, quarter }) {
+export function AttendanceReportContent({ teacher, quarter, schoolYearId }) {
   const [report,  setReport]  = useState(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState("");
@@ -50,11 +50,11 @@ export function AttendanceReportContent({ teacher, quarter }) {
   useEffect(() => {
     if (!teacher?.teacher_id) return;
     setLoading(true);
-    fetchAttendanceReport(teacher.teacher_id, quarter)
+    fetchAttendanceReport(teacher.teacher_id, quarter, schoolYearId)
       .then((res) => setReport(res.data))
       .catch((err) => setError(err.response?.data?.message ?? err.message))
       .finally(() => setLoading(false));
-  }, [teacher?.teacher_id, quarter]);
+  }, [teacher?.teacher_id, quarter, schoolYearId]);
 
   const students = (report?.students ?? []).filter((s) => // rows filtered by the search box
     s.name.toLowerCase().includes(search.toLowerCase())

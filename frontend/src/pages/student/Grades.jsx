@@ -76,14 +76,10 @@ export default function Grades() {
   const lrn        = student.lrn ?? "—";
   const syLabel    = data?.schoolYear ?? schoolYearLabel ?? "—";
 
-  const subjects = data?.subjects ?? [
-    { subject: "Mathematics", paceNumbers: [1097, 1098, 1099], paceScores: [92, 94, 91], quarterAverage: 92, passed: true },
-    { subject: "English",     paceNumbers: [1097, 1098, 1099], paceScores: [95, 96, 94], quarterAverage: 95, passed: true },
-    { subject: "Science",     paceNumbers: [1097, 1098, 1099], paceScores: [94, 95, 93], quarterAverage: 94, passed: true },
-  ];
+  const subjects = data?.subjects ?? [];
 
-  const generalAverage     = data?.generalAverage ?? 94;
-  const overallRemark      = data?.overallRemark ?? "Outstanding";
+  const generalAverage     = data?.generalAverage ?? null;
+  const overallRemark      = data?.overallRemark ?? "—";
   const pacesCompleted     = data?.pacesCompleted ?? 0;
   const pacesTotal         = data?.pacesTotal ?? 0;
   const supervisorComments = data?.supervisorComments ?? "";
@@ -93,8 +89,10 @@ export default function Grades() {
   };
   const bibleMemory = data?.bibleMemory ?? null;
   const readingWpm  = data?.readingWpm ?? null;
+  const remarksQuarter = data?.remarksQuarter ?? null;
 
-  const quarterLabel = QUARTER_LABELS[quarter - 1];
+  const selectedQuarter = quarter ?? data?.quarter ?? 1;
+  const quarterLabel = QUARTER_LABELS[selectedQuarter - 1];
 
   return (
     <StudentLayout schoolYearLabel={schoolYearLabel}>
@@ -126,7 +124,7 @@ export default function Grades() {
             <div className="flex items-center gap-3">
               <label className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant">Quarter:</label>
               <select
-                value={quarter}
+                value={selectedQuarter}
                 onChange={(e) => setQuarter(Number(e.target.value))}
                 className="text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl pl-4 pr-8 py-2.5 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
               >
@@ -281,7 +279,12 @@ export default function Grades() {
           )}
 
           {/* PACEs completed + Bible Memory + Reading WPM */}
-          <div className="mt-5 pt-5 border-t border-outline-variant/10 flex flex-wrap items-center gap-x-10 gap-y-3">
+          {remarksQuarter && remarksQuarter !== selectedQuarter && (
+            <p className="mt-5 pt-5 border-t border-outline-variant/10 text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant">
+              Latest supervisor evaluation: {QUARTER_LABELS[remarksQuarter - 1]}
+            </p>
+          )}
+          <div className={`${remarksQuarter && remarksQuarter !== selectedQuarter ? "mt-3" : "mt-5 pt-5 border-t border-outline-variant/10"} flex flex-wrap items-center gap-x-10 gap-y-3`}>
             <div className="flex items-center gap-2">
               <p className="text-sm font-extrabold text-on-surface">Number of PACEs Completed:</p>
               <span className="text-sm font-extrabold text-primary">{pacesCompleted} / {pacesTotal}</span>

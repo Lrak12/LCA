@@ -11,9 +11,9 @@ const navItems = [
   { icon: "assignment",      label: "Record Assessments", path: "/teacher/assessments" },
   { icon: "group",           label: "Student Monitoring", path: "/teacher/students"    },
   // [PANEL-50] hidden for panel — beyond the 50% increment scope
-  // { icon: "event_available", label: "Attendance Records", path: "/teacher/attendance"  },
-  // { icon: "campaign",        label: "Announcements",      path: "/teacher/announcements" },
-  // { icon: "bar_chart",       label: "Reports",            path: "/teacher/reports"     },
+   { icon: "event_available", label: "Attendance Records", path: "/teacher/attendance"  },
+   { icon: "campaign",        label: "Announcements",      path: "/teacher/announcements" },
+   { icon: "bar_chart",       label: "Reports",            path: "/teacher/reports"     },
   { icon: "settings",        label: "Account Settings",   path: "/teacher/settings"    },
 ];
 

@@ -852,7 +852,7 @@ export default function PaceMonitoring() {
           </div>
         </header>
 
-        {/* ── Returning Student Placement (hidden — feature not ready; code kept for easy restore) ───────
+        {/* ── Returning Student Placement ───────────────────────────── */}
         <div className="flex justify-end mb-6">
           <button
             onClick={() => navigate("/teacher/pace/returning-placement")}
@@ -862,7 +862,6 @@ export default function PaceMonitoring() {
             Returning Student PACE Placement
           </button>
         </div>
-        */}
 
         {/* ── Error ──────────────────────────────────────────────────── */}
         {error && (

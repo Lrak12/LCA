@@ -1,7 +1,50 @@
 import { supabase, supabaseAdmin } from "../config/supabase.js";
 import { describeAuthCreateError } from "../helpers/authErrors.js";
+import { getEligibleUserIds, getSchoolYear, setAccountActive } from "./schoolYearStatus.service.js";
+
+const refreshTeacherHistory = async (teacher_id, sy_id, recorded_by = null) => {
+  const now = new Date().toISOString();
+  const { error: closeErr } = await supabaseAdmin
+    .from("student_supervisor_history")
+    .update({ unassigned_at: now })
+    .eq("teacher_id", teacher_id)
+    .eq("sy_id", sy_id)
+    .is("unassigned_at", null);
+  if (closeErr) throw new Error(closeErr.message);
+
+  const { data: grades, error: gradeErr } = await supabaseAdmin
+    .from("grade_level")
+    .select("gl_id, level_name")
+    .eq("sy_id", sy_id)
+    .eq("teacher_id", teacher_id);
+  if (gradeErr) throw new Error(gradeErr.message);
+
+  for (const grade of grades ?? []) {
+    const { data: students, error: studentErr } = await supabaseAdmin
+      .from("student")
+      .select("student_id")
+      .eq("gl_id", grade.gl_id);
+    if (studentErr) throw new Error(studentErr.message);
+
+    const rows = (students ?? []).map((student) => ({
+      student_id: student.student_id,
+      teacher_id,
+      sy_id,
+      gl_id: grade.gl_id,
+      grade_level_name: grade.level_name,
+      recorded_by: recorded_by ? Number(recorded_by) : null,
+      reason: "Supervisor profile assignment changed",
+    }));
+    if (rows.length) {
+      const { error } = await supabaseAdmin.from("student_supervisor_history").insert(rows);
+      if (error) throw new Error(error.message);
+    }
+  }
+};
 
 export const getEmployees = async () => {
+  const activeSy = await getSchoolYear();
+  const eligibleTeachers = await getEligibleUserIds(activeSy.sy_id, "teacher");
   const [{ data: teachers }, { data: admins }] = await Promise.all([
     supabaseAdmin
       .from("teacher")
@@ -11,7 +54,7 @@ export const getEmployees = async () => {
       .select("principal_id, first_name, last_name, contact_number, user_id, users(email, is_active)"),
   ]);
 
-  const teacherList = (teachers ?? []).map((t) => ({
+  const teacherList = (teachers ?? []).filter((t) => eligibleTeachers.has(t.user_id)).map((t) => ({
     id:             t.teacher_id,
     school_id:      t.teacher_id,
     first_name:     t.first_name,
@@ -51,6 +94,8 @@ export const getSupervisors = async () => {
     .select("sy_id")
     .eq("is_active", true)
     .single();
+
+  const eligibleTeachers = await getEligibleUserIds(activeSy.sy_id, "teacher");
 
   const [
     { data: teachers },
@@ -108,7 +153,7 @@ export const getSupervisors = async () => {
     subjectsByTeacher.get(tid).add(subject);
   });
 
-  return (teachers ?? []).map((t) => {
+  return (teachers ?? []).filter((t) => eligibleTeachers.has(t.user_id)).map((t) => {
     const details = levelsByTeacher.get(t.teacher_id) ?? [];
     return {
       id:                t.teacher_id,
@@ -127,44 +172,36 @@ export const getSupervisors = async () => {
 };
 
 export const getSupervisorStats = async () => {
-  const [
-    { count: total },
-    { count: active },
-  ] = await Promise.all([
-    supabaseAdmin.from("teacher").select("*", { count: "exact", head: true }),
-    supabaseAdmin
-      .from("teacher")
-      .select("teacher_id, users!inner(is_active)", { count: "exact", head: true })
-      .eq("users.is_active", true),
-  ]);
+  const activeSy = await getSchoolYear();
+  const eligible = await getEligibleUserIds(activeSy.sy_id, "teacher");
+  const { data: teachers } = await supabaseAdmin.from("teacher").select("user_id, users(is_active)");
+  const current = (teachers ?? []).filter((teacher) => eligible.has(teacher.user_id));
+  const active = current.filter((teacher) => teacher.users?.is_active).length;
 
   return {
-    total:    total  ?? 0,
-    active:   active ?? 0,
-    inactive: (total ?? 0) - (active ?? 0),
+    total: current.length,
+    active,
+    inactive: current.length - active,
   };
 };
 
 export const getEmployeeStats = async () => {
-  const [
-    { count: teachers },
-    { count: admins },
-    { count: active },
-  ] = await Promise.all([
-    supabaseAdmin.from("teacher").select("*", { count: "exact", head: true }),
-    supabaseAdmin.from("principal").select("*", { count: "exact", head: true }),
-    supabaseAdmin
-      .from("users")
-      .select("*", { count: "exact", head: true })
-      .in("role", ["teacher", "principal"])
-      .eq("is_active", true),
+  const activeSy = await getSchoolYear();
+  const eligible = await getEligibleUserIds(activeSy.sy_id, "teacher");
+  const [{ data: teacherRows }, { data: adminRows }] = await Promise.all([
+    supabaseAdmin.from("teacher").select("user_id, users(is_active)"),
+    supabaseAdmin.from("principal").select("principal_id, users(is_active)"),
   ]);
+  const teachers = (teacherRows ?? []).filter((row) => eligible.has(row.user_id));
+  const admins = adminRows ?? [];
+  const active = teachers.filter((row) => row.users?.is_active).length
+    + admins.filter((row) => row.users?.is_active).length;
 
   return {
-    teachers: teachers ?? 0,
-    admins:   admins   ?? 0,
-    total:    (teachers ?? 0) + (admins ?? 0),
-    active:   active   ?? 0,
+    teachers: teachers.length,
+    admins: admins.length,
+    total: teachers.length + admins.length,
+    active,
   };
 };
 
@@ -178,7 +215,7 @@ export const createEmployee = async ({
   password,
   is_active = true,
   grade_level_ids = [],
-}) => {
+}, changed_by = null) => {
   // 1. Create Supabase Auth user — trigger will auto-insert into users table
   const { data: authData, error: authErr } = await supabaseAdmin.auth.admin.createUser({
     email,
@@ -204,11 +241,6 @@ export const createEmployee = async ({
     throw new Error(userErr.message);
   }
 
-  // 2b. Apply account status (the trigger defaults new users to active)
-  if (is_active === false) {
-    await supabaseAdmin.from("users").update({ is_active: false }).eq("user_id", user.user_id);
-  }
-
   // 3. Create role-specific profile (capture the new id so we can assign grade levels)
   const profileTable = role === "principal" ? "principal" : "teacher";
   const { data: profile, error: profileErr } = await supabaseAdmin
@@ -221,6 +253,11 @@ export const createEmployee = async ({
     throw new Error(profileErr.message);
   }
 
+  // Apply status after the profile exists. Teachers record the active school year.
+  if (is_active === false) {
+    await setAccountActive(user.user_id, false, changed_by, "Supervisor created as inactive");
+  }
+
   // 4. Assign the supervisor to the selected grade levels
   if (role !== "principal" && profile?.teacher_id && grade_level_ids.length) {
     const { error: assignErr } = await supabaseAdmin
@@ -228,6 +265,8 @@ export const createEmployee = async ({
       .update({ teacher_id: profile.teacher_id })
       .in("gl_id", grade_level_ids);
     if (assignErr) throw new Error(assignErr.message);
+    const activeSy = await getSchoolYear();
+    await refreshTeacherHistory(profile.teacher_id, activeSy.sy_id, changed_by);
   }
 
   // 5. Email the new account its login details: the school ID they sign in with
@@ -265,7 +304,7 @@ export const updateSupervisor = async (teacher_id, {
   contact_number,
   is_active,
   grade_level_ids = [],
-}) => {
+}, changed_by = null) => {
   const id = Number(teacher_id);
 
   // Load the teacher + its linked user (for status/email + auth email sync)
@@ -290,7 +329,6 @@ export const updateSupervisor = async (teacher_id, {
   // 2. Linked users row: account status + email (only when they change)
   const emailChanged = email && email !== teacher.users?.email;
   const userUpdate = {};
-  if (typeof is_active === "boolean") userUpdate.is_active = is_active;
   if (emailChanged) userUpdate.email = email;
   if (Object.keys(userUpdate).length) {
     const { error: userErr } = await supabaseAdmin
@@ -298,6 +336,10 @@ export const updateSupervisor = async (teacher_id, {
       .update(userUpdate)
       .eq("user_id", teacher.user_id);
     if (userErr) throw new Error(userErr.message);
+  }
+
+  if (typeof is_active === "boolean") {
+    await setAccountActive(teacher.user_id, is_active, changed_by, "Status changed from supervisor profile");
   }
 
   // 2b. Keep Supabase Auth in sync when the email changed. email_confirm:true applies
@@ -313,10 +355,12 @@ export const updateSupervisor = async (teacher_id, {
 
   // 3. Reassign grade levels: clear this teacher's current ones, then set the selected.
   //    (grade_level.teacher_id holds a single supervisor per grade level.)
+  const activeSy = await getSchoolYear();
   const { error: clearErr } = await supabaseAdmin
     .from("grade_level")
     .update({ teacher_id: null })
-    .eq("teacher_id", id);
+    .eq("teacher_id", id)
+    .eq("sy_id", activeSy.sy_id);
   if (clearErr) throw new Error(clearErr.message);
 
   if (grade_level_ids.length) {
@@ -326,6 +370,8 @@ export const updateSupervisor = async (teacher_id, {
       .in("gl_id", grade_level_ids);
     if (assignErr) throw new Error(assignErr.message);
   }
+
+  await refreshTeacherHistory(id, activeSy.sy_id, changed_by);
 
   return { teacher_id: id, first_name, last_name, email, is_active };
 };

@@ -41,7 +41,7 @@ const SkeletonRow = () => (
 );
 
 // Embeddable report body (used standalone below and inside SupervisorReportModal)
-export function ClassAcademicRecordContent({ teacher, quarter }) {
+export function ClassAcademicRecordContent({ teacher, quarter, schoolYearId }) {
   const [report,  setReport]  = useState(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState("");
@@ -52,11 +52,11 @@ export function ClassAcademicRecordContent({ teacher, quarter }) {
   useEffect(() => {
     if (!teacher?.teacher_id) return;
     setLoading(true);
-    fetchAcademicReport(teacher.teacher_id, quarter)
+    fetchAcademicReport(teacher.teacher_id, quarter, schoolYearId)
       .then((res) => setReport(res.data))
       .catch((err) => setError(err.response?.data?.message ?? err.message))
       .finally(() => setLoading(false));
-  }, [teacher?.teacher_id, quarter]);
+  }, [teacher?.teacher_id, quarter, schoolYearId]);
 
   const students = report?.students ?? [];             // one row per student
 

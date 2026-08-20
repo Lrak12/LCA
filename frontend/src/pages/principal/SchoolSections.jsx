@@ -793,8 +793,9 @@ export default function SchoolSections() {
   // totals shown in the stat cards
   const totalStudents = levels.reduce((a, l) => a + l.students, 0);
   const totalTeachers = levels.reduce((a, l) => a + l.faculty.length, 0);
-  // next level_order for a new grade level (places it after the current highest)
-  const nextOrder = levels.length ? Math.max(...levels.map((l) => l.level_order ?? 0)) + 1 : 1;
+  // Use the first available order so gaps can be filled without exceeding 12.
+  const nextOrder = Array.from({ length: 12 }, (_, index) => index + 1)
+    .find((order) => !levels.some((level) => Number(level.level_order) === order)) ?? "";
 
   return (
     <PrincipalLayout schoolYearLabel={schoolYearLabel}>
@@ -911,6 +912,7 @@ export default function SchoolSections() {
       {showAdd && (
         <AddGradeLevelModal
           nextOrder={nextOrder}
+          existingGradeLevels={levels}
           onClose={() => setShowAdd(false)}
           onSuccess={() => { setShowAdd(false); loadLevels(); }}
         />

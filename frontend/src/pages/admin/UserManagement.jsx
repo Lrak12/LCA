@@ -621,6 +621,7 @@ export default function UserManagement() {
                 <th className="px-6 py-3.5 font-bold">Role</th>
                 <th className="px-6 py-3.5 font-bold">Email</th>
                 <th className="px-6 py-3.5 font-bold">Status</th>
+                <th className="px-6 py-3.5 font-bold">Final Active SY</th>
                 <th className="px-6 py-3.5 font-bold">Last Login</th>
                 <th className="px-6 py-3.5 font-bold text-right">Actions</th>
               </tr>
@@ -629,11 +630,11 @@ export default function UserManagement() {
               {loading ? (
                 Array.from({ length: 6 }).map((_, i) => (
                   <tr key={i} className="border-b border-outline-variant/10">
-                    <td colSpan={6} className="px-6 py-4"><Skeleton className="h-6 w-full" /></td>
+                    <td colSpan={7} className="px-6 py-4"><Skeleton className="h-6 w-full" /></td>
                   </tr>
                 ))
               ) : users.length === 0 ? (
-                <tr><td colSpan={6} className="px-6 py-16 text-center text-sm text-on-surface-variant">No users match your filters.</td></tr>
+                <tr><td colSpan={7} className="px-6 py-16 text-center text-sm text-on-surface-variant">No users match your filters.</td></tr>
               ) : (
                 // `users` (this page's rows) -> one row each
                 users.map((u) => (
@@ -652,6 +653,9 @@ export default function UserManagement() {
                     <td className="px-6 py-4"><RoleBadge role={u.role} /></td>
                     <td className="px-6 py-4 text-sm text-on-surface-variant">{u.email}</td>
                     <td className="px-6 py-4"><StatusBadge active={u.is_active} /></td>
+                    <td className="px-6 py-4 text-sm text-on-surface-variant whitespace-nowrap">
+                      {u.deactivated_school_year ?? "—"}
+                    </td>
                     <td className="px-6 py-4 text-sm text-on-surface-variant whitespace-nowrap">{formatLastLogin(u.last_login)}</td>
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-end gap-1 relative">
@@ -743,8 +747,8 @@ export default function UserManagement() {
         tone="danger"
         icon="person_off"
         title="Deactivate User?"
-        detail="They will be blocked from signing in."
-        message={confirmUser ? `Deactivate ${confirmUser.name}'s account? They will not be able to log in until reactivated.` : ""}
+        detail={`Final active school year: ${schoolYearLabel}`}
+        message={confirmUser ? `Deactivate ${confirmUser.name}'s account? Login will be blocked now, but the user will remain included in ${schoolYearLabel} records and will be excluded beginning with the next school year.` : ""}
         confirmLabel="Deactivate"
         busy={busyId === confirmUser?.user_id}
         onConfirm={async () => { const u = confirmUser; await toggleActive(u); setConfirmUser(null); }}

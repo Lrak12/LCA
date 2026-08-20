@@ -12,7 +12,12 @@ export const getUsers = asyncHandler(async (req, res) => {
 export const updateUserStatus = asyncHandler(async (req, res) => {
   const user_id = parseInt(req.params.user_id, 10);
   const { is_active } = req.body;
-  const data = await AdminUsersService.setUserActive(user_id, !!is_active);
+  const data = await AdminUsersService.setUserActive(
+    user_id,
+    !!is_active,
+    req.user?.user_id,
+    req.body?.reason,
+  );
   await writeAudit({
     user_id: req.user?.user_id,
     action: "UPDATE",
@@ -24,7 +29,7 @@ export const updateUserStatus = asyncHandler(async (req, res) => {
 });
 
 export const createUser = asyncHandler(async (req, res) => {
-  const data = await AdminUsersService.createUser(req.body);
+  const data = await AdminUsersService.createUser(req.body, req.user?.user_id);
   await writeAudit({
     user_id: req.user?.user_id,
     action: "CREATE",
@@ -37,7 +42,7 @@ export const createUser = asyncHandler(async (req, res) => {
 
 export const updateUser = asyncHandler(async (req, res) => {
   const user_id = parseInt(req.params.user_id, 10);
-  const data = await AdminUsersService.updateUser(user_id, req.body);
+  const data = await AdminUsersService.updateUser(user_id, req.body, req.user?.user_id);
   await writeAudit({
     user_id: req.user?.user_id,
     action: "UPDATE",
@@ -56,7 +61,7 @@ export const getRolePermissions = asyncHandler(async (req, res) => {
 export const updateRolePermission = asyncHandler(async (req, res) => {
   const { role } = req.params;
   const { is_active } = req.body;
-  const data = await AdminUsersService.setRoleActive(role, !!is_active);
+  const data = await AdminUsersService.setRoleActive(role, !!is_active, req.user?.user_id);
   await writeAudit({
     user_id: req.user?.user_id,
     action: "UPDATE",

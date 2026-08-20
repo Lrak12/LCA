@@ -1,4 +1,6 @@
 import { supabaseAdmin } from "../config/supabase.js";
+import { validateSchoolYear } from "../helpers/schoolYearValidation.js";
+import { activateSchoolYear, createSchoolYear } from "./schoolYear.service.js";
 
 // One school year = 12 PACEs per subject (4 quarters × 3). A student has
 // "finished the grade" when they have completed (passed) the year's projected
@@ -149,22 +151,17 @@ export const previewRollover = async () => {
  * from the supplied per-subject basis (last completed PACE → next PACEs).
  */
 export const commitRollover = async ({ year_label, start_date, end_date, students }) => {
-  if (!year_label || !start_date || !end_date) {
-    throw new Error("year_label, start_date and end_date are required");
-  }
+  const cleanSchoolYear = validateSchoolYear(
+    { year_label, start_date, end_date },
+    { mustBeCurrent: true }
+  );
   if (!Array.isArray(students) || !students.length) {
     throw new Error("students[] is required");
   }
 
   // 1. Create the new school year and make it the only active one
-  const { data: newSy, error: syErr } = await supabaseAdmin
-    .from("school_year")
-    .insert({ year_label, start_date, end_date, is_active: true })
-    .select("sy_id, year_label")
-    .single();
-  if (syErr) throw new Error(syErr.message);
-
-  await supabaseAdmin.from("school_year").update({ is_active: false }).neq("sy_id", newSy.sy_id);
+  const newSy = await createSchoolYear(cleanSchoolYear);
+  await activateSchoolYear(newSy.sy_id);
 
   // 2. Per student: update grade, seed projection
   const projectionRows = [];

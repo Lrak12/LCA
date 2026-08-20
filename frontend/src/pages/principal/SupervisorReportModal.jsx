@@ -47,6 +47,7 @@ export default function SupervisorReportModal({
   submittedAt,
   status = "Submitted",
   initialTab = "academic",
+  schoolYearId,
   onClose,
 }) {
   const [activeTab, setActiveTab] = useState(initialTab); // which report tab is showing
@@ -128,9 +129,9 @@ export default function SupervisorReportModal({
 
         {/* Active report body — renders the content module for the selected tab */}
         <div className="flex-1 overflow-auto px-7 py-5 border-t border-outline-variant/15">
-          {activeTab === "academic"   && <ClassAcademicRecordContent teacher={teacher} quarter={quarter} />}
-          {activeTab === "attendance" && <AttendanceReportContent teacher={teacher} quarter={quarter} />}
-          {activeTab === "pace"       && <PaceProgressContent teacher={teacher} quarter={quarter} />}
+          {activeTab === "academic"   && <ClassAcademicRecordContent teacher={teacher} quarter={quarter} schoolYearId={schoolYearId} />}
+          {activeTab === "attendance" && <AttendanceReportContent teacher={teacher} quarter={quarter} schoolYearId={schoolYearId} />}
+          {activeTab === "pace"       && <PaceProgressContent teacher={teacher} quarter={quarter} schoolYearId={schoolYearId} />}
           {activeTab === "analytics"  && (
             <div className="border-2 border-dashed border-outline-variant/30 rounded-2xl py-24 flex items-center justify-center">
               <p className="text-sm text-on-surface-variant italic">Report content preview will render here…</p>

@@ -45,7 +45,7 @@ const SkeletonRow = ({ cols }) => (
 );
 
 // Embeddable report body (used standalone below and inside SupervisorReportModal)
-export function PaceProgressContent({ teacher, quarter }) {
+export function PaceProgressContent({ teacher, quarter, schoolYearId }) {
   const [report,  setReport]  = useState(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState("");
@@ -57,11 +57,11 @@ export function PaceProgressContent({ teacher, quarter }) {
   useEffect(() => {
     if (!teacher?.teacher_id) return;
     setLoading(true);
-    fetchPaceReport(teacher.teacher_id, quarter)
+    fetchPaceReport(teacher.teacher_id, quarter, schoolYearId)
       .then((res) => setReport(res.data))
       .catch((err) => setError(err.response?.data?.message ?? err.message))
       .finally(() => setLoading(false));
-  }, [teacher?.teacher_id, quarter]);
+  }, [teacher?.teacher_id, quarter, schoolYearId]);
 
   const subjects = report?.subjects ?? [];              // subject column groups
   const students = (report?.students ?? []).filter((s) => // rows filtered by search

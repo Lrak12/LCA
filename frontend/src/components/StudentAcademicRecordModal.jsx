@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import {fetchStudentAcademicRecord,saveSupervisorNote,saveAcademicRemarks,markReadyForNext,updateStudentProfile,setPaceScore,} from "../api/teacher.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
+const BIBLE_MEMORY_RATINGS = ["Excellent", "Very Good", "Good", "Satisfactory", "Needs Improvement"];
 const fmtDate = (iso) => {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -74,7 +75,10 @@ export default function StudentAcademicRecordModal({ studentId, onClose }) {
     setSavingRemarks(true);
     setRemarksMsg(null);
     try {
-      await saveAcademicRemarks(studentId, { bible_memory_rating: bibleMemory === "" ? null : Number(bibleMemory), reading_wpm: readingWpm === "" ? null : Number(readingWpm) });
+      await saveAcademicRemarks(studentId, {
+        bible_memory_rating: bibleMemory || null,
+        reading_wpm: readingWpm === "" ? null : Number(readingWpm),
+      });
       setRemarksMsg({ ok: true, text: "Saved." });
       load();
     } catch (err) {
@@ -364,8 +368,13 @@ export default function StudentAcademicRecordModal({ studentId, onClose }) {
                     <div className="flex items-end gap-4 mt-3 text-sm flex-wrap">
                       <label className="flex items-center gap-2">
                         <span className="text-on-surface-variant">Bible Memory:</span>
-                        <input type="number" min="0" max="100" value={bibleMemory} onChange={(e) => setBibleMemory(e.target.value)}
-                          className="w-20 text-sm font-bold text-on-surface border border-gray-200 rounded-lg px-2 py-1 text-center focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                        <select value={bibleMemory} onChange={(e) => setBibleMemory(e.target.value)}
+                          className="text-sm font-bold text-on-surface border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary/20">
+                          <option value="">Select rating</option>
+                          {BIBLE_MEMORY_RATINGS.map((rating) => (
+                            <option key={rating} value={rating}>{rating}</option>
+                          ))}
+                        </select>
                       </label>
                       <label className="flex items-center gap-2">
                         <span className="text-on-surface-variant">Reading WPM:</span>

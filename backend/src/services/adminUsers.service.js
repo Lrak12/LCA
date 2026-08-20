@@ -1,5 +1,6 @@
 import { supabase, supabaseAdmin } from "../config/supabase.js";
 import { describeAuthCreateError } from "../helpers/authErrors.js";
+import { getLatestStatusByUser, setAccountActive } from "./schoolYearStatus.service.js";
 
 // Role profile tables. The role-table primary key doubles as the login "school ID".
 const ROLE_SOURCES = [
@@ -94,9 +95,16 @@ export const listUsers = async ({
   pageSize = DEFAULT_PAGE_SIZE,
 } = {}) => {
   // merged user list + last-login map, fetched in parallel
-  const [all, lastLoginMap] = await Promise.all([collectUsers(), fetchLastLoginMap()]);
+  const [all, lastLoginMap, statusByUser] = await Promise.all([
+    collectUsers(),
+    fetchLastLoginMap(),
+    getLatestStatusByUser(),
+  ]);
 
-  all.forEach((u) => { u.last_login = lastLoginMap[u.auth_id] ?? null; }); // stitch last_login onto each user
+  all.forEach((u) => {
+    u.last_login = lastLoginMap[u.auth_id] ?? null;
+    Object.assign(u, statusByUser.get(u.user_id) ?? {});
+  });
 
   // Stats are computed over the FULL set, before any filtering.
   const stats = {
@@ -168,11 +176,25 @@ export const listRolePermissions = async () => {
 
 // Bulk activate/deactivate every user of a role.
 // bulk activate/deactivate every user of a role (User Permissions)
-export const setRoleActive = async (key, is_active) => {
+export const setRoleActive = async (key, is_active, changed_by = null) => {
   const dbRole = PERMISSION_ROLE_MAP[key];             // map UI key -> DB role name
   if (!dbRole) throw new Error(`Unknown role "${key}".`);
 
-  // one UPDATE across every user of that role; `count` = how many rows changed
+  // Teacher/student changes must go through the school-year history function.
+  if (["teacher", "student"].includes(dbRole)) {
+    const { data: users, error } = await supabaseAdmin
+      .from("users")
+      .select("user_id")
+      .eq("role", dbRole);
+    if (error) throw new Error(error.message);
+
+    for (const user of users ?? []) {
+      await setAccountActive(user.user_id, is_active, changed_by, "Bulk role status change");
+    }
+    return { key, role: dbRole, is_active: !!is_active, affected: users?.length ?? 0 };
+  }
+
+  // Principal/administrator status still uses one regular update.
   const { error, count } = await supabaseAdmin
     .from("users")
     .update({ is_active: !!is_active }, { count: "exact" })
@@ -183,23 +205,15 @@ export const setRoleActive = async (key, is_active) => {
 };
 
 // activate/deactivate one user
-export const setUserActive = async (user_id, is_active) => {
-  const { data, error } = await supabaseAdmin
-    .from("users")
-    .update({ is_active })                             // flip the flag
-    .eq("user_id", user_id)
-    .select("user_id, is_active")                      // return the updated row
-    .single();
-  if (error) throw new Error(error.message);
-  return data;
-};
+export const setUserActive = (user_id, is_active, changed_by = null, reason = null) =>
+  setAccountActive(user_id, is_active, changed_by, reason);
 
 // Update an existing user's profile (name), account (email/status) and optionally
 // reset their password. Role changes are intentionally NOT supported here — that
 // would require migrating the profile across role tables and reassigning the login
 // ID, so it's done by deactivating + recreating instead.
 // edit a user (name / email / active / password)
-export const updateUser = async (user_id, { full_name, email, is_active, password } = {}) => {
+export const updateUser = async (user_id, { full_name, email, is_active, password } = {}, changed_by = null) => {
   const { data: userRow, error } = await supabaseAdmin
     .from("users")
     .select("user_id, auth_id, email, role")
@@ -237,8 +251,7 @@ export const updateUser = async (user_id, { full_name, email, is_active, passwor
 
   // Account status
   if (typeof is_active === "boolean") {
-    const { error: sErr } = await supabaseAdmin.from("users").update({ is_active }).eq("user_id", user_id);
-    if (sErr) throw new Error(sErr.message);
+    await setAccountActive(user_id, is_active, changed_by, "Status changed while editing account");
   }
 
   // Optional password reset
@@ -276,7 +289,7 @@ export const createUser = async ({
   password,
   contact_number = null,
   is_active = true,
-}) => {
+}, changed_by = null) => {
   // only staff roles can be created here; students go through Enrollment
   if (!STAFF_PROFILE[role]) {
     throw new Error(`Cannot create role "${role}" here. Students are added through Enrollment.`);
@@ -332,7 +345,7 @@ export const createUser = async ({
 
   // Trigger creates the users row as active; flip it if the admin chose Inactive.
   if (is_active === false) {
-    await supabaseAdmin.from("users").update({ is_active: false }).eq("user_id", user_id);
+    await setAccountActive(user_id, false, changed_by, "Account created as inactive");
   }
 
   // resolve the login "school ID": admin already has it; others get the DB-generated PK

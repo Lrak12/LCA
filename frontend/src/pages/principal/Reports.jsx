@@ -6,7 +6,7 @@
 import { useState, useEffect } from "react";
 import PrincipalLayout from "../../components/PrincipalLayout.jsx";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
-import { fetchReportTeachers, fetchSubmissionStatuses } from "../../api/reports.js";
+import { fetchReportSchoolYears, fetchReportTeachers, fetchSubmissionStatuses } from "../../api/reports.js";
 import SupervisorReportModal from "./SupervisorReportModal.jsx";
 
 // quarter selector tabs
@@ -71,26 +71,41 @@ export default function Reports() {
   const schoolYearLabel = useSchoolYear();
 
   const [teachers,       setTeachers]       = useState([]);   // supervisors list
+  const [schoolYears,    setSchoolYears]    = useState([]);
+  const [selectedSy,     setSelectedSy]     = useState("");
   const [loading,        setLoading]        = useState(true);
   const [error,          setError]          = useState("");
   const [activeQtr,      setActiveQtr]      = useState(4);     // selected quarter tab
   const [page,           setPage]           = useState(1);
   const [selectedReport, setSelectedReport] = useState(null); // report open in the modal { teacher, quarter, type }
   const [submissions,    setSubmissions]    = useState({});   // { [type]: { [teacher_id]: submitted_at } }
-  const [subLoading,     setSubLoading]     = useState(false);
+  const [subLoading,     setSubLoading]     = useState(true);
 
-  // load the supervisor list once
+  // Load available years, then default to the operational active year.
   useEffect(() => {
-    fetchReportTeachers()
+    fetchReportSchoolYears()
+      .then((res) => {
+        const years = res.data ?? [];
+        setSchoolYears(years);
+        const active = years.find((year) => year.is_active) ?? years[0];
+        setSelectedSy(active ? String(active.sy_id) : "");
+      })
+      .catch((err) => setError(err.response?.data?.message ?? err.message));
+  }, []);
+
+  // Reload supervisors when the principal selects another school year.
+  useEffect(() => {
+    if (!selectedSy) return;
+    fetchReportTeachers(selectedSy)
       .then((res) => setTeachers(res.data ?? []))
       .catch((err) => setError(err.response?.data?.message ?? err.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [selectedSy]);
 
   // whenever the quarter changes, refetch submission status for all 3 report types in parallel
   useEffect(() => {
-    setSubLoading(true);
-    Promise.all(REPORT_TYPES.map((rt) => fetchSubmissionStatuses(activeQtr, rt.key)))
+    if (!selectedSy) return;
+    Promise.all(REPORT_TYPES.map((rt) => fetchSubmissionStatuses(activeQtr, rt.key, selectedSy)))
       .then((results) => {
         const next = {};
         REPORT_TYPES.forEach((rt, i) => { next[rt.key] = results[i].data ?? {}; }); // key results by report type
@@ -98,14 +113,14 @@ export default function Reports() {
       })
       .catch(() => setSubmissions({}))
       .finally(() => setSubLoading(false));
-  }, [activeQtr]);
+  }, [activeQtr, selectedSy]);
 
   // paginate the supervisor list
   const totalPages   = Math.max(1, Math.ceil(teachers.length / PAGE_SIZE));
   const currentPage  = Math.min(page, totalPages);
   const pageTeachers = teachers.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
-  const handleQtr  = (q) => { setActiveQtr(q); setPage(1); }; // switch quarter, reset to page 1
+  const handleQtr  = (q) => { setSubLoading(true); setActiveQtr(q); setPage(1); }; // switch quarter, reset to page 1
   const handlePage = (p) => setPage(Math.max(1, Math.min(totalPages, p)));
 
   // was this report type submitted by this teacher? returns the submitted_at date or null
@@ -127,6 +142,28 @@ export default function Reports() {
           <p className="text-on-surface-variant mt-2 max-w-xl text-sm leading-relaxed">
             Detailed academic logs, individual student progress summaries, and supervisor feedback submissions.
           </p>
+          <div className="mt-4 w-full sm:w-64">
+            <label className="block text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1.5">
+              School Year
+            </label>
+            <select
+              value={selectedSy}
+              onChange={(event) => {
+                setLoading(true);
+                setSubLoading(true);
+                setSelectedSy(event.target.value);
+                setPage(1);
+                setSelectedReport(null);
+              }}
+              className="w-full bg-white border border-outline-variant/30 rounded-xl px-3.5 py-2.5 text-sm font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20"
+            >
+              {schoolYears.map((year) => (
+                <option key={year.sy_id} value={year.sy_id}>
+                  {year.year_label}{year.is_active ? " (Active)" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
         </header>
 
         {error && (
@@ -194,9 +231,10 @@ export default function Reports() {
                   // one row per supervisor: derive their submission counts/status for this quarter
                   pageTeachers.map((teacher) => {
                     const tid       = teacher.teacher_id;
-                    const dates     = REPORT_TYPES.map((rt) => subDateFor(rt.key, tid)).filter(Boolean); // submitted dates
-                    const latest    = dates.length ? dates.map((d) => new Date(d)).sort((a, b) => b - a)[0].toISOString() : null; // newest submission
-                    const count     = dates.length;
+                    const submitted = REPORT_TYPES.map((rt) => subDateFor(rt.key, tid));
+                    const dates     = submitted.filter((value) => typeof value === "string");
+                    const latest    = dates.length ? dates.map((d) => new Date(d)).sort((a, b) => b - a)[0].toISOString() : null;
+                    const count     = submitted.filter(Boolean).length;
                     const status    = count === REPORT_TYPES.length ? "Submitted" : count > 0 ? "Partial" : "Not Submitted"; // all/some/none
                     const firstSub  = REPORT_TYPES.find((rt) => subDateFor(rt.key, tid)); // first submitted type (for the View button)
 
@@ -325,6 +363,7 @@ export default function Reports() {
           submittedAt={selectedReport.submittedAt}
           status={selectedReport.status}
           initialTab={selectedReport.type}
+          schoolYearId={selectedSy}
           onClose={() => setSelectedReport(null)}
         />
       )}

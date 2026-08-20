@@ -1,8 +1,7 @@
 ﻿// Shared chrome for every PRINCIPAL page: left sidebar nav + top bar (school year,
 // notification bell, help, logout) wrapping each page's {children}. Every pages/principal/*.jsx
 // renders <PrincipalLayout>...</PrincipalLayout>. Data comes from AuthContext (user) - no API here.
-// NOTE: principal routes live under /admin/* (the sysadmin role uses /sysadmin/*); the two
-// commented-out navItems (Students, New School Year) are hidden for now but their pages still exist.
+// NOTE: principal routes live under /admin/* (the sysadmin role uses /sysadmin/*).
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -10,18 +9,18 @@ import NotificationBell from "./NotificationBell.jsx";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
-// sidebar nav items (icon + label + route). Commented rows are intentionally hidden for now.
+// sidebar nav items (icon + label + route).
 const navItems = [
   { icon: "dashboard",      label: "Dashboard",            path: "/admin/dashboard"     },
   { icon: "groups",         label: "Supervisor Management", path: "/admin/employees"     },
-  //{ icon: "group",          label: "Students",             path: "/admin/students"      }, comment for now this is for testing
+  { icon: "group",          label: "Students",             path: "/admin/students"      },
   { icon: "visibility",     label: "Student Monitoring",   path: "/admin/monitoring"    },
   { icon: "corporate_fare", label: "Grade Level",      path: "/admin/sections"      },
-  // [PANEL-50] hidden for panel — beyond the 50% increment scope
-  // { icon: "assessment",     label: "Reports",              path: "/admin/reports"       },
-  // { icon: "campaign",       label: "Announcements",        path: "/admin/announcements" },
+  { icon: "assessment",     label: "Reports",              path: "/admin/reports"       },
+  { icon: "campaign",       label: "Announcements",        path: "/admin/announcements" },
   { icon: "assignment",     label: "Diagnostic Assessment", path: "/admin/diagnostic"   },
-  //{ icon: "autorenew",      label: "New School Year",      path: "/admin/rollover"      },
+  // Rollover stays hidden until the full workflow is presentation-ready.
+  // { icon: "autorenew",      label: "New School Year",      path: "/admin/rollover"      },
   { icon: "settings",       label: "Account Settings",             path: "/admin/settings"      },
 ];
 

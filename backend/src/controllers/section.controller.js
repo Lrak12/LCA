@@ -9,7 +9,7 @@ export const getAll = asyncHandler(async (req, res) => {
 
 export const enrollStudents = asyncHandler(async (req, res) => {
   const { student_ids } = req.body;
-  const data = await SectionService.enrollStudents(req.params.id, student_ids);
+  const data = await SectionService.enrollStudents(req.params.id, student_ids, req.user?.user_id);
   sendSuccess(res, data, `${data.enrolled} student(s) enrolled`);
 });
 
@@ -20,7 +20,7 @@ export const removeStudent = asyncHandler(async (req, res) => {
 
 export const assignTeacher = asyncHandler(async (req, res) => {
   const { teacher_id } = req.body;
-  const data = await SectionService.assignTeacher(req.params.id, teacher_id);
+  const data = await SectionService.assignTeacher(req.params.id, teacher_id, req.user?.user_id);
   sendSuccess(res, data, "Teacher assigned to grade level");
 });
 

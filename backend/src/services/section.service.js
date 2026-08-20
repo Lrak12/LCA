@@ -10,6 +10,32 @@ const getActiveSY = async () => {
   return data;
 };
 
+const closeStudentAssignment = async (student_id, sy_id) => {
+  const { error } = await supabaseAdmin
+    .from("student_supervisor_history")
+    .update({ unassigned_at: new Date().toISOString() })
+    .eq("student_id", Number(student_id))
+    .eq("sy_id", Number(sy_id))
+    .is("unassigned_at", null);
+  if (error) throw new Error(error.message);
+};
+
+const saveStudentAssignment = async (student_id, grade, recorded_by = null) => {
+  await closeStudentAssignment(student_id, grade.sy_id);
+  if (!grade.teacher_id) return;
+
+  const { error } = await supabaseAdmin.from("student_supervisor_history").insert({
+    student_id: Number(student_id),
+    teacher_id: grade.teacher_id,
+    sy_id: grade.sy_id,
+    gl_id: grade.gl_id,
+    grade_level_name: grade.level_name,
+    recorded_by: recorded_by ? Number(recorded_by) : null,
+    reason: "Grade level assignment changed",
+  });
+  if (error) throw new Error(error.message);
+};
+
 export const getAllGradeLevels = async () => {
   const sy = await getActiveSY();
 
@@ -52,10 +78,10 @@ export const getAllGradeLevels = async () => {
   return results;
 };
 
-export const enrollStudents = async (gl_id, student_ids) => {
+export const enrollStudents = async (gl_id, student_ids, recorded_by = null) => {
   const { data: gl, error: glErr } = await supabaseAdmin
     .from("grade_level")
-    .select("gl_id")
+    .select("gl_id, sy_id, level_name, teacher_id")
     .eq("gl_id", gl_id)
     .single();
   if (glErr) throw new Error("Grade level not found");
@@ -81,6 +107,10 @@ export const enrollStudents = async (gl_id, student_ids) => {
     .in("student_id", student_ids);
   if (error) throw new Error(error.message);
 
+  for (const studentId of student_ids) {
+    await saveStudentAssignment(studentId, gl, recorded_by);
+  }
+
   return { enrolled: student_ids.length };
 };
 
@@ -88,6 +118,13 @@ export const enrollStudents = async (gl_id, student_ids) => {
 // becomes Unassigned and can be enrolled elsewhere. Scoped to gl_id so a stale
 // request can't unassign a student who has since moved to another grade.
 export const removeStudent = async (gl_id, student_id) => {
+  const { data: grade, error: gradeErr } = await supabaseAdmin
+    .from("grade_level")
+    .select("sy_id")
+    .eq("gl_id", gl_id)
+    .single();
+  if (gradeErr) throw new Error("Grade level not found");
+
   const { data, error } = await supabaseAdmin
     .from("student")
     .update({ gl_id: null })
@@ -97,10 +134,11 @@ export const removeStudent = async (gl_id, student_id) => {
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) throw new Error("Student is not enrolled in this grade level.");
+  await closeStudentAssignment(student_id, grade.sy_id);
   return { removed: true };
 };
 
-export const assignTeacher = async (gl_id, teacher_id) => {
+export const assignTeacher = async (gl_id, teacher_id, recorded_by = null) => {
   const sy = await getActiveSY();
 
   // Guardrail: a teacher can supervise only one grade level per school year.
@@ -123,9 +161,17 @@ export const assignTeacher = async (gl_id, teacher_id) => {
     .from("grade_level")
     .update({ teacher_id })
     .eq("gl_id", gl_id)
-    .select("gl_id, level_name, teacher_id")
+    .select("gl_id, sy_id, level_name, teacher_id")
     .single();
   if (error) throw new Error(error.message);
+
+  const { data: students } = await supabaseAdmin
+    .from("student")
+    .select("student_id")
+    .eq("gl_id", data.gl_id);
+  for (const student of students ?? []) {
+    await saveStudentAssignment(student.student_id, data, recorded_by);
+  }
   return data;
 };
 
@@ -134,6 +180,13 @@ export const assignTeacher = async (gl_id, teacher_id) => {
 // Scoped to teacher_id when given, so a stale request can't unassign a supervisor
 // who has since been replaced.
 export const unassignTeacher = async (gl_id, teacher_id) => {
+  const { data: grade, error: gradeErr } = await supabaseAdmin
+    .from("grade_level")
+    .select("gl_id, sy_id")
+    .eq("gl_id", gl_id)
+    .single();
+  if (gradeErr) throw new Error("Grade level not found");
+
   let query = supabaseAdmin
     .from("grade_level")
     .update({ teacher_id: null })
@@ -144,5 +197,13 @@ export const unassignTeacher = async (gl_id, teacher_id) => {
   const { data, error } = await query.select("gl_id, level_name").maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) throw new Error("This grade level has no supervisor assigned.");
+
+  const { data: students } = await supabaseAdmin
+    .from("student")
+    .select("student_id")
+    .eq("gl_id", grade.gl_id);
+  for (const student of students ?? []) {
+    await closeStudentAssignment(student.student_id, grade.sy_id);
+  }
   return { unassigned: true, ...data };
 };

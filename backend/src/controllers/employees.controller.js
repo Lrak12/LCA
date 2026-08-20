@@ -24,12 +24,12 @@ export const getSupervisorStats = asyncHandler(async (req, res) => {
 
 export const createEmployee = async (req, res, next) => {
   try {
-    const data = await EmployeesService.createEmployee(req.body);
+    const data = await EmployeesService.createEmployee(req.body, req.user?.user_id);
     res.status(201).json({ success: true, data });
   } catch (err) { next(err); }
 };
 
 export const updateSupervisor = asyncHandler(async (req, res) => {
-  const data = await EmployeesService.updateSupervisor(req.params.id, req.body);
+  const data = await EmployeesService.updateSupervisor(req.params.id, req.body, req.user?.user_id);
   sendSuccess(res, data);
 });

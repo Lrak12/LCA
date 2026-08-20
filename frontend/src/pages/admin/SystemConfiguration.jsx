@@ -53,6 +53,50 @@ const fmtDateTime = (iso) => {
 };
 const toInputDate = (iso) => (iso ? new Date(iso).toISOString().slice(0, 10) : ""); // ISO -> yyyy-mm-dd for <input type=date>
 const syLabel = (label) => (label ? (/^sy\s/i.test(label) ? label : `SY ${label}`) : "—"); // ensure a leading "SY " prefix
+const SY_FORMAT = /^SY (\d{4})-(\d{4})$/;
+
+const schoolYearFormError = (form, years = [], ignoredId = null, mustBeCurrent = false) => {
+  const label = form.year_label.trim();
+  const match = label.match(SY_FORMAT);
+  if (!match) return "Use the format SY YYYY-YYYY, for example SY 2026-2027.";
+
+  const firstYear = Number(match[1]);
+  const secondYear = Number(match[2]);
+  if (secondYear !== firstYear + 1) return "The second year must be exactly one year after the first year.";
+  if (!form.start_date || !form.end_date) return "Start date and end date are required.";
+  if (form.end_date <= form.start_date) return "End date must be after the start date.";
+  if (Number(form.start_date.slice(0, 4)) !== firstYear || Number(form.end_date.slice(0, 4)) !== secondYear) {
+    return "The School Year label must match the start and end date years.";
+  }
+
+  const days = (new Date(`${form.end_date}T00:00:00Z`) - new Date(`${form.start_date}T00:00:00Z`)) / 86400000;
+  if (days < 180 || days > 366) return "School year dates must cover a realistic period of 180 to 366 days.";
+
+  if (mustBeCurrent) {
+    const today = new Date().toISOString().slice(0, 10);
+    if (today < form.start_date) return "The active school year cannot be changed to a future date range.";
+    if (today > form.end_date) return "The active school year cannot be changed to an outdated date range.";
+  }
+
+  const key = `${firstYear}-${secondYear}`;
+  const duplicate = years.some((year) => {
+    if (Number(year.sy_id) === Number(ignoredId)) return false;
+    const oldKey = String(year.year_label ?? "").trim().replace(/^SY\s+/i, "");
+    return oldKey === key || (year.start_date === form.start_date && year.end_date === form.end_date);
+  });
+  return duplicate ? "This school year already exists." : "";
+};
+
+const activationError = (schoolYear) => {
+  const today = new Date().toISOString().slice(0, 10);
+  if (today < schoolYear.start_date) return "This school year is in the future and cannot be activated yet.";
+  return "";
+};
+
+const isHistoricalYear = (schoolYear) => {
+  const today = new Date().toISOString().slice(0, 10);
+  return today > schoolYear.end_date;
+};
 
 const Skeleton = ({ className }) => <div className={`animate-pulse bg-surface-container-high rounded-lg ${className}`} />;
 
@@ -63,7 +107,7 @@ const labelCls = "block text-[15px] font-extrabold tracking-widest uppercase tex
 // Small modal to rename a school year or adjust its start/end dates.
 // Rendered by <SchoolYearTab> (editing). onClose = () => setEditing(null);
 // onSaved = () => { setEditing(null); setBanner("School year updated."); reload(); }.
-function EditSchoolYearModal({ sy, onClose, onSaved }) {
+function EditSchoolYearModal({ sy, years, onClose, onSaved }) {
   const [form, setForm] = useState({                 // seeded from the row being edited
     year_label: sy.year_label ?? "",
     start_date: toInputDate(sy.start_date),          // ISO -> yyyy-mm-dd for the date inputs
@@ -76,7 +120,8 @@ function EditSchoolYearModal({ sy, onClose, onSaved }) {
   const submit = async (e) => {
     e.preventDefault();
     setError("");
-    if (!form.year_label.trim() || !form.start_date || !form.end_date) return setError("All fields are required.");
+    const validationError = schoolYearFormError(form, years, sy.sy_id, sy.is_active);
+    if (validationError) return setError(validationError);
     setSaving(true);
     try {
       await updateSchoolYear(sy.sy_id, form);        // PATCH /admin/school-years/:id
@@ -104,7 +149,8 @@ function EditSchoolYearModal({ sy, onClose, onSaved }) {
           )}
           <div>
             <label className={labelCls}>School Year Label</label>
-            <input value={form.year_label} onChange={set("year_label")} placeholder="e.g., SY 2026-2027" className={inputCls} />
+            <input value={form.year_label} onChange={set("year_label")} placeholder="SY 2026-2027" pattern="SY [0-9]{4}-[0-9]{4}" maxLength={12} spellCheck={false} className={inputCls} />
+            <p className="text-[11px] text-on-surface-variant mt-1.5">Required format: SY YYYY-YYYY</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -142,6 +188,7 @@ function SchoolYearTab({ setBanner }) {
   const [busyId, setBusyId]   = useState(null);      // sy_id currently being activated
   const [confirmSy, setConfirmSy] = useState(null);  // school year pending "set active" confirmation
   const [gradeLevels, setGradeLevels] = useState([]); // grade levels for the active year
+  const [activeSchoolYearId, setActiveSchoolYearId] = useState(null);
   const [glLoading, setGlLoading]     = useState(true);
   const [showAddGl, setShowAddGl]     = useState(false); // Add Grade Level modal open?
   const [confirmGl, setConfirmGl]     = useState(null);  // grade level pending delete confirmation
@@ -156,8 +203,10 @@ function SchoolYearTab({ setBanner }) {
       try {
         const res = await fetchAcademicConfig();
         setGradeLevels(res.data?.gradeLevels ?? []);
+        setActiveSchoolYearId(res.data?.schoolYear?.sy_id ?? null);
       } catch {
         setGradeLevels([]);
+        setActiveSchoolYearId(null);
       } finally {
         setGlLoading(false);
       }
@@ -165,9 +214,8 @@ function SchoolYearTab({ setBanner }) {
     loadGl();
   }, [reloadKey]);
 
-  const nextGlOrder = gradeLevels.length
-    ? Math.max(...gradeLevels.map((g) => g.level_order ?? 0)) + 1
-    : 1;
+  const nextGlOrder = Array.from({ length: 12 }, (_, index) => index + 1)
+    .find((order) => !gradeLevels.some((grade) => Number(grade.level_order) === order)) ?? "";
 
   // (re)load the school year list whenever reloadKey changes
   useEffect(() => {
@@ -192,7 +240,8 @@ function SchoolYearTab({ setBanner }) {
   const onCreate = async (e) => {
     e.preventDefault();
     setError("");
-    if (!form.year_label.trim() || !form.start_date || !form.end_date) { setError("Fill in all fields to create a school year."); return; }
+    const validationError = schoolYearFormError(form, years);
+    if (validationError) { setError(validationError); return; }
     setCreating(true);
     try {
       await createSchoolYear(form);                    // POST /admin/school-years
@@ -210,7 +259,7 @@ function SchoolYearTab({ setBanner }) {
   const onActivate = async (sy) => {
     setBusyId(sy.sy_id);
     try {
-      await activateSchoolYear(sy.sy_id);              // PATCH /admin/school-years/:id/activate
+      await activateSchoolYear(sy.sy_id, isHistoricalYear(sy));
       setBanner(`${syLabel(sy.year_label)} is now active.`);
       reload();
     } catch (err) {
@@ -410,7 +459,11 @@ function SchoolYearTab({ setBanner }) {
         </div>
         {/* create form: inputs -> set(field); submit -> onCreate() (createSchoolYear + reload) */}
         <form onSubmit={onCreate} className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
-          <div><label className={labelCls}>School Year Label</label><input value={form.year_label} onChange={set("year_label")} placeholder="e.g., SY 2026-2027" className={inputCls} /></div>
+          <div>
+            <label className={labelCls}>School Year Label</label>
+            <input value={form.year_label} onChange={set("year_label")} placeholder="SY 2026-2027" pattern="SY [0-9]{4}-[0-9]{4}" maxLength={12} spellCheck={false} className={inputCls} />
+            <p className="text-[11px] text-on-surface-variant mt-1.5">Required format: SY YYYY-YYYY</p>
+          </div>
           <div><label className={labelCls}>Start Date</label><input type="date" value={form.start_date} onChange={set("start_date")} className={inputCls} /></div>
           <div><label className={labelCls}>End Date</label><input type="date" value={form.end_date} onChange={set("end_date")} className={inputCls} /></div>
           <button type="submit" disabled={creating} className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold bg-primary text-white shadow-sm hover:shadow-lg disabled:opacity-60">
@@ -423,6 +476,8 @@ function SchoolYearTab({ setBanner }) {
       {showAddGl && (
         <AddGradeLevelModal
           nextOrder={nextGlOrder}
+          existingGradeLevels={gradeLevels}
+          schoolYearId={activeSchoolYearId}
           onClose={() => setShowAddGl(false)}
           onSuccess={() => { setShowAddGl(false); setBanner("Grade level added."); reload(); }}
         />
@@ -471,7 +526,14 @@ function SchoolYearTab({ setBanner }) {
                           </span>
                         ) : (
                           /* Set as Active -> confirm, then onActivate(sy) (activateSchoolYear + reload) */
-                          <button onClick={() => setConfirmSy(sy)} disabled={busyId === sy.sy_id}
+                          <button
+                            onClick={() => {
+                              const message = activationError(sy);
+                              if (message) return setError(message);
+                              setConfirmSy(sy);
+                            }}
+                            disabled={busyId === sy.sy_id || !!activationError(sy)}
+                            title={activationError(sy) || "Set this as the active school year"}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-outline-variant/40 text-on-surface text-xs font-bold hover:bg-surface-container-low disabled:opacity-60">
                             <span className="material-symbols-outlined text-sm">star</span> Set as Active
                           </button>
@@ -497,6 +559,7 @@ function SchoolYearTab({ setBanner }) {
       {editing && (
         <EditSchoolYearModal
           sy={editing}
+          years={years}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); setBanner("School year updated."); reload(); }}
         />
@@ -507,7 +570,12 @@ function SchoolYearTab({ setBanner }) {
         tone="primary"
         icon="event_available"
         title="Set Active School Year?"
-        message={confirmSy ? `Make ${syLabel(confirmSy.year_label)} the active school year? This deactivates the current active year and changes what the whole system treats as the current year.` : ""}
+        detail={confirmSy && isHistoricalYear(confirmSy) ? "Historical school year warning" : undefined}
+        message={confirmSy
+          ? isHistoricalYear(confirmSy)
+            ? `Make ${syLabel(confirmSy.year_label)} active temporarily? This is an outdated school year. Current dashboards, lists, deactivation records, and data entry will use this historical year until you switch back to the present school year.`
+            : `Make ${syLabel(confirmSy.year_label)} the active school year? This deactivates the current active year and changes what the whole system treats as the current year.`
+          : ""}
         confirmLabel="Set as Active"
         busy={busyId === confirmSy?.sy_id}
         onConfirm={async () => { const sy = confirmSy; await onActivate(sy); setConfirmSy(null); }}
@@ -532,7 +600,7 @@ function SchoolYearTab({ setBanner }) {
 // ── User Access Management tab ─────────────────────────────────────────────────
 // Reuses the /admin/users list to toggle each user's active status (per row, or via a
 // pending dropdown edit + Save).
-function UserAccessTab({ setBanner }) {
+function UserAccessTab({ setBanner, schoolYearLabel }) {
   const [searchInput, setSearchInput] = useState(""); // raw search text (debounced into `search`)
   const [search, setSearch] = useState("");            // debounced term sent to the API
   const [role, setRole]     = useState("all");         // role filter
@@ -684,6 +752,7 @@ function UserAccessTab({ setBanner }) {
                 <th className="px-6 py-3 text-left">Email</th>
                 <th className="px-6 py-3 text-left">Role</th>
                 <th className="px-6 py-3 text-left">Status</th>
+                <th className="px-6 py-3 text-left">Final Active SY</th>
                 <th className="px-6 py-3 text-left">Last Login</th>
                 <th className="px-6 py-3 text-right">Actions</th>
               </tr>
@@ -691,10 +760,10 @@ function UserAccessTab({ setBanner }) {
             <tbody className="divide-y divide-outline-variant/10">
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
-                  <tr key={i}>{Array.from({ length: 6 }).map((__, j) => <td key={j} className="px-6 py-4"><Skeleton className="h-4 w-24" /></td>)}</tr>
+                  <tr key={i}>{Array.from({ length: 7 }).map((__, j) => <td key={j} className="px-6 py-4"><Skeleton className="h-4 w-24" /></td>)}</tr>
                 ))
               ) : users.length === 0 ? (
-                <tr><td colSpan={6} className="px-6 py-10 text-center text-sm text-on-surface-variant">No users match the current filters.</td></tr>
+                <tr><td colSpan={7} className="px-6 py-10 text-center text-sm text-on-surface-variant">No users match the current filters.</td></tr>
               ) : (
                 // one row per user: role badge, editable status dropdown, and action buttons
                 users.map((u) => {
@@ -726,6 +795,9 @@ function UserAccessTab({ setBanner }) {
                             </span>
                           </span>
                         </div>
+                      </td>
+                      <td className="px-6 py-4 text-xs text-on-surface-variant whitespace-nowrap">
+                        {u.deactivated_school_year ?? "—"}
                       </td>
                       <td className="px-6 py-4 text-xs text-on-surface-variant whitespace-nowrap">{fmtDateTime(u.last_login)}</td>
                       <td className="px-6 py-4">
@@ -780,8 +852,8 @@ function UserAccessTab({ setBanner }) {
         tone="danger"
         icon="block"
         title="Deactivate User?"
-        detail="They will be blocked from signing in."
-        message={confirmUser ? `Deactivate ${confirmUser.name}'s account? They will not be able to log in until reactivated.` : ""}
+        detail={`Final active school year: ${schoolYearLabel}`}
+        message={confirmUser ? `Deactivate ${confirmUser.name}'s account? Login will be blocked now, but the user will remain included in ${schoolYearLabel} records and will be excluded beginning with the next school year.` : ""}
         confirmLabel="Deactivate"
         busy={busyId === confirmUser?.user_id}
         onConfirm={async () => { const u = confirmUser; await toggleActive(u); setConfirmUser(null); }}
@@ -836,7 +908,7 @@ export default function SystemConfiguration() {
         </div>
 
         {/* render the active tab (each fetches its own data) */}
-        {tab === "school" ? <SchoolYearTab setBanner={setBanner} /> : <UserAccessTab setBanner={setBanner} />}
+        {tab === "school" ? <SchoolYearTab setBanner={setBanner} /> : <UserAccessTab setBanner={setBanner} schoolYearLabel={schoolYearLabel} />}
       </main>
     </AdminLayout>
   );

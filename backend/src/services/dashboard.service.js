@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "../config/supabase.js";
+import { getEligibleUserIds, getSchoolYear } from "./schoolYearStatus.service.js";
 
 // ── Admin dashboard ───────────────────────────────────────────────────────────
 // Normalize one system_audit_log row into the shape the activity feed expects,
@@ -72,28 +73,24 @@ export const getAdminDashboard = async () => {
 // Principal dashboard stats: student/supervisor/active-student counts, announcements
 // posted, active school year, and recent announcements for the notifications panel.
 export const getDashboardStats = async () => {
-  // all the counts + lookups for the cards run in parallel
+  const schoolYear = await getSchoolYear();
+  const [eligibleTeachers, eligibleStudents] = await Promise.all([
+    getEligibleUserIds(schoolYear.sy_id, "teacher"),
+    getEligibleUserIds(schoolYear.sy_id, "student"),
+  ]);
+
+  // Load profile ids so the counts use school-year membership, not login access.
   const [
-    { count: totalStudents },
-    { count: totalTeachers },
+    { data: studentRows },
+    { data: teacherRows },
     { count: totalAdmins },
-    { count: activeStudents },       // students whose linked user account is active
     { count: announcementsPosted },
-    { data: schoolYear },            // the active school year
-    { data: students },              // enrollment_date rows (for the trend chart)
     { data: announcements },         // 5 most recent for the notifications panel
   ] = await Promise.all([
-    supabaseAdmin.from("student").select("*", { count: "exact", head: true }),
-    supabaseAdmin.from("teacher").select("*", { count: "exact", head: true }),
+    supabaseAdmin.from("student").select("student_id, user_id, enrollment_date"),
+    supabaseAdmin.from("teacher").select("teacher_id, user_id"),
     supabaseAdmin.from("principal").select("*", { count: "exact", head: true }),
-    // Active students = students whose linked user account is active
-    supabaseAdmin
-      .from("student")
-      .select("student_id, users!inner(is_active)", { count: "exact", head: true })
-      .eq("users.is_active", true),
     supabaseAdmin.from("announcement").select("*", { count: "exact", head: true }).eq("is_active", true),
-    supabaseAdmin.from("school_year").select("*").eq("is_active", true).single(),
-    supabaseAdmin.from("student").select("enrollment_date"),
     supabaseAdmin
       .from("announcement")
       .select("ann_id, title, posted_date, audience_role, principal(first_name, last_name)")
@@ -102,24 +99,26 @@ export const getDashboardStats = async () => {
       .limit(5),
   ]);
 
-  const totalEmployees = (totalTeachers || 0) + (totalAdmins || 0);   // supervisors + admins
+  const students = (studentRows ?? []).filter((row) => eligibleStudents.has(row.user_id));
+  const teachers = (teacherRows ?? []).filter((row) => eligibleTeachers.has(row.user_id));
+  const totalStudents = students.length;
+  const totalTeachers = teachers.length;
+  const totalEmployees = totalTeachers + (totalAdmins || 0);
 
   // active enrollments = diagnostic assessments taken this school year
   let activeEnrollments = 0;
-  if (schoolYear) {
-    const { count } = await supabaseAdmin
-      .from("diagnostic_assessment")
-      .select("*", { count: "exact", head: true })
-      .eq("sy_id", schoolYear.sy_id);
-    activeEnrollments = count || 0;
-  }
+  const { count } = await supabaseAdmin
+    .from("diagnostic_assessment")
+    .select("*", { count: "exact", head: true })
+    .eq("sy_id", schoolYear.sy_id);
+  activeEnrollments = count || 0;
 
   const enrollmentTrends = buildEnrollmentTrends(students || []);   // monthly enrollment chart data
 
   return {
     totalStudents:       totalStudents       || 0,
     totalSupervisors:    totalTeachers       || 0,
-    activeStudents:      activeStudents      || 0,
+    activeStudents:      totalStudents,
     announcementsPosted: announcementsPosted || 0,
     totalEmployees,
     activeEnrollments,

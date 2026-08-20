@@ -4,6 +4,7 @@ import * as StudentParentContactModel from "../models/studentParentContact.model
 import * as NotificationService from "./notification.service.js";
 import { supabase, supabaseAdmin } from "../config/supabase.js";
 import { describeAuthCreateError } from "../helpers/authErrors.js";
+import { getEligibleUserIds, getSchoolYear, setAccountActive } from "./schoolYearStatus.service.js";
 
 // School wall-clock timezone. PACE test schedules are stored as real instants
 // anchored to the school offset (see teacher.service.js SCHOOL_TZ_OFFSET), so
@@ -36,6 +37,15 @@ async function getActiveSchoolYearId() {
     .eq("is_active", true)
     .maybeSingle();
   return data?.sy_id ?? null;
+}
+
+function getCurrentSchoolYearQuarter(startDate) {
+  if (!startDate) return 1;
+  const start = new Date(startDate);
+  const now = new Date();
+  const months = (now.getFullYear() - start.getFullYear()) * 12
+    + (now.getMonth() - start.getMonth());
+  return Math.min(4, Math.max(1, Math.floor(months / 3) + 1));
 }
 
 // ── Student ID generation ─────────────────────────────────────────────────────
@@ -132,9 +142,11 @@ function summarizePaceSlots(rows, completedKeys = new Set()) {
 }
 
 export const getAllStudents = async () => {
+  const activeSy = await getSchoolYear();
+  const eligible = await getEligibleUserIds(activeSy.sy_id, "student");
   const { data, error } = await StudentModel.findAll();
   if (error) throw new Error(error.message);
-  return data;
+  return (data ?? []).filter((student) => eligible.has(student.user_id ?? student.users?.user_id));
 };
 
 export const getStudentById = async (student_id) => {
@@ -149,7 +161,7 @@ export const getStudentByUserId = async (user_id) => {
   return data;
 };
 
-export const createStudent = async (authPayload, profilePayload, extras = {}) => {
+export const createStudent = async (authPayload, profilePayload, extras = {}, changed_by = null) => {
   // Duplicate-person guard. The login email is auto-uniquified below (a repeat
   // name just gets the ID appended), so the users.email UNIQUE constraint no
   // longer blocks enrolling the same person twice. Guard here instead: reject a
@@ -237,10 +249,7 @@ export const createStudent = async (authPayload, profilePayload, extras = {}) =>
 
   // Optionally mark the student's user account inactive at creation
   if (extras.is_active === false) {
-    await supabaseAdmin
-      .from("users")
-      .update({ is_active: false })
-      .eq("user_id", userProfile.user_id);
+    await setAccountActive(userProfile.user_id, false, changed_by, "Student created as inactive");
   }
 
   // Optionally store a parent/guardian contact for the student. If this fails
@@ -267,9 +276,20 @@ export const createStudent = async (authPayload, profilePayload, extras = {}) =>
   return { ...data, login_email: loginEmail };
 };
 
-export const updateStudent = async (student_id, payload) => {
-  const { data, error } = await StudentModel.update(student_id, payload);
+export const updateStudent = async (student_id, payload, changed_by = null) => {
+  const { is_active, ...studentFields } = payload;
+  const { data, error } = await StudentModel.update(student_id, studentFields);
   if (error) throw new Error(error.message);
+
+  if (typeof is_active === "boolean") {
+    const { data: student, error: findErr } = await supabaseAdmin
+      .from("student")
+      .select("user_id")
+      .eq("student_id", Number(student_id))
+      .single();
+    if (findErr || !student) throw new Error("Student account not found.");
+    await setAccountActive(student.user_id, is_active, changed_by, "Status changed from student profile");
+  }
   return data;
 };
 
@@ -589,9 +609,7 @@ export const getStudentAttendance = async (user_id, monthParam) => {
   };
 };
 
-export const getStudentGrades = async (user_id, quarter = 1) => {
-  const q = [1, 2, 3, 4].includes(Number(quarter)) ? Number(quarter) : 1;
-
+export const getStudentGrades = async (user_id, quarter) => {
   const { data: student, error: studentErr } = await supabaseAdmin
     .from("student")
     .select("student_id, first_name, last_name, gl_id")
@@ -602,14 +620,23 @@ export const getStudentGrades = async (user_id, quarter = 1) => {
   const student_id = student.student_id;
   const sy_id = await getActiveSchoolYearId();
 
-  const [{ data: gradeLevel }, { data: schoolYear }] = await Promise.all([
+  const [gradeLevelResult, schoolYearResult] = await Promise.all([
     student.gl_id
       ? supabaseAdmin.from("grade_level").select("level_name").eq("gl_id", student.gl_id).maybeSingle()
       : Promise.resolve({ data: null }),
     sy_id
-      ? supabaseAdmin.from("school_year").select("year_label").eq("sy_id", sy_id).maybeSingle()
+      ? supabaseAdmin.from("school_year").select("year_label, start_date").eq("sy_id", sy_id).maybeSingle()
       : Promise.resolve({ data: null }),
   ]);
+  if (gradeLevelResult.error) throw new Error(gradeLevelResult.error.message);
+  if (schoolYearResult.error) throw new Error(schoolYearResult.error.message);
+
+  const gradeLevel = gradeLevelResult.data;
+  const schoolYear = schoolYearResult.data;
+  const requestedQuarter = Number(quarter);
+  const q = [1, 2, 3, 4].includes(requestedQuarter)
+    ? requestedQuarter
+    : getCurrentSchoolYearQuarter(schoolYear?.start_date);
 
   const rows = sy_id
     ? (await getPaceProjectionRows(student_id, sy_id)).filter((r) => r.quarter === q)
@@ -749,18 +776,24 @@ export const getStudentGrades = async (user_id, quarter = 1) => {
   }
 
   // Bible memory / reading WPM / supervisor comments for the quarter
-  let bibleMemory = null, readingWpm = null, supervisorComments = null;
+  let bibleMemory = null, readingWpm = null, supervisorComments = null, remarksQuarter = null;
   if (sy_id) {
-    const { data: remark } = await supabaseAdmin
+    const { data: remarks, error: remarkError } = await supabaseAdmin
       .from("student_academic_remarks")
-      .select("bible_memory_rating, reading_wpm, supervisor_comments")
+      .select("quarter, bible_memory_rating, reading_wpm, supervisor_comments")
       .eq("student_id", student_id)
       .eq("sy_id", sy_id)
-      .eq("quarter", q)
-      .maybeSingle();
+      .order("quarter", { ascending: false });
+    if (remarkError) throw new Error(remarkError.message);
+    // Prefer the selected quarter. If it has no evaluation yet, keep the grade
+    // table on that quarter and show the latest evaluation from the same SY.
+    const remark = (remarks ?? []).find((row) => Number(row.quarter) === q)
+      ?? (remarks ?? [])[0]
+      ?? null;
     bibleMemory        = remark?.bible_memory_rating ?? null;
     readingWpm         = remark?.reading_wpm ?? null;
     supervisorComments = remark?.supervisor_comments ?? null;
+    remarksQuarter     = remark?.quarter != null ? Number(remark.quarter) : null;
   }
 
   return {
@@ -788,6 +821,7 @@ export const getStudentGrades = async (user_id, quarter = 1) => {
     bibleMemory,
     readingWpm,
     supervisorComments,
+    remarksQuarter,
   };
 };
 

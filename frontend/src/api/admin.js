@@ -15,7 +15,8 @@ export const updateUser = (user_id, payload) => client.put(`/admin/users/${user_
 export const fetchSchoolYears   = () => client.get("/admin/school-years");
 export const createSchoolYear   = (payload) => client.post("/admin/school-years", payload);
 export const updateSchoolYear   = (sy_id, payload) => client.put(`/admin/school-years/${sy_id}`, payload);
-export const activateSchoolYear = (sy_id) => client.post(`/admin/school-years/${sy_id}/activate`);
+export const activateSchoolYear = (sy_id, allow_historical = false) =>
+  client.post(`/admin/school-years/${sy_id}/activate`, { allow_historical });
 
 export const fetchSchoolConfig = () => client.get("/admin/school-config");
 

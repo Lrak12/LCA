@@ -3,6 +3,7 @@
 // rankings, the grade grid). Four public functions: getStudentMonitoring /
 // getPaceAnalytics / getStudentSummary / getStudentProfile.
 import * as StudentMonitoringModel from "../models/studentMonitoring.model.js";
+import { getEligibleUserIds, getSchoolYear } from "./schoolYearStatus.service.js";
 import { findActive as findActiveSchoolYear } from "../models/schoolYear.model.js";
 import { getCurrentQuarter } from "./settings.service.js";
 
@@ -183,6 +184,8 @@ const getSectionLabel = (student) => {
 // diagnostics and latest test scores, then builds a per-student row (counts, status,
 // recommendation) plus overall stats.
 export const getStudentMonitoring = async () => {
+  const activeSy = await getSchoolYear();
+  const eligibleUsers = await getEligibleUserIds(activeSy.sy_id, "student");
   const [
     { data: students, error: studentsError },
     { data: paces, error: pacesError },
@@ -197,8 +200,13 @@ export const getStudentMonitoring = async () => {
   if (pacesError) throw new Error(pacesError.message);
   if (diagnosticsError) throw new Error(diagnosticsError.message);
 
+  const currentStudents = (students ?? []).filter((student) => eligibleUsers.has(student.user_id));
+  const currentStudentIds = new Set(currentStudents.map((student) => student.student_id));
+  const currentPaces = (paces ?? []).filter((pace) => currentStudentIds.has(pace.student_id));
+  const currentDiagnostics = (diagnostics ?? []).filter((row) => currentStudentIds.has(row.student_id));
+
   const pacesByStudent = new Map();
-  (paces || []).forEach((pace) => {
+  currentPaces.forEach((pace) => {
     const list = pacesByStudent.get(pace.student_id) || [];
     list.push(pace);
     pacesByStudent.set(pace.student_id, list);
@@ -206,7 +214,7 @@ export const getStudentMonitoring = async () => {
 
   // Diagnostic assessments per student (already newest-first from the query)
   const diagsByStudent = new Map();
-  (diagnostics || []).forEach((d) => {
+  currentDiagnostics.forEach((d) => {
     const list = diagsByStudent.get(d.student_id) || [];
     list.push(d);
     diagsByStudent.set(d.student_id, list);
@@ -214,7 +222,7 @@ export const getStudentMonitoring = async () => {
 
   // Latest PACE test score per student_pace (needed to decide "passed → advance")
   const scoresBySpId = new Map();
-  const allSpIds = (paces || []).map((p) => p.sp_id).filter(Boolean);
+  const allSpIds = currentPaces.map((p) => p.sp_id).filter(Boolean);
   if (allSpIds.length) {
     const { data: results } = await StudentMonitoringModel.findPaceTestResultsBySpIds(allSpIds);
     // results are ordered date DESC → first seen per sp_id is the latest
@@ -225,7 +233,7 @@ export const getStudentMonitoring = async () => {
 
   const gradeByStudent = new Map();
 
-  const rows = (students || []).map((student) => {
+  const rows = currentStudents.map((student) => {
     const studentPaces = pacesByStudent.get(student.student_id) || [];
     const counts = getPaceCounts(studentPaces);
     const status = getStudentStatus(counts);
@@ -337,11 +345,16 @@ export const getPaceAnalytics = async () => {
     StudentMonitoringModel.findStudentPaces(),
   ]);
 
-  const studentById = new Map((students || []).map((s) => [s.student_id, s]));
+  const eligibleUsers = await getEligibleUserIds(sy.sy_id, "student");
+  const currentStudents = (students ?? []).filter((student) => eligibleUsers.has(student.user_id));
+  const currentStudentIds = new Set(currentStudents.map((student) => student.student_id));
+  const currentPaces = (paces ?? []).filter((pace) => currentStudentIds.has(pace.student_id));
+
+  const studentById = new Map(currentStudents.map((s) => [s.student_id, s]));
 
   // Aggregate points per student over PACEs FINISHED in the current quarter
   const agg = new Map(); // student_id → { points, finished, onTime, extended, late }
-  (paces || []).forEach((p) => {
+  currentPaces.forEach((p) => {
     if (!p.completion_date) return;                       // not finished
     const c = atMidnight(p.completion_date);
     if (c == null || c < start || c > end) return;        // finished outside this quarter
@@ -380,7 +393,7 @@ export const getPaceAnalytics = async () => {
   //   (completed / total). A PACE belongs to the quarter when its start_date falls
   //   in the quarter window (same date basis as the points rankings above).
   const perStudent = new Map(); // student_id → { completed, total, points, onTime, extended, late }
-  (paces || []).forEach((p) => {
+  currentPaces.forEach((p) => {
     const startTs = atMidnight(p.start_date);
     if (startTs == null || startTs < start || startTs > end) return; // not this quarter's PACE
     const t = perStudent.get(p.student_id) || { completed: 0, total: 0, points: 0, onTime: 0, extended: 0, late: 0 };
@@ -420,11 +433,11 @@ export const getPaceAnalytics = async () => {
 
   // ── Completion performance trend (this month vs last month) ───────────────────
   // For each month, the running % of all PACEs completed (100%) by week-of-month.
-  const totalPaces = (paces || []).length;
+  const totalPaces = currentPaces.length;
   const weekOf = (d) => Math.min(5, Math.max(1, Math.ceil(d.getDate() / 7))); // 1..5
   const monthlyCompletionCurve = (year, month) => {
     const weekly = [0, 0, 0, 0, 0];
-    (paces || []).forEach((p) => {
+    currentPaces.forEach((p) => {
       if (p.status !== "Completed" || !p.completion_date) return;
       const c = new Date(p.completion_date);
       if (c.getFullYear() === year && c.getMonth() === month) weekly[weekOf(c) - 1] += 1;
@@ -836,8 +849,17 @@ export const exportStudentRecords = async () => {
     StudentMonitoringModel.findAllAttendanceInRange(syStart, syEnd),
   ]);
 
+  const eligibleUsers = sy?.sy_id
+    ? await getEligibleUserIds(sy.sy_id, "student")
+    : new Set();
+  const currentStudents = (students ?? []).filter((student) => eligibleUsers.has(student.user_id));
+  const currentStudentIds = new Set(currentStudents.map((student) => student.student_id));
+  const currentPaces = (paces ?? []).filter((pace) => currentStudentIds.has(pace.student_id));
+  const currentProjections = (projections ?? []).filter((row) => currentStudentIds.has(row.student_id));
+  const currentAttendance = (attendance ?? []).filter((row) => currentStudentIds.has(row.student_id));
+
   // Scores for every student_pace (one batch each)
-  const allSpIds = (paces ?? []).map((p) => p.sp_id).filter(Boolean);
+  const allSpIds = currentPaces.map((p) => p.sp_id).filter(Boolean);
   let paceTests = [], selfTests = [];
   if (allSpIds.length) {
     const [pt, st] = await Promise.all([
@@ -864,7 +886,7 @@ export const exportStudentRecords = async () => {
   // Group paces by student + a `student|subject|module` → sp_id lookup
   const pacesByStudent = new Map();
   const spByStudentKey = new Map();
-  (paces ?? []).forEach((p) => {
+  currentPaces.forEach((p) => {
     const list = pacesByStudent.get(p.student_id) ?? [];
     list.push(p);
     pacesByStudent.set(p.student_id, list);
@@ -875,7 +897,7 @@ export const exportStudentRecords = async () => {
   // Projections by student → subject → quarter → pace_start, and the subject union
   const projByStudent = new Map();
   const subjectSet = new Set();
-  (projections ?? []).forEach((r) => {
+  currentProjections.forEach((r) => {
     subjectSet.add(r.subject);
     if (!projByStudent.has(r.student_id)) projByStudent.set(r.student_id, new Map());
     const byS = projByStudent.get(r.student_id);
@@ -886,7 +908,7 @@ export const exportStudentRecords = async () => {
 
   // Attendance grouped by student
   const attByStudent = new Map();
-  (attendance ?? []).forEach((r) => {
+  currentAttendance.forEach((r) => {
     const a = attByStudent.get(r.student_id) ?? { present: 0, absent: 0, tardy: 0, total: 0 };
     a.total += 1;
     if (r.status === "Present") a.present += 1;
@@ -913,7 +935,7 @@ export const exportStudentRecords = async () => {
   });
 
   // ── Rows (one per student) ───────────────────────────────────────────────────
-  const rows = (students ?? []).map((stu) => {
+  const rows = currentStudents.map((stu) => {
     const sid = stu.student_id;
     const sp  = pacesByStudent.get(sid) ?? [];
     const completed  = sp.filter((p) => p.status === "Completed").length;
@@ -966,4 +988,3 @@ export const exportStudentRecords = async () => {
 
   return { headers, rows, subjects };
 };
-

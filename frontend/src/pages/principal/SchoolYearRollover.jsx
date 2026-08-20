@@ -20,12 +20,29 @@ const Skeleton = ({ className }) => (
   <div className={`animate-pulse bg-surface-container-high rounded-xl ${className}`} />
 );
 
-// "2025–2026" → "2026–2027" (advance both years in the label)
+// "SY 2025-2026" → "SY 2026-2027" (advance both years in the label)
 const nextYearLabel = (label) => {
   if (!label || label === "—") return "";
-  const parts = label.replace(/\s/g, "").split("–");
-  if (parts.length < 2) return "";
-  return `${Number(parts[0]) + 1}–${Number(parts[1]) + 1}`;
+  const match = label.match(/(?:SY\s+)?(\d{4})[-–](\d{4})/i);
+  if (!match) return "";
+  return `SY ${Number(match[1]) + 1}-${Number(match[2]) + 1}`;
+};
+
+const schoolYearError = (yearLabel, startDate, endDate) => {
+  const match = yearLabel.trim().match(/^SY (\d{4})-(\d{4})$/);
+  if (!match) return "Use the format SY YYYY-YYYY, for example SY 2026-2027.";
+  if (Number(match[2]) !== Number(match[1]) + 1) return "The second year must be exactly one year after the first year.";
+  if (!startDate || !endDate) return "Start date and end date are required.";
+  if (endDate <= startDate) return "End date must be after the start date.";
+  if (Number(startDate.slice(0, 4)) !== Number(match[1]) || Number(endDate.slice(0, 4)) !== Number(match[2])) {
+    return "The School Year label must match the start and end date years.";
+  }
+  const days = (new Date(`${endDate}T00:00:00Z`) - new Date(`${startDate}T00:00:00Z`)) / 86400000;
+  if (days < 180 || days > 366) return "School year dates must cover a realistic period of 180 to 366 days.";
+  const today = new Date().toISOString().slice(0, 10);
+  if (today < startDate) return "A future school year cannot be activated yet.";
+  if (today > endDate) return "An outdated school year cannot be activated.";
+  return "";
 };
 // add one year to an ISO date (for the proposed start/end dates)
 const addYear = (iso) => {
@@ -96,10 +113,8 @@ export default function SchoolYearRollover() {
 
   // commit the rollover: create the new year and place every student in the right grade
   const handleCommit = async () => {
-    if (!yearLabel.trim() || !startDate || !endDate) {
-      setCommitError("Fill in the new school year label, start and end dates.");
-      return;
-    }
+    const validationError = schoolYearError(yearLabel, startDate, endDate);
+    if (validationError) return setCommitError(validationError);
     setCommitting(true);
     setCommitError("");
     try {
@@ -182,9 +197,13 @@ export default function SchoolYearRollover() {
                   <input
                     value={yearLabel}
                     onChange={(e) => setYearLabel(e.target.value)}
-                    placeholder="2026–2027"
+                    placeholder="SY 2026-2027"
+                    pattern="SY [0-9]{4}-[0-9]{4}"
+                    maxLength={12}
+                    spellCheck={false}
                     className="w-full border border-outline-variant/30 rounded-xl px-4 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/30"
                   />
+                  <p className="text-[11px] text-on-surface-variant mt-1.5">Required format: SY YYYY-YYYY</p>
                 </div>
                 <div>
                   <label className="block text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1.5">Start Date</label>

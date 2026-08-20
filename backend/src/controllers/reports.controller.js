@@ -8,29 +8,34 @@ export const getOverview = asyncHandler(async (req, res) => {
   sendSuccess(res, data);
 });
 
+export const getSchoolYears = asyncHandler(async (req, res) => {
+  const data = await ReportsService.getSchoolYears();
+  sendSuccess(res, data);
+});
+
 export const getTeachers = asyncHandler(async (req, res) => {
-  const data = await ReportsService.getTeachers();
+  const data = await ReportsService.getTeachers(req.query.sy_id);
   sendSuccess(res, data);
 });
 
 export const getTeacherAcademicReport = asyncHandler(async (req, res) => {
   const { teacher_id } = req.params;
   const quarter = parseInt(req.query.quarter, 10) || 4;
-  const data = await ReportsService.getTeacherAcademicReport(Number(teacher_id), quarter);
+  const data = await ReportsService.getTeacherAcademicReport(Number(teacher_id), quarter, req.query.sy_id);
   sendSuccess(res, data);
 });
 
 export const getTeacherAttendanceReport = asyncHandler(async (req, res) => {
   const { teacher_id } = req.params;
   const quarter = parseInt(req.query.quarter, 10) || 4;
-  const data = await ReportsService.getTeacherAttendanceReport(Number(teacher_id), quarter);
+  const data = await ReportsService.getTeacherAttendanceReport(Number(teacher_id), quarter, req.query.sy_id);
   sendSuccess(res, data);
 });
 
 export const getTeacherPaceReport = asyncHandler(async (req, res) => {
   const { teacher_id } = req.params;
   const quarter = parseInt(req.query.quarter, 10) || 1;
-  const data = await ReportsService.getTeacherPaceReport(Number(teacher_id), quarter);
+  const data = await ReportsService.getTeacherPaceReport(Number(teacher_id), quarter, req.query.sy_id);
   sendSuccess(res, data);
 });
 
@@ -79,6 +84,6 @@ export const getSubmissionStatuses = asyncHandler(async (req, res) => {
   const { quarter, type } = req.query;
   if (!quarter || !type)
     return res.status(400).json({ message: "quarter and type are required" });
-  const data = await ReportsService.getSubmissionStatuses(Number(quarter), type);
+  const data = await ReportsService.getSubmissionStatuses(Number(quarter), type, req.query.sy_id);
   sendSuccess(res, data);
 });

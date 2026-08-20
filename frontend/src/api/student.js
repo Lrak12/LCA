@@ -10,7 +10,9 @@ export const fetchStudentDashboard     = () => client.get("/student/dashboard");
 export const fetchStudentPace          = () => client.get("/student/pace");
 export const submitPaceTestRequest     = (sp_id) => client.post("/student/pace/test-request", { sp_id });
 export const fetchStudentAssessments   = () => client.get("/student/assessments");
-export const fetchStudentGrades        = (quarter) => client.get("/student/grades", { params: { quarter } });
+export const fetchStudentGrades        = (quarter) => client.get("/student/grades", {
+  params: quarter == null ? {} : { quarter },
+});
 export const fetchStudentAttendance    = (month) => client.get("/student/attendance", { params: month ? { month } : {} });
 export const fetchStudentAnnouncements = () => client.get("/student/announcements");
 export const fetchStudentSettings      = () => client.get("/student/settings");
