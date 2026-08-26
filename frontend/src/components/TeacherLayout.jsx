@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNavigate, useLocation } from "react-router-dom";
 import NotificationBell from "./NotificationBell.jsx";
+import ProfileLogoutMenu from "./ProfileLogoutMenu.jsx";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
@@ -18,15 +19,10 @@ const navItems = [
 ];
 
 export default function TeacherLayout({ children, schoolYearLabel = "—" }) {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(() => typeof window !== "undefined" && window.innerWidth >= 768); // open on desktop, hidden on mobile; toggled via header ☰
-
-  const handleLogout = async () => {
-    await logout();
-    navigate("/login");
-  };
 
   const displayName    = user?.first_name && user?.last_name
     ? `${user.first_name} ${user.last_name}`
@@ -139,9 +135,7 @@ export default function TeacherLayout({ children, schoolYearLabel = "—" }) {
               <p className="text-sm font-bold text-on-surface leading-tight">{displayName}</p>
               <p className="text-xs text-on-surface-variant leading-tight">Supervisor</p>
             </div>
-            <div className="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container font-bold text-sm shadow-sm">
-              {avatarInitials}
-            </div>
+            <ProfileLogoutMenu displayName={displayName} avatarInitials={avatarInitials} avatarUrl={user?.avatarUrl} />
           </div>
         </div>
       </header>

@@ -1,7 +1,7 @@
 // Shared chrome for every ADMIN (sysadmin) page: left sidebar nav + top bar wrapping each
 // page's {children}. Every pages/admin/*.jsx renders <AdminLayout>...</AdminLayout>. User info
 // comes from AuthContext - no API here. Admin routes live under /sysadmin/* (principal uses /admin/*).
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNavigate, useLocation } from "react-router-dom";
 import NotificationBell from "./NotificationBell.jsx";
@@ -20,10 +20,36 @@ const navItems = [
 ];
 
 export default function AdminLayout({ children, schoolYearLabel = "—" }) {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(() => typeof window !== "undefined" && window.innerWidth >= 768); // open on desktop, hidden on mobile; toggled via header ☰
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const profileMenuRef = useRef(null);
+
+  useEffect(() => {
+    if (!profileMenuOpen) return undefined;
+
+    const closeOnOutsideClick = (event) => {
+      if (!profileMenuRef.current?.contains(event.target)) setProfileMenuOpen(false);
+    };
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") setProfileMenuOpen(false);
+    };
+
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [profileMenuOpen]);
+
+  const handleLogout = async () => {
+    setProfileMenuOpen(false);
+    await logout();
+    navigate("/login");
+  };
 
   const displayName = user?.first_name && user?.last_name
     ? `${user.first_name} ${user.last_name}`
@@ -116,16 +142,40 @@ export default function AdminLayout({ children, schoolYearLabel = "—" }) {
         <div className="flex items-center gap-3 sm:gap-5 shrink-0">
           <NotificationBell />
           <div className="h-8 w-px bg-outline-variant/30" />
-          <div className="flex items-center gap-3">
+          <div ref={profileMenuRef} className="relative flex items-center gap-3">
             <div className="text-right hidden sm:block">
               <p className="text-sm font-bold text-on-surface leading-tight">{displayName}</p>
               <p className="text-xs text-on-surface-variant leading-tight">Administrator</p>
             </div>
-            <div className="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container font-bold text-sm shadow-sm overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setProfileMenuOpen((open) => !open)}
+              className="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container font-bold text-sm shadow-sm overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary/30"
+              aria-label="Open account menu"
+              aria-haspopup="menu"
+              aria-expanded={profileMenuOpen}
+            >
               {user?.avatarUrl
                 ? <img src={user.avatarUrl} alt={displayName} className="w-full h-full object-cover" />
                 : avatarInitials}
-            </div>
+            </button>
+
+            {profileMenuOpen && (
+              <div
+                role="menu"
+                className="absolute right-0 top-full mt-2 w-40 rounded-xl border border-outline-variant/20 bg-white p-1.5 shadow-xl"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={handleLogout}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-bold text-red-600 transition-colors hover:bg-red-50"
+                >
+                  <span className="material-symbols-outlined text-lg">logout</span>
+                  Logout
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </header>
