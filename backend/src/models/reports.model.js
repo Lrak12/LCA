@@ -151,6 +151,27 @@ export const upsertAttendanceMonthlySummary = (rows) =>
     .upsert(rows, { onConflict: "student_id,sy_id,month" })
     .select();
 
+export const upsertReportSubmissions = (rows) =>
+  supabaseAdmin
+    .from("report_submission")
+    .upsert(rows, { onConflict: "teacher_id,sy_id,report_type,quarter" })
+    .select("submission_id, teacher_id, sy_id, report_type, quarter, submitted_at");
+
+export const findReportSubmissions = (report_type, quarter, sy_id) =>
+  supabaseAdmin
+    .from("report_submission")
+    .select("teacher_id, submitted_at")
+    .eq("report_type", report_type)
+    .eq("quarter", quarter)
+    .eq("sy_id", sy_id);
+
+export const findReportSubmissionsForTeacher = (teacher_id, sy_id) =>
+  supabaseAdmin
+    .from("report_submission")
+    .select("report_type, quarter, submitted_at")
+    .eq("teacher_id", teacher_id)
+    .eq("sy_id", sy_id);
+
 // Submit = stamp the teacher's existing projection rows for the quarter.
 // Does NOT touch pace_start/pace_end/pace_count/statuses — the plan stays intact.
 export const stampPaceProjectionSubmitted = (studentIds, sy_id, quarter, teacher_id) =>

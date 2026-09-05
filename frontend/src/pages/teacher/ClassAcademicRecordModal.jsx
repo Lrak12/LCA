@@ -41,6 +41,8 @@ export default function ClassAcademicRecordModal({ onClose }) {
   const [publishErr,  setPublishErr]  = useState("");
 
   useEffect(() => {
+    // This effect owns the request lifecycle whenever the selected quarter changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setError("");
     setPublished(false);
@@ -138,7 +140,7 @@ export default function ClassAcademicRecordModal({ onClose }) {
         {published && (
           <div className="mx-6 mt-4 px-4 py-3 rounded-xl bg-green-50 border border-green-200 text-green-700 text-sm flex items-center gap-2">
             <span className="material-symbols-outlined text-base">check_circle</span>
-            Academic record published successfully. The admin can now view it.
+            Academic record submitted for all four quarters. The principal can now view it.
           </div>
         )}
         {publishErr && (

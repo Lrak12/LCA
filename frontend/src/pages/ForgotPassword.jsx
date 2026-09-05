@@ -61,8 +61,8 @@ export default function ForgotPassword() {
                   Request Password Assistance
                 </h1>
                 <p className="text-on-surface-variant font-body text-sm max-w-sm mx-auto leading-relaxed">
-                  Enter your ID Number and we'll notify the administrator. A temporary password or reset
-                  link will be sent to your registered email.
+                  Enter your ID Number and we'll notify the administrator. A password reset link will be
+                  sent to your registered email after your request is reviewed.
                 </p>
               </div>
 
@@ -141,7 +141,7 @@ export default function ForgotPassword() {
                   Your password reset request has been sent to the administrator.
                 </p>
                 <p className="text-on-surface-variant font-body text-sm leading-relaxed">
-                  Please wait for a temporary password or reset link to be sent to your registered email.
+                  Please wait for a password reset link to be sent to your registered email.
                 </p>
               </div>
 

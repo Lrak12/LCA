@@ -2,12 +2,10 @@
 // Backend chain (frontend api/admin.js fetchAuditLogs -> routes/admin.routes.js):
 //   GET /admin/audit-logs -> controllers/audit.controller.js > getAuditLogs (~line 5)
 //                         -> services/audit.service.js > listAuditLogs (~line 57)
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import AdminLayout from "../../components/AdminLayout.jsx";
 import { fetchAuditLogs } from "../../api/admin.js";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
-
-const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
 // action string (from system_audit_log.action) -> pill colour for the Action column
 const ACTION_BADGE = {
@@ -28,6 +26,11 @@ const ROLE_LABEL = {
 
 const Skeleton = ({ className }) => (
   <div className={`animate-pulse bg-surface-container-high rounded-lg ${className}`} />
+);
+
+const selectCls = "appearance-none bg-white border border-outline-variant/30 rounded-lg pl-3.5 pr-9 py-2.5 text-sm font-medium text-on-surface focus:ring-2 focus:ring-primary/20 focus:outline-none cursor-pointer w-full";
+const Chevron = () => (
+  <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1 text-outline text-lg pointer-events-none">expand_more</span>
 );
 
 // timestamp for the Date & Time column, or an em dash when missing/invalid
@@ -56,7 +59,24 @@ const buildPageList = (current, totalPages) => {
   return out;
 };
 
-const EMPTY_FILTERS = { search: "", user_id: "all", action: "all", module: "all", from: "", to: "" };
+const EMPTY_FILTERS = { search: "", action: "all", from: "", to: "" };
+
+// Convert a date chosen in the browser into an exact local-day boundary. Sending
+// ISO timestamps keeps the result correct even when the API server uses a
+// different timezone.
+const dateBoundary = (value, endOfDay = false) => {
+  if (!value) return "";
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(
+    year,
+    month - 1,
+    day,
+    endOfDay ? 23 : 0,
+    endOfDay ? 59 : 0,
+    endOfDay ? 59 : 0,
+    endOfDay ? 999 : 0,
+  ).toISOString();
+};
 
 export default function AuditLogs() {
   const schoolYearLabel = useSchoolYear();
@@ -70,8 +90,26 @@ export default function AuditLogs() {
   const [data, setData]       = useState(null);          // API response { logs, total, totalPages, filters }
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState("");
+  const searchTimer = useRef(null);
 
   const setD = (k) => (e) => setDraft((f) => ({ ...f, [k]: e.target.value })); // curried onChange per draft field
+
+  const onSearchChange = (e) => {
+    const search = e.target.value;
+    setDraft((current) => ({ ...current, search }));
+    clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => {
+      setApplied((current) => ({ ...current, search }));
+      setPage(1);
+    }, 300);
+  };
+
+  const onActionChange = (e) => {
+    const action = e.target.value;
+    setDraft((current) => ({ ...current, action }));
+    setApplied((current) => ({ ...current, action }));
+    setPage(1);
+  };
 
   // fetch a page of audit entries with the applied filters; re-runs on filter/page/size change
   const load = useCallback(() => {
@@ -83,21 +121,39 @@ export default function AuditLogs() {
       .finally(() => setLoading(false));
   }, [applied, page, pageSize]);
 
+  // `load` owns the request lifecycle state and is intentionally triggered here.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
 
-  const onFilter = () => { setApplied(draft); setPage(1); }; // commit the draft filters and jump to page 1
+  useEffect(() => () => clearTimeout(searchTimer.current), []);
+
+  const onFilter = () => {
+    if (draft.from && draft.to && draft.from > draft.to) {
+      setError("The start date cannot be after the end date.");
+      return;
+    }
+    setError("");
+    setApplied({
+      ...draft,
+      from: dateBoundary(draft.from),
+      to: dateBoundary(draft.to, true),
+    });
+    setPage(1);
+  };
+
+  const resetDateRange = () => {
+    setDraft((current) => ({ ...current, from: "", to: "" }));
+    setApplied((current) => ({ ...current, from: "", to: "" }));
+    setError("");
+    setPage(1);
+  };
 
   const logs        = data?.logs ?? [];                  // this page's entries
   const total       = data?.total ?? 0;
   const totalPages  = data?.totalPages ?? 1;
-  const opts        = data?.filters ?? { users: [], actions: [], modules: [] }; // dropdown options built from the data
+  const opts        = data?.filters ?? { actions: [] }; // dropdown options built from the data
   const rangeStart  = total === 0 ? 0 : (page - 1) * pageSize + 1; // "Showing X to Y" numbers
   const rangeEnd    = Math.min(page * pageSize, total);
-
-  const selectCls = "appearance-none bg-white border border-outline-variant/30 rounded-lg pl-3.5 pr-9 py-2.5 text-sm font-medium text-on-surface focus:ring-2 focus:ring-primary/20 focus:outline-none cursor-pointer w-full";
-  const Chevron = () => (
-    <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1 text-outline text-lg pointer-events-none">expand_more</span>
-  );
 
   return (
     <AdminLayout schoolYearLabel={schoolYearLabel}>
@@ -109,14 +165,6 @@ export default function AuditLogs() {
             <h2 className="font-headline text-3xl font-extrabold tracking-tight text-on-surface">Audit Logs</h2>
             <p className="text-on-surface-variant mt-1">Track and review user activities and system changes.</p>
           </div>
-          {/* Export Logs button -> no handler yet (inert; "coming soon") */}
-          <button
-            className="flex items-center gap-2 px-5 py-3 bg-white border border-outline-variant/30 text-on-surface font-bold rounded-xl shadow-sm hover:bg-surface-container-lowest transition-all shrink-0"
-            title="Export coming soon"
-          >
-            <span className="material-symbols-outlined text-lg">file_download</span>
-            Export Logs
-          </button>
         </header>
 
         {error && (
@@ -125,10 +173,10 @@ export default function AuditLogs() {
           </div>
         )}
 
-        {/* Filters (all edit the draft; nothing hits the API until "Filter" is clicked) */}
+        {/* Search and Action apply automatically; the button applies the date range. */}
         <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-5 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            {/* free-text search (Enter also applies) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* free-text search (applies automatically after a short pause) */}
             <div>
               <label className="block text-[13px] font-semibold text-on-surface mb-1.5">Search</label>
               <div className="relative">
@@ -136,52 +184,31 @@ export default function AuditLogs() {
                 {/* input -> setD("search") updates draft; Enter -> onFilter() commits it */}
                 <input
                   value={draft.search}
-                  onChange={setD("search")}
-                  onKeyDown={(e) => e.key === "Enter" && onFilter()}
-                  placeholder="Search user, action, or module…"
+                  onChange={onSearchChange}
+                  placeholder="Search name or action…"
                   className="w-full pl-10 pr-10 py-2.5 bg-white border border-outline-variant/30 rounded-lg text-sm text-on-surface placeholder:text-outline focus:ring-2 focus:ring-primary/20 focus:outline-none"
                 />
                 {/* clear (×) -> empty the box, re-apply filters + reset paging */}
                 {draft.search && (
                   <button
                     type="button"
-                    onClick={() => { const next = { ...draft, search: "" }; setDraft(next); setApplied(next); setPage(1); }}
+                    onClick={() => {
+                      clearTimeout(searchTimer.current);
+                      setDraft((current) => ({ ...current, search: "" }));
+                      setApplied((current) => ({ ...current, search: "" }));
+                      setPage(1);
+                    }}
                     aria-label="Clear search"
                     className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1 text-base text-on-surface-variant hover:text-on-surface cursor-pointer leading-none"
                   >close</button>
                 )}
               </div>
             </div>
-            {/* user dropdown (options come from the API's distinct users) */}
-            <div>
-              <label className="block text-[13px] font-semibold text-on-surface mb-1.5">User</label>
-              <div className="relative">
-                {/* -> setD("user_id") updates draft; options from `opts.users` */}
-                <select value={draft.user_id} onChange={setD("user_id")} className={selectCls}>
-                  <option value="all">All Users</option>
-                  {opts.users.map((u) => <option key={u.user_id} value={String(u.user_id)}>{u.name}</option>)}
-                </select>
-                <Chevron />
-              </div>
-            </div>
-            {/* module dropdown (distinct entity_affected values) */}
-            <div>
-              <label className="block text-[13px] font-semibold text-on-surface mb-1.5">Module</label>
-              <div className="relative">
-                {/* -> setD("module") updates draft; options from `opts.modules` */}
-                <select value={draft.module} onChange={setD("module")} className={selectCls}>
-                  <option value="all">All Modules</option>
-                  {opts.modules.map((m) => <option key={m} value={m}>{m}</option>)}
-                </select>
-                <Chevron />
-              </div>
-            </div>
             {/* action dropdown (distinct action values) */}
             <div>
               <label className="block text-[13px] font-semibold text-on-surface mb-1.5">Action</label>
               <div className="relative">
-                {/* -> setD("action") updates draft; options from `opts.actions` */}
-                <select value={draft.action} onChange={setD("action")} className={selectCls}>
+                <select value={draft.action} onChange={onActionChange} className={selectCls}>
                   <option value="all">All Actions</option>
                   {opts.actions.map((a) => <option key={a} value={a}>{a}</option>)}
                 </select>
@@ -196,18 +223,27 @@ export default function AuditLogs() {
               <label className="block text-[13px] font-semibold text-on-surface mb-1.5">Date Range</label>
               {/* date inputs -> setD("from") / setD("to") update draft */}
               <div className="flex items-center gap-2">
-                <input type="date" value={draft.from} onChange={setD("from")} className="bg-white border border-outline-variant/30 rounded-lg px-3 py-2.5 text-sm text-on-surface focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+                <input type="date" value={draft.from} max={draft.to || undefined} onChange={setD("from")} className="bg-white border border-outline-variant/30 rounded-lg px-3 py-2.5 text-sm text-on-surface focus:ring-2 focus:ring-primary/20 focus:outline-none" />
                 <span className="text-on-surface-variant text-sm">–</span>
-                <input type="date" value={draft.to} onChange={setD("to")} className="bg-white border border-outline-variant/30 rounded-lg px-3 py-2.5 text-sm text-on-surface focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+                <input type="date" value={draft.to} min={draft.from || undefined} onChange={setD("to")} className="bg-white border border-outline-variant/30 rounded-lg px-3 py-2.5 text-sm text-on-surface focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+                <button
+                  type="button"
+                  onClick={resetDateRange}
+                  disabled={!draft.from && !draft.to}
+                  className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-outline-variant/30 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <span className="material-symbols-outlined text-base">refresh</span>
+                  Reset
+                </button>
               </div>
             </div>
-            {/* Filter button -> onFilter() copies draft into `applied` -> load() refetches */}
+            {/* Date button -> validates and applies the selected date boundaries. */}
             <button
               onClick={onFilter}
               className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white font-bold rounded-lg shadow-sm hover:shadow-lg transition-all"
             >
               <span className="material-symbols-outlined text-lg">filter_list</span>
-              Filter
+              Apply Dates
             </button>
           </div>
         </div>

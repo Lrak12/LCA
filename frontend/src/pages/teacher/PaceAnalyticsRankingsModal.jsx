@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { fetchPaceAnalyticsReport } from "../../api/teacher.js";
+import { submitReport } from "../../api/reports.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 const QUARTERS = ["1st Quarter", "2nd Quarter", "3rd Quarter", "4th Quarter"];
@@ -31,18 +32,24 @@ const Td = ({ children, className = "" }) => (
 );
 
 export default function PaceAnalyticsRankingsModal({ onClose }) {
-  const [grade,     setGrade]     = useState("all");
-  const [quarter,   setQuarter]   = useState(4);
+  const grade = "all";
+  const quarter = 4;
   const [data,      setData]      = useState(null);
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState("");
   const [status,    setStatus]    = useState("Draft");   // Draft | Published
   const [savedAt,   setSavedAt]   = useState(null);
   const [busy,      setBusy]      = useState("");          // "save" | "publish"
+  const [publishErr, setPublishErr] = useState("");
 
   useEffect(() => {
+    // This effect owns the initial request lifecycle for the fixed whole-year report.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setError("");
+    setStatus("Draft");
+    setSavedAt(null);
+    setPublishErr("");
     fetchPaceAnalyticsReport({ grade, quarter })
       .then((res) => setData(res.data ?? null))
       .catch((err) => setError(err.response?.data?.message ?? err.message ?? "Failed to load report."))
@@ -56,13 +63,23 @@ export default function PaceAnalyticsRankingsModal({ onClose }) {
     setBusy("save");
     setTimeout(() => { setStatus("Draft"); setSavedAt(stamp()); setBusy(""); }, 350);
   };
-  const handlePublish = () => {
+  const handlePublish = async () => {
     setBusy("publish");
-    setTimeout(() => { setStatus("Published"); setSavedAt(stamp()); setBusy(""); }, 350);
+    setPublishErr("");
+    try {
+      await submitReport("analytics", quarter);
+      setStatus("Published");
+      setSavedAt(stamp());
+    } catch (err) {
+      setPublishErr(
+        err.response?.data?.message ?? err.message ?? "Failed to publish. Please try again."
+      );
+    } finally {
+      setBusy("");
+    }
   };
 
   const today = new Date().toLocaleDateString("en-US", { month: "numeric", day: "numeric", year: "numeric" });
-  const gradeLevels = data?.gradeLevels ?? [];
   const schoolYear  = data?.schoolYear  ?? "—";
 
   return (
@@ -91,29 +108,21 @@ export default function PaceAnalyticsRankingsModal({ onClose }) {
           </div>
         </div>
 
-        {/* ── Filters ──────────────────────────────────────────────────── */}
-        <div className="flex items-center gap-3 px-6 py-3 border-b border-outline-variant/10 flex-wrap">
-          <select value={grade} onChange={(e) => setGrade(e.target.value)}
-            className="text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl pl-4 pr-8 py-2.5 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
-            <option value="all">All Grades</option>
-            {gradeLevels.map((g) => <option key={g} value={g}>{g}</option>)}
-          </select>
-          <select value={quarter} onChange={(e) => setQuarter(Number(e.target.value))}
-            className="text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl pl-4 pr-8 py-2.5 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
-            {[1, 2, 3, 4].map((q) => <option key={q} value={q}>{QUARTERS[q - 1]}</option>)}
-          </select>
-          <span className="text-sm font-bold text-on-surface border border-outline-variant/30 rounded-lg px-3 py-2 bg-surface-container-lowest">{schoolYear}</span>
-          <span className="text-sm font-bold text-on-surface border border-outline-variant/30 rounded-lg px-3 py-2 bg-surface-container-lowest">{today}</span>
-
-          <button className="ml-auto flex items-center gap-1.5 text-sm font-bold text-on-surface border border-outline-variant/30 rounded-lg px-3 py-2 hover:bg-surface-container-low transition-colors">
-            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>download</span>
-            Export PDF
-          </button>
-        </div>
-
         {error && (
           <div className="mx-6 mt-4 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-center gap-2">
             <span className="material-symbols-outlined text-base">error</span>{error}
+          </div>
+        )}
+        {status === "Published" && (
+          <div className="mx-6 mt-4 px-4 py-3 rounded-xl bg-green-50 border border-green-200 text-green-700 text-sm flex items-center gap-2">
+            <span className="material-symbols-outlined text-base">check_circle</span>
+            PACE analytics and rankings report submitted for all four quarters. The principal can now view it.
+          </div>
+        )}
+        {publishErr && (
+          <div className="mx-6 mt-4 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-center gap-2">
+            <span className="material-symbols-outlined text-base">error</span>
+            {publishErr}
           </div>
         )}
 

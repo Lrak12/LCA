@@ -9,12 +9,13 @@ import { useState } from "react";
 import { ClassAcademicRecordContent } from "./ClassAcademicRecordViewModal.jsx";
 import { AttendanceReportContent } from "./AttendanceReportViewModal.jsx";
 import { PaceProgressContent } from "./PaceProgressViewModal.jsx";
+import PaceAnalyticsRankingsView from "./PaceAnalyticsRankingsView.jsx";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
 const QUARTER_LABELS = { 1: "1st Quarter", 2: "2nd Quarter", 3: "3rd Quarter", 4: "4th Quarter" };
 
-// the report tabs (analytics is a placeholder)
+// report tabs shown inside the supervisor report viewer
 const TABS = [
   { key: "academic",   label: "Class Academic Record Summary", icon: "menu_book"       },
   { key: "attendance", label: "Attendance Summary Report",     icon: "event_available" },
@@ -132,11 +133,7 @@ export default function SupervisorReportModal({
           {activeTab === "academic"   && <ClassAcademicRecordContent teacher={teacher} quarter={quarter} schoolYearId={schoolYearId} />}
           {activeTab === "attendance" && <AttendanceReportContent teacher={teacher} quarter={quarter} schoolYearId={schoolYearId} />}
           {activeTab === "pace"       && <PaceProgressContent teacher={teacher} quarter={quarter} schoolYearId={schoolYearId} />}
-          {activeTab === "analytics"  && (
-            <div className="border-2 border-dashed border-outline-variant/30 rounded-2xl py-24 flex items-center justify-center">
-              <p className="text-sm text-on-surface-variant italic">Report content preview will render here…</p>
-            </div>
-          )}
+          {activeTab === "analytics"  && <PaceAnalyticsRankingsView teacher={teacher} quarter={quarter} schoolYearId={schoolYearId} />}
         </div>
 
         {/* Footer */}

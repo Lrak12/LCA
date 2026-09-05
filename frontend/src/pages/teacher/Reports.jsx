@@ -157,7 +157,7 @@ export default function Reports() {
                   <tr key={i} className="hover:bg-surface-container-lowest/50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2 font-bold text-on-surface">
-                        <span className="material-symbols-outlined text-base text-primary" style={fillStyle}>{r.report_type === "attendance" ? "calendar_month" : r.report_type === "pace" ? "trending_up" : "description"}</span>
+                        <span className="material-symbols-outlined text-base text-primary" style={fillStyle}>{r.report_type === "attendance" ? "calendar_month" : r.report_type === "pace" ? "trending_up" : r.report_type === "analytics" ? "leaderboard" : "description"}</span>
                         {r.typeLabel}
                       </div>
                     </td>
@@ -168,7 +168,7 @@ export default function Reports() {
                     <td className="px-4 py-4 text-on-surface-variant whitespace-nowrap">{fmtDate(r.publishedOn)}</td>
                     <td className="px-4 py-4">
                       <div className="flex items-center justify-center gap-1">
-                        <button onClick={() => setModal(r.report_type === "attendance" ? "attendance" : r.report_type === "pace" ? "pace" : "academic")}
+                        <button onClick={() => setModal(r.report_type === "attendance" ? "attendance" : r.report_type === "pace" ? "pace" : r.report_type === "analytics" ? "analytics" : "academic")}
                           className="flex items-center gap-1 px-3 py-1.5 border border-gray-200 text-on-surface text-xs font-bold rounded-lg hover:bg-gray-50 transition-colors">
                           <span className="material-symbols-outlined text-sm">visibility</span> View
                         </button>

@@ -56,9 +56,7 @@ const buildUserMap = async () => {
 // read system_audit_log with filters + pagination (Audit Logs page)
 export const listAuditLogs = async ({
   search = "",
-  user_id = "all",
   action = "all",
-  module: mod = "all",
   from = "",
   to = "",
   page = 1,
@@ -85,30 +83,31 @@ export const listAuditLogs = async ({
     };
   });
 
-  // Dropdown options derived from the full (unfiltered) set so they always match real data.
+  // Action options are derived from the full set so they always match real data.
   const filters = {
-    users: [...new Map(
-      logs.filter((l) => l.user_id != null).map((l) => [l.user_id, { user_id: l.user_id, name: l.userName }])
-    ).values()].sort((a, b) => a.name.localeCompare(b.name)),
     actions: [...new Set(logs.map((l) => l.action).filter(Boolean))].sort(),
-    modules: [...new Set(logs.map((l) => l.module).filter(Boolean))].sort(),
   };
 
-  // apply the dropdown + date-range filters
-  if (user_id !== "all") logs = logs.filter((l) => String(l.user_id) === String(user_id));
+  // Apply the action and exact timestamp boundaries sent by the browser.
   if (action !== "all")  logs = logs.filter((l) => l.action === action);
-  if (mod !== "all")     logs = logs.filter((l) => l.module === mod);
-  if (from) { const f = new Date(from);                         logs = logs.filter((l) => new Date(l.timestamp) >= f); } // on/after "from"
-  if (to)   { const t = new Date(to); t.setHours(23, 59, 59, 999); logs = logs.filter((l) => new Date(l.timestamp) <= t); } // up to end of "to" day
+  if (from) {
+    const start = new Date(from);
+    if (!Number.isNaN(start.getTime())) logs = logs.filter((l) => new Date(l.timestamp) >= start);
+  }
+  if (to) {
+    const end = new Date(to);
+    if (!Number.isNaN(end.getTime())) logs = logs.filter((l) => new Date(l.timestamp) <= end);
+  }
 
-  // free-text search across name / action / module / description
+  // Search the fields exposed by the search box. IDs remain supported so an
+  // administrator can paste a known log/user ID even though the hint stays concise.
   const q = String(search).trim().toLowerCase();
   if (q) {
     logs = logs.filter((l) =>
       (l.userName ?? "").toLowerCase().includes(q) ||
-      (l.action ?? "").toLowerCase().includes(q) ||
-      (l.module ?? "").toLowerCase().includes(q) ||
-      (l.description ?? "").toLowerCase().includes(q)
+      String(l.sal_id ?? "").toLowerCase().includes(q) ||
+      String(l.user_id ?? "").toLowerCase().includes(q) ||
+      (l.action ?? "").toLowerCase().includes(q)
     );
   }
 

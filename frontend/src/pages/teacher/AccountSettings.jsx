@@ -74,11 +74,38 @@ const PasswordField = ({ label, value, onChange, placeholder }) => {
   );
 };
 
-// No left nav anymore — Accessibility is folded into its own card below Profile
-// (High Contrast Mode, Font Style, and Worksheet Scale were removed entirely; High
-// Contrast is still reachable via the Color Mode dropdown) and Contact Administrator
-// stays hidden (panel + handlers remain below, just unreachable), so `activeTab`
-// never changes from "profile" — same layout as the student/principal Settings pages.
+const NAV = [
+  { key: "profile", icon: "person", title: "Profile", sub: "Information, Security & Accessibility" },
+  { key: "contact", icon: "mail", title: "Contact", sub: "Administrator" },
+];
+
+const SubNav = ({ active, onSelect }) => (
+  <div className="w-full lg:w-64 shrink-0">
+    <div className="grid grid-cols-2 lg:flex lg:flex-col gap-1">
+      {NAV.map((item) => {
+        const selected = active === item.key;
+        return (
+          <button
+            key={item.key}
+            type="button"
+            onClick={() => onSelect(item.key)}
+            className={`w-full min-w-0 flex items-center gap-3 text-left px-3 py-2.5 rounded-lg border-l-[3px] transition-colors ${
+              selected
+                ? "border-secondary bg-secondary/5 text-secondary"
+                : "border-transparent text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface"
+            }`}
+          >
+            <span className="material-symbols-outlined text-xl" style={selected ? fillStyle : undefined}>{item.icon}</span>
+            <span className="min-w-0">
+              <span className={`block text-sm font-bold leading-tight ${selected ? "text-secondary" : "text-on-surface"}`}>{item.title}</span>
+              <span className="block whitespace-normal text-[11px] text-on-surface-variant leading-tight">{item.sub}</span>
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  </div>
+);
 
 // ─── Preferences overview (right) ─────────────────────────────────────────────
 const PrefRow = ({ iconBg, icon, title, sub, subColor }) => (
@@ -207,7 +234,7 @@ export default function AccountSettings() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
-  const [activeTab] = useState("profile"); // always "profile" — no left nav; Contact stays hidden (see top-of-file note)
+  const [activeTab, setActiveTab] = useState("profile");
 
   // Profile state (loaded from backend)
   const [loaded,    setLoaded]    = useState(null);   // last-saved snapshot for Discard
@@ -361,7 +388,7 @@ export default function AccountSettings() {
             <h2 className="font-headline text-2xl sm:text-4xl font-extrabold tracking-tight text-on-surface">Account Settings</h2>
             <p className="text-on-surface-variant mt-1 text-sm">Configure the academic environment and administrative controls.</p>
           </div>
-          <div className="flex items-center gap-4 shrink-0">
+          {activeTab === "profile" && <div className="flex items-center gap-4 shrink-0">
             <button onClick={handleDiscard} className="text-sm font-bold text-on-surface-variant hover:text-on-surface transition-colors">
               Discard
             </button>
@@ -375,11 +402,13 @@ export default function AccountSettings() {
                 : <span className="material-symbols-outlined text-base" style={fillStyle}>save</span>}
               {saving ? "Saving…" : "Save Changes"}
             </button>
-          </div>
+          </div>}
         </div>
 
-        {/* ── Two-column layout (stacks on < lg): content + preferences sidebar ── */}
+        {/* ── Settings navigation, content, and preferences sidebar ── */}
         <div className="flex flex-col lg:flex-row gap-6 lg:items-start">
+
+          <SubNav active={activeTab} onSelect={setActiveTab} />
 
           {/* ── CENTER: section content ──────────────────────────────── */}
           <div className="flex-1 min-w-0 space-y-6">

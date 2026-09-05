@@ -1045,7 +1045,7 @@ export const getPaceAnalyticsOverview = async (user_id, { grade } = {}) => {
 // Aggregated, print-ready report: top rankings, points distribution, completion
 // status summary, PACE-test readiness, and an intervention list — scoped to the
 // teacher's grade level(s) and (best-effort) the selected quarter.
-export const getPaceAnalyticsReport = async (user_id, { grade, quarter } = {}) => {
+export const getPaceAnalyticsReport = async (user_id, { grade, quarter, sy_id } = {}) => {
   const QUARTER_LABELS = ["1st Quarter", "2nd Quarter", "3rd Quarter", "4th Quarter"];
   const q = Math.min(4, Math.max(1, Number(quarter) || 4));
 
@@ -1070,15 +1070,26 @@ export const getPaceAnalyticsReport = async (user_id, { grade, quarter } = {}) =
   if (!teacher) return base;
   base.teacherName = `${teacher.first_name ?? ""} ${teacher.last_name ?? ""}`.trim() || "—";
 
+  const schoolYearQuery = sy_id
+    ? supabaseAdmin.from("school_year").select("year_label").eq("sy_id", Number(sy_id)).maybeSingle()
+    : supabaseAdmin.from("school_year").select("year_label").eq("is_active", true).maybeSingle();
   const [{ data: sy }, { data: principal }] = await Promise.all([
-    supabaseAdmin.from("school_year").select("year_label").eq("is_active", true).maybeSingle(),
-    supabaseAdmin.from("principal").select("first_name, last_name").order("principal_id").limit(1).maybeSingle(),
+    schoolYearQuery,
+    supabaseAdmin
+      .from("principal")
+      .select("first_name, last_name, users!inner(is_active)")
+      .eq("users.is_active", true)
+      .order("principal_id")
+      .limit(1)
+      .maybeSingle(),
   ]);
   base.schoolYear = sy?.year_label ?? "—";
   if (principal) base.principalName = `${principal.first_name ?? ""} ${principal.last_name ?? ""}`.trim() || "—";
 
-  const { data: gradeLevels } = await supabaseAdmin
+  let gradeLevelQuery = supabaseAdmin
     .from("grade_level").select("gl_id, level_name").eq("teacher_id", teacher.teacher_id);
+  if (sy_id) gradeLevelQuery = gradeLevelQuery.eq("sy_id", Number(sy_id));
+  const { data: gradeLevels } = await gradeLevelQuery;
   if (!gradeLevels?.length) return base;
   base.gradeLevels = gradeLevels.map((g) => g.level_name);
 
@@ -1192,6 +1203,17 @@ export const getPaceAnalyticsReport = async (user_id, { grade, quarter } = {}) =
     });
 
   return base;
+};
+
+export const getPaceAnalyticsReportForTeacher = async (teacher_id, options = {}) => {
+  const { data: teacher, error } = await supabaseAdmin
+    .from("teacher")
+    .select("user_id")
+    .eq("teacher_id", Number(teacher_id))
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!teacher) throw new Error("Teacher profile not found");
+  return getPaceAnalyticsReport(teacher.user_id, options);
 };
 
 // ─── Pace Monitoring (pace_quarterly_projection) ─────────────────────────────

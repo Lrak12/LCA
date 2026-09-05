@@ -3,10 +3,12 @@ import * as TeacherController from "../controllers/teacher.controller.js";
 import * as ReportsController  from "../controllers/reports.controller.js";
 import * as AccountController  from "../controllers/account.controller.js";
 import { authenticate, requireRole } from "../middlewares/auth.middleware.js";
+import { auditSuccessfulSupervisorMutation } from "../middlewares/supervisorAudit.middleware.js";
 
 const router = Router();
 
 router.use(authenticate); // every /teacher/* route below requires a logged-in user
+router.use(auditSuccessfulSupervisorMutation); // successful supervisor writes -> system audit log
 // GET /teacher/dashboard - supervisor home page data. NEXT > controller.getDashboard
 //   > service.getTeacherDashboard. UI: pages/teacher/TeacherDashboard.jsx.
 router.get("/dashboard",        requireRole("teacher"), TeacherController.getDashboard);

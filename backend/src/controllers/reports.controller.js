@@ -1,4 +1,5 @@
 import * as ReportsService from "../services/reports.service.js";
+import * as TeacherService from "../services/teacher.service.js";
 import * as TeacherModel   from "../models/teacher.model.js";
 import { sendSuccess } from "../helpers/response.js";
 import asyncHandler from "../helpers/asyncHandler.js";
@@ -36,6 +37,15 @@ export const getTeacherPaceReport = asyncHandler(async (req, res) => {
   const { teacher_id } = req.params;
   const quarter = parseInt(req.query.quarter, 10) || 1;
   const data = await ReportsService.getTeacherPaceReport(Number(teacher_id), quarter, req.query.sy_id);
+  sendSuccess(res, data);
+});
+
+export const getTeacherAnalyticsReport = asyncHandler(async (req, res) => {
+  const quarter = parseInt(req.query.quarter, 10) || 4;
+  const data = await TeacherService.getPaceAnalyticsReportForTeacher(
+    Number(req.params.teacher_id),
+    { quarter, sy_id: req.query.sy_id },
+  );
   sendSuccess(res, data);
 });
 

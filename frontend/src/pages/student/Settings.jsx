@@ -67,16 +67,15 @@ const NAV = [
 ];
 
 const SubNav = ({ active, onSelect }) => (
-  <div className="w-full lg:w-56 shrink-0">
-    {/* horizontal scrollable tabs on mobile, vertical rail on lg+ */}
-    <div className="flex lg:flex-col gap-1 overflow-x-auto pb-1 lg:pb-0">
+  <div className="w-full lg:w-64 shrink-0">
+    <div className="grid grid-cols-2 lg:flex lg:flex-col gap-1">
       {NAV.map((n) => {
         const on = active === n.key;
         return (
           <button
             key={n.key}
             onClick={() => onSelect(n.key)}
-            className={`shrink-0 lg:w-full flex items-center gap-3 text-left px-3 py-2.5 rounded-lg border-l-[3px] whitespace-nowrap transition-colors ${
+            className={`w-full min-w-0 flex items-center gap-3 text-left px-3 py-2.5 rounded-lg border-l-[3px] transition-colors ${
               on
                 ? "border-secondary bg-secondary/5 text-secondary"
                 : "border-transparent text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface"
@@ -85,7 +84,7 @@ const SubNav = ({ active, onSelect }) => (
             <span className="material-symbols-outlined text-xl" style={on ? fillStyle : undefined}>{n.icon}</span>
             <span className="min-w-0">
               <span className={`block text-sm font-bold leading-tight ${on ? "text-secondary" : "text-on-surface"}`}>{n.title}</span>
-              {n.sub && <span className="block text-[11px] text-on-surface-variant leading-tight">{n.sub}</span>}
+              {n.sub && <span className="block whitespace-normal text-[11px] text-on-surface-variant leading-tight">{n.sub}</span>}
             </span>
           </button>
         );

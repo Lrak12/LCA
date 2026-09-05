@@ -46,7 +46,7 @@ export const processPasswordReset = asyncHandler(async (req, res) => {
   const sr_id = parseInt(req.params.sr_id, 10);
   const { action, note } = req.body;
   const data = await SupportService.processPasswordReset(sr_id, action, note);
-  const labels = { temp: "Sent temporary password", link: "Sent password reset link", resolve: "Resolved request" };
+  const labels = { "reset-email": "Sent password reset email", link: "Sent password reset link", resolve: "Resolved request" };
   await writeAudit({
     user_id: req.user?.user_id,
     action: "UPDATE",

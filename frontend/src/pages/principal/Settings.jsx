@@ -18,11 +18,38 @@ import { loadSettings, saveSettings, applySettings, DEFAULT_SETTINGS } from "../
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
-// No left nav anymore — Accessibility is no longer its own tab (Text Size + Color Mode
-// now sit in their own card below Profile; High Contrast Mode + Font Style were removed
-// entirely, High Contrast is still reachable via the Color Mode dropdown) and Contact
-// Administrator stays hidden (panel + handlers remain below, just unreachable), so
-// `activeTab` never changes from "profile" — same layout as the student Account Settings page.
+const NAV = [
+  { key: "profile", icon: "person", title: "Profile", sub: "Information, Security & Accessibility" },
+  { key: "contact", icon: "mail", title: "Contact", sub: "Administrator" },
+];
+
+const SubNav = ({ active, onSelect }) => (
+  <div className="w-full lg:w-64 shrink-0">
+    <div className="grid grid-cols-2 lg:flex lg:flex-col gap-1">
+      {NAV.map((item) => {
+        const selected = active === item.key;
+        return (
+          <button
+            key={item.key}
+            type="button"
+            onClick={() => onSelect(item.key)}
+            className={`w-full min-w-0 flex items-center gap-3 text-left px-3 py-2.5 rounded-lg border-l-[3px] transition-colors ${
+              selected
+                ? "border-secondary bg-secondary/5 text-secondary"
+                : "border-transparent text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface"
+            }`}
+          >
+            <span className="material-symbols-outlined text-xl" style={selected ? fillStyle : undefined}>{item.icon}</span>
+            <span className="min-w-0">
+              <span className={`block text-sm font-bold leading-tight ${selected ? "text-secondary" : "text-on-surface"}`}>{item.title}</span>
+              <span className="block whitespace-normal text-[11px] text-on-surface-variant leading-tight">{item.sub}</span>
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  </div>
+);
 
 const CONTACT_REASONS = ["Technical Issue", "Account Access", "Data Correction", "Other"];
 
@@ -55,7 +82,7 @@ export default function Settings() {
   const navigate         = useNavigate();
   const schoolYearLabel  = useSchoolYear();
 
-  const [activeTab] = useState("profile"); // always "profile" — no left nav; Contact stays hidden (see top-of-file note)
+  const [activeTab, setActiveTab] = useState("profile");
   const [form,  setForm]  = useState({ first_name: "", last_name: "", email: "", contact_number: "" }); // editable profile
   const [saved, setSaved] = useState({ first_name: "", last_name: "", email: "", contact_number: "" }); // last-saved snapshot (for Discard)
   const [pwd,   setPwd]   = useState({ current: "", new: "", confirm: "" }); // change-password fields
@@ -188,12 +215,12 @@ export default function Settings() {
           </div>
         )}
 
-        {/* Body grid — no left nav: Profile is the only tab now (Accessibility folded in,
-            Contact hidden), so the section content runs full width next to the sidebar. */}
-        <div className="grid grid-cols-1 xl:grid-cols-[1fr_260px] gap-6">
+        <div className="flex flex-col lg:flex-row gap-6 lg:items-start">
+
+          <SubNav active={activeTab} onSelect={setActiveTab} />
 
           {/* Panel */}
-          <section className="space-y-6">
+          <section className="flex-1 min-w-0 space-y-6">
             {activeTab === "profile" && (
               <>
                 <article className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-6">
@@ -257,7 +284,7 @@ export default function Settings() {
           </section>
 
           {/* Preferences Overview */}
-          <aside>
+          <aside className="w-full lg:w-64 shrink-0">
             <div className="bg-white rounded-2xl p-6 shadow-sm">
               <h3 className="text-sm font-extrabold text-on-surface tracking-wide mb-4">Preferences Overview</h3>
 

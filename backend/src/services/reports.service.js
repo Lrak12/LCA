@@ -586,7 +586,7 @@ export const getTeacherAttendanceReport = async (teacher_id, quarter = 4, sy_id 
 async function saveAcademicReport(teacher_id, quarter, sy) {
   // Same computation as the preview — what the teacher reviewed is what gets saved
   const { students, metrics } = await computeAcademicMetrics(teacher_id, quarter, sy);
-  if (!students.length) throw new Error("No students assigned to this teacher");
+  if (!students.length) return;
 
   const rows = students.map((student) => {
     const m = metrics.get(student.student_id);
@@ -683,47 +683,55 @@ async function savePaceReport(teacher_id, quarter, sy) {
   // recompute or overwrite the teacher's PACE plan (AssignPace/PaceMonitoring
   // use the same table as their source of truth).
   const { students } = await getStudentsForTeacher(teacher_id);
-  if (!students.length) throw new Error("No students assigned to this teacher");
+  if (!students.length) return;
 
   const studentIds = students.map((s) => s.student_id);
   const { data, error } = await ReportsModel.stampPaceProjectionSubmitted(studentIds, sy.sy_id, quarter, teacher_id);
   if (error) throw new Error(error.message);
-  if (!data?.length) {
-    throw new Error(`No PACE projections found for Quarter ${quarter} — assign PACEs to your students first`);
-  }
+  return data ?? [];
 }
 
 export const submitReport = async (teacher_id, report_type, quarter) => {
   const { data: sy } = await ReportsModel.findActiveSchoolYear();
   if (!sy) throw new Error("No active school year found");
 
-  if      (report_type === "academic")   await saveAcademicReport(teacher_id, quarter, sy);
-  else if (report_type === "attendance") await saveAttendanceReport(teacher_id, quarter, sy);
-  else if (report_type === "pace")       await savePaceReport(teacher_id, quarter, sy);
-  else throw new Error(`Unknown report_type: ${report_type}`);
+  const allowedTypes = new Set(["academic", "attendance", "pace", "analytics"]);
+  if (!allowedTypes.has(report_type)) throw new Error(`Unknown report_type: ${report_type}`);
 
-  return { report_type, quarter, teacher_id };
+  const quarters = [1, 2, 3, 4];
+  for (const reportQuarter of quarters) {
+    if (report_type === "academic") await saveAcademicReport(teacher_id, reportQuarter, sy);
+    else if (report_type === "attendance") await saveAttendanceReport(teacher_id, reportQuarter, sy);
+    else if (report_type === "pace") await savePaceReport(teacher_id, reportQuarter, sy);
+    // Analytics is calculated from live PACE data, so it needs only a durable
+    // publication record and no duplicate snapshot rows.
+  }
+
+  const submittedAt = new Date().toISOString();
+  const rows = quarters.map((reportQuarter) => ({
+    teacher_id,
+    sy_id: sy.sy_id,
+    report_type,
+    quarter: reportQuarter,
+    submitted_at: submittedAt,
+  }));
+  const { data, error } = await ReportsModel.upsertReportSubmissions(rows);
+  if (error) throw new Error(error.message);
+
+  return { report_type, quarter, quarters, teacher_id, submitted_at: submittedAt, submissions: data ?? [] };
 };
 
 export const getSubmissionStatuses = async (quarter, report_type, sy_id = null) => {
   const sy = await getSchoolYear(sy_id);
+  const allowedTypes = new Set(["academic", "attendance", "pace", "analytics"]);
+  if (!allowedTypes.has(report_type)) return {};
 
-  let data;
-  if (report_type === "academic") {
-    ({ data } = await ReportsModel.findTeachersByAcademicQuarter(quarter, sy.sy_id));
-  } else if (report_type === "attendance") {
-    const { months } = getQuarterDateRange(sy.start_date, quarter);
-    const monthNums  = months.map((m) => m.monthIndex + 1);
-    ({ data } = await ReportsModel.findTeachersByAttendanceMonths(monthNums, sy.sy_id));
-  } else if (report_type === "pace") {
-    ({ data } = await ReportsModel.findTeachersByPaceQuarter(quarter, sy.sy_id));
-  } else {
-    return {};
-  }
+  const { data, error } = await ReportsModel.findReportSubmissions(report_type, quarter, sy.sy_id);
+  if (error) throw new Error(error.message);
 
-  // Build map: teacher_id → true
+  // Build map: teacher_id → submitted_at
   const map = {};
-  (data ?? []).forEach((row) => { map[row.recorded_by] = true; });
+  (data ?? []).forEach((row) => { map[row.teacher_id] = row.submitted_at; });
   return map;
 };
 
@@ -935,34 +943,12 @@ export const getTeacherAllStatuses = async (teacher_id) => {
   const { data: sy } = await ReportsModel.findActiveSchoolYear();
   if (!sy) return {};
 
-  const [
-    { data: academicRows   },
-    { data: attendanceRows },
-    { data: paceRows       },
-  ] = await Promise.all([
-    ReportsModel.findAllAcademicByTeacher(teacher_id, sy.sy_id),
-    ReportsModel.findAllAttendanceByTeacher(teacher_id, sy.sy_id),
-    ReportsModel.findAllPaceByTeacher(teacher_id, sy.sy_id),
-  ]);
-
+  const { data, error } = await ReportsModel.findReportSubmissionsForTeacher(teacher_id, sy.sy_id);
+  if (error) throw new Error(error.message);
   const map = {};
-
-  // Academic: keyed by quarter directly
-  new Set((academicRows ?? []).map((r) => r.quarter))
-    .forEach((q) => { map[`academic-${q}`] = true; });
-
-  // Attendance: stored by month — convert to quarters
-  const submittedMonths = new Set((attendanceRows ?? []).map((r) => r.month));
-  for (let q = 1; q <= 4; q++) {
-    const { months } = getQuarterDateRange(sy.start_date, q);
-    if (months.map((m) => m.monthIndex + 1).some((m) => submittedMonths.has(m)))
-      map[`attendance-${q}`] = true;
-  }
-
-  // Pace: keyed by quarter directly
-  new Set((paceRows ?? []).map((r) => r.quarter))
-    .forEach((q) => { map[`pace-${q}`] = true; });
-
+  (data ?? []).forEach((row) => {
+    map[`${row.report_type}-${row.quarter}`] = row.submitted_at;
+  });
   return map;
 };
 
@@ -977,7 +963,12 @@ export const getSubmittedReports = async (teacher_id) => {
   const className = (gls ?? []).map((g) => g.level_name).join(", ") || "All Students";
 
   const statuses = await getTeacherAllStatuses(teacher_id);
-  const TYPE_LABEL = { academic: "Class Academic Record", attendance: "Attendance Report", pace: "PACE Progress Report" };
+  const TYPE_LABEL = {
+    academic: "Class Academic Record",
+    attendance: "Attendance Report",
+    pace: "PACE Progress Report",
+    analytics: "PACE Analytics & Rankings Report",
+  };
 
   const rows = Object.keys(statuses).map((key) => {
     const [report_type, q] = key.split("-");
@@ -989,7 +980,7 @@ export const getSubmittedReports = async (teacher_id) => {
       studentClass: `${className} - All Students`,
       schoolYear,
       status:      "Published",
-      publishedOn: null,            // no stored submit timestamp in the current schema
+      publishedOn: statuses[key],
     };
   }).sort((a, b) => a.report_type.localeCompare(b.report_type) || a.quarter - b.quarter);
 

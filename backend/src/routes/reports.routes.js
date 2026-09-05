@@ -14,5 +14,6 @@ router.get("/submissions",                       ReportsController.getSubmission
 router.get("/teacher/:teacher_id/academic",      ReportsController.getTeacherAcademicReport);
 router.get("/teacher/:teacher_id/attendance",    ReportsController.getTeacherAttendanceReport);
 router.get("/teacher/:teacher_id/pace",          ReportsController.getTeacherPaceReport);
+router.get("/teacher/:teacher_id/analytics",     ReportsController.getTeacherAnalyticsReport);
 
 export default router;

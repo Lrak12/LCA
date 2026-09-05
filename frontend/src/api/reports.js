@@ -15,6 +15,9 @@ export const fetchAttendanceReport  = (teacher_id, quarter, sy_id) =>
 export const fetchPaceReport        = (teacher_id, quarter, sy_id) =>
   client.get(`/reports/teacher/${teacher_id}/pace`, { params: { quarter, ...(sy_id ? { sy_id } : {}) } });
 
+export const fetchAnalyticsReport   = (teacher_id, quarter, sy_id) =>
+  client.get(`/reports/teacher/${teacher_id}/analytics`, { params: { quarter, ...(sy_id ? { sy_id } : {}) } });
+
 // ── Submission (teacher) ──────────────────────────────────────────────────────
 
 export const submitReport           = (report_type, quarter) =>

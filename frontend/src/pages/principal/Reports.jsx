@@ -17,11 +17,12 @@ const QUARTERS = [
   { label: "4th Qtr", value: 4 },
 ];
 
-// the three report types each supervisor is expected to submit per quarter
+// report types each supervisor is expected to submit
 const REPORT_TYPES = [
   { key: "academic",   label: "Class Academic Record Summary", icon: "menu_book"       },
   { key: "attendance", label: "Attendance Summary Report",     icon: "event_available" },
   { key: "pace",       label: "PACE Progress Summary Report",  icon: "bar_chart"       },
+  { key: "analytics",  label: "PACE Analytics & Rankings Report", icon: "leaderboard"   },
 ];
 
 const PAGE_SIZE = 5;
@@ -102,17 +103,30 @@ export default function Reports() {
       .finally(() => setLoading(false));
   }, [selectedSy]);
 
-  // whenever the quarter changes, refetch submission status for all 3 report types in parallel
+  // Refetch all four report types when the quarter/year changes, when the
+  // principal returns to this window, and periodically while the page is open.
   useEffect(() => {
     if (!selectedSy) return;
-    Promise.all(REPORT_TYPES.map((rt) => fetchSubmissionStatuses(activeQtr, rt.key, selectedSy)))
-      .then((results) => {
-        const next = {};
-        REPORT_TYPES.forEach((rt, i) => { next[rt.key] = results[i].data ?? {}; }); // key results by report type
-        setSubmissions(next);
-      })
-      .catch(() => setSubmissions({}))
-      .finally(() => setSubLoading(false));
+    let cancelled = false;
+    const loadSubmissions = () =>
+      Promise.all(REPORT_TYPES.map((rt) => fetchSubmissionStatuses(activeQtr, rt.key, selectedSy)))
+        .then((results) => {
+          if (cancelled) return;
+          const next = {};
+          REPORT_TYPES.forEach((rt, i) => { next[rt.key] = results[i].data ?? {}; });
+          setSubmissions(next);
+        })
+        .catch(() => {})
+        .finally(() => { if (!cancelled) setSubLoading(false); });
+
+    loadSubmissions();
+    const refreshTimer = window.setInterval(loadSubmissions, 15000);
+    window.addEventListener("focus", loadSubmissions);
+    return () => {
+      cancelled = true;
+      window.clearInterval(refreshTimer);
+      window.removeEventListener("focus", loadSubmissions);
+    };
   }, [activeQtr, selectedSy]);
 
   // paginate the supervisor list

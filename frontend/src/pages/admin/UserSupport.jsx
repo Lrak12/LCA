@@ -4,7 +4,7 @@
 //   respond: PUT /admin/support-requests/:id  -> controllers/userSupport.controller.js > respondToRequest (~line 25) -> services/userSupport.service.js > respondToRequest (~line 349)
 import { useState, useEffect, useCallback, useRef } from "react";
 import AdminLayout from "../../components/AdminLayout.jsx";
-import { fetchSupportRequests, respondToSupportRequest } from "../../api/admin.js";
+import { fetchSupportRequests, respondToSupportRequest, processPasswordReset } from "../../api/admin.js";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
@@ -134,6 +134,8 @@ export default function UserSupport() {
       .finally(() => setLoading(false));
   }, [search, category, status, page]);
 
+  // `load` owns the request lifecycle state and is intentionally triggered here.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {                                     // auto-dismiss the success banner
@@ -166,6 +168,19 @@ export default function UserSupport() {
     }
 
     try {
+      if (selected.password_reset && resetChoice === "reset-email") {
+        const res = await processPasswordReset(selected.sr_id, {
+          action: "reset-email",
+          note: responseText,
+        });
+        setBanner(res.data?.emailed
+          ? `Password reset link emailed to ${res.data.email ?? selected.userName}.`
+          : `${selected.ticketId} resolved.`);
+        setSelected(null);
+        load();
+        return;
+      }
+
       await respondToSupportRequest(selected.sr_id, { response: responseText, status: statusValue });
       const notified = responseText.trim() ? " — user notified" : "";
       setBanner(`${selected.ticketId} updated${copiedLink ? " — reset link copied" : ""}${notified}.`);
@@ -420,11 +435,11 @@ export default function UserSupport() {
                   <div className="mb-5">
                     <p className="text-[10px] uppercase tracking-wider font-bold text-on-surface-variant mb-2">Password Assistance Actions</p>
                     <div className="space-y-2">
-                      <label className="flex items-start gap-2.5 p-3 rounded-lg border border-outline-variant/40 opacity-50 cursor-not-allowed">
-                        <input type="radio" disabled className="mt-0.5" />
+                      <label className={`flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer ${resetChoice === "reset-email" ? "border-primary bg-primary/5" : "border-outline-variant/40"}`}>
+                        <input type="radio" name="reset" checked={resetChoice === "reset-email"} onChange={() => setResetChoice("reset-email")} className="mt-0.5" />
                         <span>
-                          <span className="block text-sm font-bold text-on-surface">Send Temporary Password</span>
-                          <span className="block text-[11px] text-on-surface-variant">Coming soon.</span>
+                          <span className="block text-sm font-bold text-on-surface">Send Password Reset Email</span>
+                          <span className="block text-[11px] text-on-surface-variant">A password reset link is emailed to the user's registered address; they set their own new password.</span>
                         </span>
                       </label>
                       {/* -> setResetChoice("link"); onUpdateRequest() copies the reset link when chosen */}

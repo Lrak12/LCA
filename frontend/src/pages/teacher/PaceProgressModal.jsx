@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { fetchMyPaceProgressReport } from "../../api/teacher.js";
+import { submitReport } from "../../api/reports.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
@@ -51,15 +52,36 @@ export default function PaceProgressModal({ onClose }) {
   const [data,      setData]      = useState(null);
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState("");
+  const [publishing, setPublishing] = useState(false);
+  const [published,  setPublished]  = useState(false);
+  const [publishErr, setPublishErr] = useState("");
 
   useEffect(() => {
+    // This effect intentionally resets request state whenever the quarter changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setError("");
+    setPublished(false);
+    setPublishErr("");
     fetchMyPaceProgressReport(quarter)
       .then((res) => setData(res.data))
       .catch((err) => setError(err.message ?? "Failed to load report."))
       .finally(() => setLoading(false));
   }, [quarter]);
+
+  const handlePublish = async () => {
+    setPublishing(true);
+    setPublished(false);
+    setPublishErr("");
+    try {
+      await submitReport("pace", quarter);
+      setPublished(true);
+    } catch (err) {
+      setPublishErr(err.response?.data?.message ?? err.message ?? "Failed to publish. Please try again.");
+    } finally {
+      setPublishing(false);
+    }
+  };
 
   const subjects    = data?.subjects ?? [];
   const teacherName = data?.teacherName ?? "—";
@@ -133,6 +155,18 @@ export default function PaceProgressModal({ onClose }) {
           <div className="mx-6 mt-4 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-center gap-2">
             <span className="material-symbols-outlined text-base">error</span>
             {error}
+          </div>
+        )}
+        {published && (
+          <div className="mx-6 mt-4 px-4 py-3 rounded-xl bg-green-50 border border-green-200 text-green-700 text-sm flex items-center gap-2">
+            <span className="material-symbols-outlined text-base">check_circle</span>
+            PACE progress report submitted for all four quarters. The principal can now view it.
+          </div>
+        )}
+        {publishErr && (
+          <div className="mx-6 mt-4 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-center gap-2">
+            <span className="material-symbols-outlined text-base">error</span>
+            {publishErr}
           </div>
         )}
 
@@ -231,9 +265,15 @@ export default function PaceProgressModal({ onClose }) {
 
         {/* ── Footer ───────────────────────────────────────────────────── */}
         <div className="flex items-center justify-center gap-3 px-6 py-4 border-t border-outline-variant/20">
-          <button className="flex items-center gap-2 text-sm font-bold text-white bg-primary rounded-xl px-5 py-2.5 hover:bg-primary/90 transition-colors shadow-sm shadow-primary/20">
-            <span className="material-symbols-outlined text-base" style={fillStyle}>publish</span>
-            Publish to Admin
+          <button
+            onClick={handlePublish}
+            disabled={publishing || loading}
+            className="flex items-center gap-2 text-sm font-bold text-white bg-primary rounded-xl px-5 py-2.5 hover:bg-primary/90 transition-colors shadow-sm shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <span className="material-symbols-outlined text-base" style={fillStyle}>
+              {publishing ? "hourglass_top" : "publish"}
+            </span>
+            {publishing ? "Publishing…" : published ? "Publish Again" : "Publish to Admin"}
           </button>
           <button className="flex items-center gap-2 text-sm font-bold text-on-surface border border-outline-variant/30 rounded-xl px-5 py-2.5 hover:bg-surface-container-low transition-colors">
             <span className="material-symbols-outlined text-base">print</span>

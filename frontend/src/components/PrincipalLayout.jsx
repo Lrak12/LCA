@@ -14,7 +14,7 @@ const fillStyle = { fontVariationSettings: '"FILL" 1' };
 const navItems = [
   { icon: "dashboard",      label: "Dashboard",            path: "/admin/dashboard"     },
   { icon: "groups",         label: "Supervisor Management", path: "/admin/employees"     },
-  { icon: "group",          label: "Students",             path: "/admin/students"      },
+  //{ icon: "group",          label: "Students",             path: "/admin/students"      },
   { icon: "visibility",     label: "Student Monitoring",   path: "/admin/monitoring"    },
   { icon: "corporate_fare", label: "Grade Level",      path: "/admin/sections"      },
   { icon: "assessment",     label: "Reports",              path: "/admin/reports"       },

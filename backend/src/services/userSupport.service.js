@@ -3,6 +3,44 @@ import { findUserBySchoolId } from "./auth.service.js";
 import * as NotificationService from "./notification.service.js";
 
 const TABLE = "user_support_request";
+const CATEGORY_ALIASES = new Map([
+  ["technical issue", "Technical Issue"],
+  ["technical problem", "Technical Issue"],
+  ["technical support", "Technical Issue"],
+  ["password reset", "Password Reset"],
+  ["forgot password", "Password Reset"],
+  ["forgot / reset password", "Password Reset"],
+  ["forgot/reset password", "Password Reset"],
+  ["other", "Other"],
+]);
+
+const normalizeCategory = (reason) =>
+  CATEGORY_ALIASES.get(String(reason ?? "").trim().toLowerCase()) ?? "Other";
+
+const supportContent = (reason, message) => {
+  const rawReason = String(reason).trim();
+  const category = normalizeCategory(rawReason);
+  const cleanMessage = String(message).trim();
+  return {
+    category,
+    message: category === "Other" && rawReason.toLowerCase() !== "other"
+      ? `[${rawReason}] ${cleanMessage}`
+      : cleanMessage,
+  };
+};
+
+// Requests created before category aliases were supported stored the real reason
+// as a bracketed message prefix under "Other". Normalize those rows when reading
+// so their badge, filters, statistics, and subject are correct immediately.
+const normalizeStoredRequest = (row) => {
+  if (row.category !== "Other") return row;
+  const message = String(row.message_content ?? "");
+  const prefix = message.match(/^\[([^\]]+)]\s*/);
+  if (!prefix) return row;
+  const category = normalizeCategory(prefix[1]);
+  if (category === "Other") return row;
+  return { ...row, category, message_content: message.slice(prefix[0].length) };
+};
 
 const ROLE_TABLES = [
   { table: "student",       pk: "student_id"   },
@@ -59,6 +97,7 @@ const buildUserMap = async () => {
 };
 
 const mapRow = (userMap) => (r) => {
+  r = normalizeStoredRequest(r);
   const u = userMap.get(r.sender_user_id) ?? { name: r.sender_user_id ? `User #${r.sender_user_id}` : "Unknown", role: null };
   return {
     sr_id:          r.sr_id,
@@ -189,14 +228,22 @@ export const requestPasswordReset = async (school_id) => {
 
   let row;
   if (existing) {
-    // Resurface it for the admin by bumping the submission date
-    const { data } = await supabaseAdmin
+    // Resurface it in both User Support Management and User Password Resets.
+    // Canonicalize the fields as well so older pending rows cannot remain hidden
+    // or misclassified after the user submits from the login page again.
+    const { data, error } = await supabaseAdmin
       .from(TABLE)
-      .update({ sent_date: new Date().toISOString() })
+      .update({
+        category:        "Password Reset",
+        message_content: buildResetMessage(profile, school_id),
+        password_reset:  true,
+        sent_date:       new Date().toISOString(),
+      })
       .eq("sr_id", existing.sr_id)
       .select()
       .single();
-    row = data ?? existing;
+    if (error) throw new Error(error.message);
+    row = data;
   } else {
     const { data, error } = await supabaseAdmin
       .from(TABLE)
@@ -237,7 +284,7 @@ export const listRequestsForUser = async (user_id) => {
     .eq("sender_user_id", user_id)
     .order("sent_date", { ascending: false });
   if (error) throw new Error(error.message);
-  return (data ?? []).map((r) => ({
+  return (data ?? []).map(normalizeStoredRequest).map((r) => ({
     sr_id:         r.sr_id,
     ticketId:      publicTicketId(r.sr_id, r.sent_date),
     category:      r.category,
@@ -253,17 +300,11 @@ export const listRequestsForUser = async (user_id) => {
 // The user_support_request.category column has a CHECK constraint that only
 // allows these values. Any other reason is stored as "Other" with the real
 // reason preserved at the start of the message, so a submit can never 500.
-const ALLOWED_CATEGORIES = new Set(["Technical Issue", "Password Reset", "Other"]);
-
 export const createRequestForUser = async (user_id, { reason, message, full_name } = {}) => {
   if (!reason || !String(reason).trim())   throw new Error("Please select a reason for contact.");
   if (!message || !String(message).trim()) throw new Error("Please enter a message.");
 
-  const rawReason = String(reason).trim();
-  const category  = ALLOWED_CATEGORIES.has(rawReason) ? rawReason : "Other";
-  const body      = category === rawReason
-    ? String(message).trim()
-    : `[${rawReason}] ${String(message).trim()}`;
+  const { category, message: body } = supportContent(reason, message);
 
   const { data: row, error } = await supabaseAdmin
     .from(TABLE)
@@ -271,7 +312,7 @@ export const createRequestForUser = async (user_id, { reason, message, full_name
       sender_user_id:  user_id,
       category,
       message_content: body,
-      password_reset:  false,
+      password_reset:  category === "Password Reset",
       status:          "Open",
       sent_date:       new Date().toISOString(),
     })
@@ -298,13 +339,15 @@ export const createContactRequest = async ({ id_number, full_name, reason, messa
   const profile = await findUserBySchoolId(id_number);
   if (!profile) throw new Error("No account found for that ID number.");
 
+  const { category, message: body } = supportContent(reason, message);
+
   const { data: row, error } = await supabaseAdmin
     .from(TABLE)
     .insert({
       sender_user_id:  profile.user_id,
-      category:        String(reason).trim(),
-      message_content: String(message).trim(),
-      password_reset:  false,
+      category,
+      message_content: body,
+      password_reset:  category === "Password Reset",
       status:          "Open",
       sent_date:       new Date().toISOString(),
     })

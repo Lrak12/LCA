@@ -4,13 +4,12 @@ import { contactAdminRequest } from "../api/auth.js";
 import schoolImage from "../assets/newloginpic.webp";
 
 const REASONS = [
-  "Account Access Issue",
-  "Forgot / Reset Password",
+  "Account Access",
+  "Password Reset",
   "Technical Problem",
-  "Grades / Records Concern",
-  "Enrollment Inquiry",
+  "Incorrect Profile Information",
+  "Enrollment or Account Activation",
   "General Inquiry",
-  "Other",
 ];
 
 export default function ContactAdministrator() {
@@ -25,22 +24,20 @@ export default function ContactAdministrator() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    // [PANEL] Sending is disabled for now — the button does not submit anything yet.
-    // Original submission preserved below for easy restore:
-    // setError("");
-    // if (!form.full_name.trim() || !form.id_number.trim() || !form.reason || !form.message.trim()) {
-    //   setError("Please fill in all fields.");
-    //   return;
-    // }
-    // setLoading(true);
-    // try {
-    //   await contactAdminRequest({ ...form, id_number: form.id_number.trim() });
-    //   setSubmitted(true);
-    // } catch (err) {
-    //   setError(err.response?.data?.message ?? err.message ?? "Something went wrong. Please try again.");
-    // } finally {
-    //   setLoading(false);
-    // }
+    setError("");
+    if (!form.full_name.trim() || !form.id_number.trim() || !form.reason || !form.message.trim()) {
+      setError("Please fill in all fields.");
+      return;
+    }
+    setLoading(true);
+    try {
+      await contactAdminRequest({ ...form, id_number: form.id_number.trim() });
+      setSubmitted(true);
+    } catch (err) {
+      setError(err.response?.data?.message ?? err.message ?? "Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const inputClass = "w-full px-4 py-3 bg-surface-container-lowest border border-outline-variant/40 rounded-lg focus:ring-2 focus:ring-primary/20 focus:outline-none transition-all font-body text-on-surface placeholder:text-outline";
