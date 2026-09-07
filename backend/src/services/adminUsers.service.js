@@ -93,6 +93,7 @@ export const listUsers = async ({
   status = "all",
   page   = 1,
   pageSize = DEFAULT_PAGE_SIZE,
+  nameSort = "asc",
 } = {}) => {
   // merged user list + last-login map, fetched in parallel
   const [all, lastLoginMap, statusByUser] = await Promise.all([
@@ -133,11 +134,21 @@ export const listUsers = async ({
     );
   }
 
-  // Alphabetical by "Lastname, Firstname" to match how the table displays names.
-  filtered.sort((a, b) =>
-    `${a.last_name ?? ""} ${a.first_name ?? ""}`.trim()
-      .localeCompare(`${b.last_name ?? ""} ${b.first_name ?? ""}`.trim(), undefined, { sensitivity: "base" })
-  );
+  // Sort by Last Name, First Name to match the User Access table.
+  const sortMultiplier = String(nameSort).toLowerCase() === "desc" ? -1 : 1;
+  filtered.sort((a, b) => {
+    const lastNameComparison = (a.last_name ?? "").localeCompare(
+      b.last_name ?? "",
+      undefined,
+      { sensitivity: "base" },
+    );
+    const comparison = lastNameComparison || (a.first_name ?? "").localeCompare(
+      b.first_name ?? "",
+      undefined,
+      { sensitivity: "base" },
+    );
+    return comparison * sortMultiplier;
+  });
 
   // paginate the filtered set in JS (clamped so page is always in range)
   const total      = filtered.length;

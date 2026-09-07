@@ -4,8 +4,8 @@ import asyncHandler from "../helpers/asyncHandler.js";
 import { writeAudit } from "../services/audit.service.js";
 
 export const getUsers = asyncHandler(async (req, res) => {
-  const { search, role, status, page, pageSize } = req.query;
-  const data = await AdminUsersService.listUsers({ search, role, status, page, pageSize });
+  const { search, role, status, page, pageSize, nameSort } = req.query;
+  const data = await AdminUsersService.listUsers({ search, role, status, page, pageSize, nameSort });
   sendSuccess(res, data);
 });
 

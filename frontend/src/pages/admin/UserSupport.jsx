@@ -93,7 +93,7 @@ export default function UserSupport() {
 
   const [searchInput, setSearchInput] = useState("");  // raw search text (debounced into `search`)
   const [search, setSearch]   = useState("");           // debounced term sent to the API
-  const [category, setCategory] = useState("all");      // category filter
+  const category = "all";                              // category filtering is intentionally hidden
   const [status, setStatus]     = useState("all");      // status filter
   const [page, setPage]         = useState(1);
 
@@ -241,13 +241,13 @@ export default function UserSupport() {
               </div>
               <div className="flex items-center gap-2">
                 {/* search box -> setSearchInput (debounced into `search` -> load()) */}
-                <div className="relative">
-                  <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1 text-outline text-lg">search</span>
+                <div className="relative w-64">
+                  <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1 text-outline text-lg pointer-events-none">search</span>
                   <input
                     value={searchInput}
                     onChange={(e) => setSearchInput(e.target.value)}
                     placeholder="Search name, role, subject…"
-                    className="w-48 pl-9 pr-9 py-2 bg-surface-container-high border-none rounded-lg text-sm text-on-surface placeholder:text-outline focus:ring-2 focus:ring-primary/20 focus:outline-none"
+                    className="w-full pl-10 pr-9 py-2 bg-surface-container-high border-none rounded-lg text-sm text-on-surface placeholder:text-outline focus:ring-2 focus:ring-primary/20 focus:outline-none"
                   />
                   {/* clear (×) -> empty the box + reset paging + refetch */}
                   {searchInput && (
@@ -258,14 +258,6 @@ export default function UserSupport() {
                       className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1 text-base text-outline hover:text-on-surface cursor-pointer leading-none"
                     >close</button>
                   )}
-                </div>
-                {/* category filter -> setCategory + setPage(1) -> load(); options from `opts.categories` */}
-                <div className="relative">
-                  <select value={category} onChange={(e) => { setCategory(e.target.value); setPage(1); }} className={selectCls}>
-                    <option value="all">All Categories</option>
-                    {opts.categories.map((c) => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                  <span className="material-symbols-outlined absolute right-1.5 top-1/2 -translate-y-1 text-outline text-base pointer-events-none">expand_more</span>
                 </div>
                 {/* status filter -> setStatus + setPage(1) -> load(); options from `opts.statuses` */}
                 <div className="relative">

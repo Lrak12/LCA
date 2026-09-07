@@ -128,15 +128,17 @@ export default function AuditLogs() {
   useEffect(() => () => clearTimeout(searchTimer.current), []);
 
   const onFilter = () => {
-    if (draft.from && draft.to && draft.from > draft.to) {
-      setError("The start date cannot be after the end date.");
-      return;
-    }
+    // Accept dates in either selection order. If the first chosen date is later
+    // than the second, normalize them into chronological start/end boundaries.
+    const shouldSwap = draft.from && draft.to && draft.from > draft.to;
+    const from = shouldSwap ? draft.to : draft.from;
+    const to = shouldSwap ? draft.from : draft.to;
     setError("");
+    if (shouldSwap) setDraft((current) => ({ ...current, from, to }));
     setApplied({
       ...draft,
-      from: dateBoundary(draft.from),
-      to: dateBoundary(draft.to, true),
+      from: dateBoundary(from),
+      to: dateBoundary(to, true),
     });
     setPage(1);
   };
@@ -223,9 +225,9 @@ export default function AuditLogs() {
               <label className="block text-[13px] font-semibold text-on-surface mb-1.5">Date Range</label>
               {/* date inputs -> setD("from") / setD("to") update draft */}
               <div className="flex items-center gap-2">
-                <input type="date" value={draft.from} max={draft.to || undefined} onChange={setD("from")} className="bg-white border border-outline-variant/30 rounded-lg px-3 py-2.5 text-sm text-on-surface focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+                <input type="date" value={draft.from} onChange={setD("from")} aria-label="First date in range" className="bg-white border border-outline-variant/30 rounded-lg px-3 py-2.5 text-sm text-on-surface focus:ring-2 focus:ring-primary/20 focus:outline-none" />
                 <span className="text-on-surface-variant text-sm">–</span>
-                <input type="date" value={draft.to} min={draft.from || undefined} onChange={setD("to")} className="bg-white border border-outline-variant/30 rounded-lg px-3 py-2.5 text-sm text-on-surface focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+                <input type="date" value={draft.to} onChange={setD("to")} aria-label="Second date in range" className="bg-white border border-outline-variant/30 rounded-lg px-3 py-2.5 text-sm text-on-surface focus:ring-2 focus:ring-primary/20 focus:outline-none" />
                 <button
                   type="button"
                   onClick={resetDateRange}

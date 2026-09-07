@@ -610,18 +610,18 @@ function SchoolYearTab({ setBanner }) {
 }
 
 // ── User Access Management tab ─────────────────────────────────────────────────
-// Reuses the /admin/users list to toggle each user's active status (per row, or via a
-// pending dropdown edit + Save).
+// Reuses the /admin/users list to display access status and manage it through the
+// explicit Activate/Deactivate action.
 function UserAccessTab({ setBanner, schoolYearLabel }) {
   const [searchInput, setSearchInput] = useState(""); // raw search text (debounced into `search`)
   const [search, setSearch] = useState("");            // debounced term sent to the API
   const [role, setRole]     = useState("all");         // role filter
   const [status, setStatus] = useState("all");         // active/inactive filter
+  const [nameSort, setNameSort] = useState("asc");     // full-list name ordering
   const [page, setPage]     = useState(1);
   const [data, setData]     = useState(null);          // API response { users, stats, total, totalPages }
   const [loading, setLoading] = useState(true);
   const [error, setError]   = useState("");
-  const [statusEdits, setStatusEdits] = useState({}); // user_id -> "active"|"inactive" (unsaved dropdown edits)
   const [busyId, setBusyId] = useState(null);          // row currently saving
   const [confirmUser, setConfirmUser] = useState(null); // user pending deactivate confirmation
   const [reloadKey, setReloadKey] = useState(0);       // bump to refetch
@@ -634,14 +634,13 @@ function UserAccessTab({ setBanner, schoolYearLabel }) {
     return () => clearTimeout(debounceRef.current);
   }, [searchInput]);
 
-  // (re)load the current page of users; clears any pending edits on fresh data
+  // (re)load the current page of users
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
-        const res = await fetchUsers({ search, role, status, page, pageSize: USER_PAGE_SIZE }); // GET /admin/users
+        const res = await fetchUsers({ search, role, status, nameSort, page, pageSize: USER_PAGE_SIZE }); // GET /admin/users
         setData(res.data);
-        setStatusEdits({});                            // discard unsaved dropdown edits after a reload
       } catch (err) {
         setError(err.response?.data?.message ?? err.message);
       } finally {
@@ -649,7 +648,7 @@ function UserAccessTab({ setBanner, schoolYearLabel }) {
       }
     };
     load();
-  }, [search, role, status, page, reloadKey]);
+  }, [search, role, status, nameSort, page, reloadKey]);
 
   const reload = () => setReloadKey((k) => k + 1);
   const users = data?.users ?? [];                     // this page's rows
@@ -664,23 +663,6 @@ function UserAccessTab({ setBanner, schoolYearLabel }) {
     { label: "Inactive Users", value: stats.inactiveUsers, icon: "person_off",    bg: "bg-orange-100", color: "text-orange-600",sub: "Currently inactive" },
     { label: "Total Roles",    value: totalRoles,          icon: "shield_person", bg: "bg-purple-100", color: "text-purple-600",sub: "System roles" },
   ];
-
-  const rowStatus = (u) => statusEdits[u.user_id] ?? (u.is_active ? "active" : "inactive"); // pending edit, else saved value
-  const dirty = (u) => rowStatus(u) !== (u.is_active ? "active" : "inactive");               // dropdown differs from saved -> enable Save
-
-  // commit a row's pending dropdown status via Save Changes
-  const saveStatus = async (u) => {
-    setBusyId(u.user_id);
-    try {
-      await setUserActive(u.user_id, rowStatus(u) === "active"); // PATCH /admin/users/:id/status
-      setBanner(`${u.name} updated.`);
-      reload();
-    } catch (err) {
-      setError(err.response?.data?.message ?? err.message);
-    } finally {
-      setBusyId(null);
-    }
-  };
 
   // one-click flip of a user's active flag (the Deactivate/Activate button)
   const toggleActive = async (u) => {
@@ -760,7 +742,19 @@ function UserAccessTab({ setBanner, schoolYearLabel }) {
           <table className="w-full">
             <thead>
               <tr className="text-[15px] font-extrabold tracking-widest uppercase text-on-surface-variant bg-surface-container/30 border-y border-outline-variant/20">
-                <th className="px-6 py-3 text-left">Full Name</th>
+                <th className="px-6 py-3 text-left" aria-sort={nameSort === "asc" ? "ascending" : "descending"}>
+                  <button
+                    type="button"
+                    onClick={() => { setNameSort((current) => current === "asc" ? "desc" : "asc"); setPage(1); }}
+                    className="inline-flex items-center gap-1.5 hover:text-primary transition-colors"
+                    title={`Sort names ${nameSort === "asc" ? "descending" : "ascending"}`}
+                  >
+                    Full Name
+                    <span className="material-symbols-outlined text-base" aria-hidden="true">
+                      {nameSort === "asc" ? "arrow_upward" : "arrow_downward"}
+                    </span>
+                  </button>
+                </th>
                 <th className="px-6 py-3 text-left">Email</th>
                 <th className="px-6 py-3 text-left">Role</th>
                 <th className="px-6 py-3 text-left">Status</th>
@@ -777,36 +771,26 @@ function UserAccessTab({ setBanner, schoolYearLabel }) {
               ) : users.length === 0 ? (
                 <tr><td colSpan={7} className="px-6 py-10 text-center text-sm text-on-surface-variant">No users match the current filters.</td></tr>
               ) : (
-                // one row per user: role badge, editable status dropdown, and action buttons
+                // one row per user: role/status badges and an explicit access action
                 users.map((u) => {
                   const badge = ROLE_BADGE[u.role] ?? { label: u.role, cls: "bg-slate-100 text-slate-600" };
                   return (
                     <tr key={u.user_id} className="hover:bg-surface-container-lowest align-top">
-                      <td className="px-6 py-4 text-sm font-bold text-on-surface">{u.name}</td>
+                      <td className="px-6 py-4 text-sm font-bold text-on-surface">
+                        {u.last_name || u.first_name
+                          ? [u.last_name, u.first_name].filter(Boolean).join(", ")
+                          : u.name}
+                      </td>
                       <td className="px-6 py-4 text-sm text-on-surface-variant">{u.email}</td>
                       <td className="px-6 py-4">
                         <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${badge.cls}`}>{badge.label}</span>
                       </td>
-                      {/* status dropdown -> setStatusEdits (pending edit for this row) */}
+                      {/* Read-only status; changes are available only from Actions. */}
                       <td className="px-6 py-4">
-                        <div className="relative inline-block">
-                          <select
-                            value={rowStatus(u)}
-                            onChange={(e) =>
-                              setStatusEdits((m) => ({ ...m, [u.user_id]: e.target.value }))
-                            }
-                            className="appearance-none border border-outline-variant/40 rounded-lg pl-3 pr-9 py-1 text-xs font-bold text-on-surface focus:ring-2 focus:ring-primary/20 focus:outline-none cursor-pointer bg-white"
-                          >
-                            <option value="active">Active</option>
-                            <option value="inactive">Inactive</option>
-                          </select>
-
-                          <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center">
-                            <span className="material-symbols-outlined text-base">
-                              expand_more
-                            </span>
-                          </span>
-                        </div>
+                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${u.is_active ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"}`}>
+                          <span className="material-symbols-outlined text-sm">{u.is_active ? "check_circle" : "block"}</span>
+                          {u.is_active ? "Active" : "Inactive"}
+                        </span>
                       </td>
                       <td className="px-6 py-4 text-xs text-on-surface-variant whitespace-nowrap">
                         {u.deactivated_school_year ?? "—"}
@@ -814,14 +798,6 @@ function UserAccessTab({ setBanner, schoolYearLabel }) {
                       <td className="px-6 py-4 text-xs text-on-surface-variant whitespace-nowrap">{fmtDateTime(u.last_login)}</td>
                       <td className="px-6 py-4">
                         <div className="flex items-center justify-end gap-2">
-                          {/* Save Changes -> saveStatus(u) commits the dropdown edit; enabled only when dirty(u) */}
-                          <button
-                            onClick={() => saveStatus(u)}
-                            disabled={busyId === u.user_id || !dirty(u)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary/30 text-primary text-[11px] font-bold hover:bg-primary/5 disabled:opacity-40 disabled:cursor-not-allowed"
-                          >
-                            <span className="material-symbols-outlined text-sm">save</span> Save Changes
-                          </button>
                           {/* Deactivate/Activate -> deactivate asks first; activate is direct */}
                           <button
                             onClick={() => (u.is_active ? setConfirmUser(u) : toggleActive(u))}

@@ -132,7 +132,7 @@ export default function AdminDashboard() {
             <div className="flex items-center justify-between mb-5">
               <h3 className="font-headline text-lg font-extrabold text-on-surface">System Activity</h3>
               {/* View All -> navigate() to the full Audit Logs page */}
-              <button onClick={() => navigate("")} className="text-sm font-bold text-blue-600 hover:underline">View All</button>
+              <button onClick={() => navigate("/sysadmin/audit")} className="text-sm font-bold text-blue-600 hover:underline">View All</button>
             </div>
             {loading ? (
               <div className="space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
