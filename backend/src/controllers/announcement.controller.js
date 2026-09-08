@@ -18,7 +18,7 @@ export const create = asyncHandler(async (req, res) => {
 });
 
 export const update = asyncHandler(async (req, res) => {
-  const data = await AnnouncementService.updateAnnouncement(req.params.id, req.body);
+  const data = await AnnouncementService.updateAnnouncement(req.params.id, req.body, req.user);
   sendSuccess(res, data, "Announcement updated");
 });
 

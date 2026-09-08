@@ -92,6 +92,10 @@ export const getMySubmittedReports = asyncHandler(async (req, res) => {
 // Principal: get submission statuses for all teachers for a given quarter + type
 export const getSubmissionStatuses = asyncHandler(async (req, res) => {
   const { quarter, type } = req.query;
+  if (!quarter && !type) {
+    const data = await ReportsService.getAllSubmissionStatuses(req.query.sy_id);
+    return sendSuccess(res, data);
+  }
   if (!quarter || !type)
     return res.status(400).json({ message: "quarter and type are required" });
   const data = await ReportsService.getSubmissionStatuses(Number(quarter), type, req.query.sy_id);

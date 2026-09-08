@@ -33,3 +33,6 @@ export const fetchMySubmittedReports = () =>
 
 export const fetchSubmissionStatuses = (quarter, type, sy_id) =>
   client.get("/reports/submissions", { params: { quarter, type, ...(sy_id ? { sy_id } : {}) } });
+
+export const fetchAllSubmissionStatuses = (sy_id) =>
+  client.get("/reports/submissions", { params: sy_id ? { sy_id } : {} });

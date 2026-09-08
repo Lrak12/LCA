@@ -109,20 +109,6 @@ export default function ClassAcademicRecordModal({ onClose }) {
             />
           </div>
 
-          <div className="flex items-center gap-1">
-            {[1, 2, 3, 4].map((q) => (
-              <button
-                key={q}
-                onClick={() => setQuarter(q)}
-                className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${
-                  quarter === q ? "bg-primary text-white" : "bg-surface-container-low text-on-surface-variant hover:text-on-surface"
-                }`}
-              >
-                Q{q}
-              </button>
-            ))}
-          </div>
-
           <div className="flex items-center gap-2 ml-auto">
             <button className="flex items-center gap-1.5 text-sm font-bold text-white bg-red-500 hover:bg-red-600 transition-colors rounded-lg px-3 py-2">
               <span className="material-symbols-outlined" style={{ fontSize: 16 }}>upload_file</span>
@@ -154,11 +140,35 @@ export default function ClassAcademicRecordModal({ onClose }) {
         <div className="flex-1 overflow-auto px-6 py-5">
 
           {/* Report info */}
-          <div className="flex items-start justify-between mb-5 text-xs gap-4">
+          <div className="flex flex-wrap items-end justify-between mb-5 text-xs gap-4">
             <div>
               <p className="font-extrabold text-on-surface text-sm">Lifegiver Christian Academy</p>
               <p className="text-on-surface-variant mt-0.5">{quarterLabel}, School Year {schoolYear}</p>
             </div>
+
+            <div aria-label="Academic report quarter">
+              <span className="mb-1.5 block text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant">
+                Quarter
+              </span>
+              <div className="inline-flex rounded-xl bg-surface-container-low p-1">
+                {[1, 2, 3, 4].map((q) => (
+                  <button
+                    key={q}
+                    type="button"
+                    onClick={() => setQuarter(q)}
+                    aria-pressed={quarter === q}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${
+                      quarter === q
+                        ? "bg-primary text-white shadow-sm"
+                        : "text-on-surface-variant hover:bg-white hover:text-on-surface"
+                    }`}
+                  >
+                    Q{q}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="text-right shrink-0">
               <p className="text-on-surface-variant">
                 <span className="font-bold text-on-surface">Prepared by:</span> {teacherName}

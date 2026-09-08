@@ -30,11 +30,12 @@ export const create = (payload) =>
     .select("*, principal(first_name, last_name)")
     .single();
 
-export const update = (ann_id, payload) =>
+export const update = (ann_id, principal_id, payload) =>
   supabaseAdmin
     .from(TABLE)
     .update(payload)
     .eq("ann_id", ann_id)
+    .eq("principal_id", principal_id)
     .select("*, principal(first_name, last_name)")
     .single();
 
@@ -43,4 +44,3 @@ export const remove = (ann_id) =>
     .from(TABLE)
     .delete()
     .eq("ann_id", ann_id);
-

@@ -321,11 +321,12 @@ function scoreFinishedPace(pace) {
 // PACE Analytics & Rankings tab. Finds the active quarter, sums each student's
 // points on PACEs finished this quarter, ranks them, and builds the Top-10 list +
 // the month-over-month completion trend.
-export const getPaceAnalytics = async () => {
+export const getPaceAnalytics = async ({ quarter: requestedQuarter, gradeLevel: requestedGradeLevel } = {}) => {
   const { data: sy } = await findActiveSchoolYear();
   if (!sy?.start_date) {
     return {
       quarter: null, quarterLabel: "—",
+      gradeLevels: [],
       stats: { topPerformer: null, pacesFinished: 0, avgPoints: 0 },
       rankings: [], topCompletion: [],
       trend: { weeks: ["Wk 1", "Wk 2", "Wk 3", "Wk 4", "Wk 5"], thisMonth: [], lastMonth: [] },
@@ -335,38 +336,96 @@ export const getPaceAnalytics = async () => {
   // Active quarter comes from the principal's academic configuration (Settings),
   // so analytics always tracks the same quarter the school considers current.
   const aq = getCurrentQuarter(sy);
-  const quarter      = aq.quarter;
-  const quarterLabel = aq.label;
-  const start = atMidnight(aq.start);
-  const end   = atMidnight(aq.end);
+  const parsedQuarter = Number(requestedQuarter);
+  const quarter = Number.isInteger(parsedQuarter) && parsedQuarter >= 1 && parsedQuarter <= 4
+    ? parsedQuarter
+    : aq.quarter;
+  const quarterLabel = `${["1st", "2nd", "3rd", "4th"][quarter - 1]} Quarter`;
 
-  const [{ data: students }, { data: paces }] = await Promise.all([
+  const [studentsResult, pacesResult, projectionsResult] = await Promise.all([
     StudentMonitoringModel.findStudents(),
     StudentMonitoringModel.findStudentPaces(),
+    StudentMonitoringModel.findPaceProjectionsForAnalytics(sy.sy_id, quarter),
   ]);
+  if (studentsResult.error) throw new Error(studentsResult.error.message);
+  if (pacesResult.error) throw new Error(pacesResult.error.message);
+  if (projectionsResult.error) throw new Error(projectionsResult.error.message);
+
+  const students = studentsResult.data;
+  const paces = pacesResult.data;
+  const projections = projectionsResult.data;
 
   const eligibleUsers = await getEligibleUserIds(sy.sy_id, "student");
-  const currentStudents = (students ?? []).filter((student) => eligibleUsers.has(student.user_id));
+  const eligibleStudents = (students ?? []).filter((student) => eligibleUsers.has(student.user_id));
+  const gradeLevels = [...new Map(
+    eligibleStudents
+      .filter((student) => student.grade_level?.gl_id != null)
+      .map((student) => [
+        Number(student.grade_level.gl_id),
+        { gl_id: Number(student.grade_level.gl_id), level_name: student.grade_level.level_name },
+      ])
+  ).values()].sort((a, b) => {
+    const orderA = Number.parseInt(String(a.level_name).replace(/\D/g, ""), 10);
+    const orderB = Number.parseInt(String(b.level_name).replace(/\D/g, ""), 10);
+    return (Number.isNaN(orderA) ? Number.MAX_SAFE_INTEGER : orderA)
+      - (Number.isNaN(orderB) ? Number.MAX_SAFE_INTEGER : orderB)
+      || a.level_name.localeCompare(b.level_name);
+  });
+  const parsedGradeLevel = Number(requestedGradeLevel);
+  const hasGradeFilter = Number.isInteger(parsedGradeLevel) && parsedGradeLevel > 0;
+  const currentStudents = hasGradeFilter
+    ? eligibleStudents.filter((student) => Number(student.grade_level?.gl_id) === parsedGradeLevel)
+    : eligibleStudents;
   const currentStudentIds = new Set(currentStudents.map((student) => student.student_id));
   const currentPaces = (paces ?? []).filter((pace) => currentStudentIds.has(pace.student_id));
+  const currentProjections = (projections ?? []).filter((projection) => currentStudentIds.has(projection.student_id));
 
   const studentById = new Map(currentStudents.map((s) => [s.student_id, s]));
 
+  // Expand each quarterly projection range into the exact subject/module keys
+  // expected for that student. This lets unstarted planned PACEs appear as 0%
+  // instead of dropping the student from Analytics entirely.
+  const plannedByStudent = new Map();
+  currentProjections.forEach((projection) => {
+    const startPace = Number(projection.pace_start);
+    const count = Number(projection.pace_count)
+      || (Number(projection.pace_end) >= startPace ? Number(projection.pace_end) - startPace + 1 : 0);
+    if (!startPace || count <= 0) return;
+    const planned = plannedByStudent.get(projection.student_id) ?? new Set();
+    for (let offset = 0; offset < count; offset += 1) {
+      planned.add(`${projection.subject}|${startPace + offset}`);
+    }
+    plannedByStudent.set(projection.student_id, planned);
+  });
+
+  const paceByStudentAndModule = new Map();
+  currentPaces.forEach((pace) => {
+    const subject = pace.pace_module?.subject;
+    const moduleNumber = Number(pace.pace_module?.module_number);
+    if (!subject || !moduleNumber) return;
+    const key = `${pace.student_id}|${subject}|${moduleNumber}`;
+    const existing = paceByStudentAndModule.get(key);
+    // The query is newest-first. Keep that row unless an older duplicate is the
+    // completed copy, since completed work must count toward the projection.
+    if (!existing || (existing.status !== "Completed" && pace.status === "Completed")) {
+      paceByStudentAndModule.set(key, pace);
+    }
+  });
+
   // Aggregate points per student over PACEs FINISHED in the current quarter
   const agg = new Map(); // student_id → { points, finished, onTime, extended, late }
-  currentPaces.forEach((p) => {
-    if (!p.completion_date) return;                       // not finished
-    const c = atMidnight(p.completion_date);
-    if (c == null || c < start || c > end) return;        // finished outside this quarter
-    const pts = scoreFinishedPace(p);
-
-    const a = agg.get(p.student_id) || { points: 0, finished: 0, onTime: 0, extended: 0, late: 0 };
-    a.points += pts;
-    a.finished += 1;
-    if (p.completion_status === "On Time") a.onTime += 1;
-    else if (p.completion_status === "Extended") a.extended += 1;
-    else a.late += 1;
-    agg.set(p.student_id, a);
+  plannedByStudent.forEach((planned, studentId) => {
+    const a = { points: 0, finished: 0, onTime: 0, extended: 0, late: 0 };
+    planned.forEach((plannedKey) => {
+      const pace = paceByStudentAndModule.get(`${studentId}|${plannedKey}`);
+      if (!pace || pace.status !== "Completed") return;
+      a.points += scoreFinishedPace(pace);
+      a.finished += 1;
+      if (pace.completion_status === "On Time") a.onTime += 1;
+      else if (pace.completion_status === "Extended") a.extended += 1;
+      else a.late += 1;
+    });
+    agg.set(studentId, a);
   });
 
   const rankings = [...agg.entries()]
@@ -389,23 +448,22 @@ export const getPaceAnalytics = async () => {
   // PLACEMENT is by speed points (how fast the student finishes assigned PACEs):
   //   +5 finished in the first half of the assigned window, +3 in the second half
   //   (still on time), 0 late — summed per student via scoreFinishedPace().
-  // The DISPLAYED percentage is how many of the student's PACEs are completed
-  //   (completed / total). A PACE belongs to the quarter when its start_date falls
-  //   in the quarter window (same date basis as the points rankings above).
+  // The DISPLAYED percentage is how many of the student's planned PACEs are
+  // completed. The saved quarterly projection is the denominator, so students
+  // remain visible before their first planned PACE has been started.
   const perStudent = new Map(); // student_id → { completed, total, points, onTime, extended, late }
-  currentPaces.forEach((p) => {
-    const startTs = atMidnight(p.start_date);
-    if (startTs == null || startTs < start || startTs > end) return; // not this quarter's PACE
-    const t = perStudent.get(p.student_id) || { completed: 0, total: 0, points: 0, onTime: 0, extended: 0, late: 0 };
-    t.total += 1;
-    if (p.status === "Completed") {
+  plannedByStudent.forEach((planned, studentId) => {
+    const t = { completed: 0, total: planned.size, points: 0, onTime: 0, extended: 0, late: 0 };
+    planned.forEach((plannedKey) => {
+      const pace = paceByStudentAndModule.get(`${studentId}|${plannedKey}`);
+      if (!pace || pace.status !== "Completed") return;
       t.completed += 1;
-      t.points += scoreFinishedPace(p);
-      if (p.completion_status === "On Time") t.onTime += 1;
-      else if (p.completion_status === "Extended") t.extended += 1;
+      t.points += scoreFinishedPace(pace);
+      if (pace.completion_status === "On Time") t.onTime += 1;
+      else if (pace.completion_status === "Extended") t.extended += 1;
       else t.late += 1;
-    }
-    perStudent.set(p.student_id, t);
+    });
+    perStudent.set(studentId, t);
   });
 
   const topCompletion = [...perStudent.entries()]
@@ -463,6 +521,7 @@ export const getPaceAnalytics = async () => {
   return {
     quarter,
     quarterLabel,
+    gradeLevels,
     stats: {
       topPerformer:  rankings[0] ? { name: rankings[0].full_name, points: rankings[0].points } : null,
       pacesFinished: totalFinished,

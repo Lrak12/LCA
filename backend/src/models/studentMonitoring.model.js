@@ -101,6 +101,15 @@ export const findAllPaceProjections = (sy_id) =>
     .select("student_id, subject, quarter, pace_start")
     .eq("sy_id", sy_id);
 
+// Planned PACE ranges for one quarter. Analytics uses these rows as its roster
+// and denominator even when a student has not started the planned PACEs yet.
+export const findPaceProjectionsForAnalytics = (sy_id, quarter) =>
+  supabaseAdmin
+    .from("pace_quarterly_projection")
+    .select("student_id, subject, quarter, pace_start, pace_end, pace_count")
+    .eq("sy_id", sy_id)
+    .eq("quarter", quarter);
+
 // All attendance rows in the active school-year date range (present/absent/tardy per student).
 export const findAllAttendanceInRange = (startDate, endDate) =>
   supabaseAdmin

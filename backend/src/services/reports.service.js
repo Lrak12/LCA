@@ -735,6 +735,24 @@ export const getSubmissionStatuses = async (quarter, report_type, sy_id = null) 
   return map;
 };
 
+export const getAllSubmissionStatuses = async (sy_id = null) => {
+  const sy = await getSchoolYear(sy_id);
+  const allowedTypes = new Set(["academic", "attendance", "pace", "analytics"]);
+  const { data, error } = await ReportsModel.findAllReportSubmissions(sy.sy_id);
+  if (error) throw new Error(error.message);
+
+  // report type -> quarter -> teacher_id -> submitted_at
+  const statuses = {};
+  allowedTypes.forEach((type) => {
+    statuses[type] = { 1: {}, 2: {}, 3: {}, 4: {} };
+  });
+  (data ?? []).forEach((row) => {
+    if (!allowedTypes.has(row.report_type) || !statuses[row.report_type]?.[row.quarter]) return;
+    statuses[row.report_type][row.quarter][row.teacher_id] = row.submitted_at;
+  });
+  return statuses;
+};
+
 // ── Assign PACE (teacher) ─────────────────────────────────────────────────────
 // Takes a teacher_id, student_id and subject→startPace map.
 // Generates 4 quarterly rows in pace_quarterly_projection (6 PACEs/quarter default).

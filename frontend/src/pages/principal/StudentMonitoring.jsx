@@ -1,5 +1,5 @@
-// Principal Student Monitoring page. Tabs: Records / Progress / Recommendations /
-// PACE Analytics. "View Details" opens StudentSummaryModal.
+// Principal Student Monitoring page. Tabs: Records / Progress / PACE Analytics.
+// "View Details" opens StudentSummaryModal.
 // Backend chain (frontend api/studentMonitoring.js -> routes/studentMonitoring.routes.js, mounted at /student-monitoring):
 //   list+tabs: GET /student-monitoring               -> controllers/studentMonitoring.controller.js > getOverview (~line 7)        -> services/studentMonitoring.service.js > getStudentMonitoring (~line 167)
 //   analytics: GET /student-monitoring/pace-analytics -> controllers/studentMonitoring.controller.js > getPaceAnalytics (~line 20)   -> services/studentMonitoring.service.js > getPaceAnalytics (~line 297)
@@ -22,7 +22,6 @@ const PAGE_SIZE = 6;
 const TABS = [
   { id: "records",       label: "Student Records"        },
   { id: "progress",      label: "Student Progress"       },
-  { id: "recommendations", label: "Projected PACE Plan"   },
   { id: "analytics",     label: "PACE Analytics & Rankings" },
 ];
 
@@ -1014,28 +1013,33 @@ const CompletionTrendChart = ({ trend }) => {
 //     sorted by points desc, then # On-Time. Points per PACE come from scoreFinishedPace
 //     (~line 290) = student_pace.points_earned (10 On-Time / 7 Extended / 5 Late-passed / 0
 //     not-passed), stamped at completion by the Assign/Manage Student PACE flow.
-//   - `topCompletion`: Top-10 by completion % (completed / total PACEs whose start_date is
-//     in the quarter).
+//   - `topCompletion`: Top-10 by completion % against the saved quarterly PACE plan.
 //   - `trend`: this-month-vs-last-month weekly completion counts for the chart.
 //   - `stats`: topPerformer, pacesFinished, avgPoints.
 function PaceAnalyticsTab() {
   const [data,    setData]    = useState(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState("");
+  const [quarter, setQuarter] = useState(null);
+  const [gradeLevel, setGradeLevel] = useState("");
 
   useEffect(() => {
+    let cancelled = false;
     const load = async () => {
+      setLoading(true);
+      setError("");
       try {
-        const res = await fetchPaceAnalytics();
-        setData(res.data);
+        const res = await fetchPaceAnalytics({ quarter, gradeLevel });
+        if (!cancelled) setData(res.data);
       } catch (err) {
-        setError(err.response?.data?.message ?? err.message);
+        if (!cancelled) setError(err.response?.data?.message ?? err.message);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
     load();
-  }, []);
+    return () => { cancelled = true; };
+  }, [quarter, gradeLevel]);
 
   const topCompletion = data?.topCompletion ?? [];
   const trend         = data?.trend ?? { weeks: [], thisMonth: [], lastMonth: [] };
@@ -1048,6 +1052,55 @@ function PaceAnalyticsTab() {
           {error}
         </div>
       )}
+
+      <div className="mb-4 flex flex-wrap items-end justify-end gap-3">
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant">
+            Grade Level
+          </span>
+          <span className="relative">
+            <select
+              value={gradeLevel}
+              onChange={(event) => setGradeLevel(event.target.value)}
+              className="min-w-[150px] appearance-none rounded-xl border border-outline-variant/20 bg-white py-2.5 pl-4 pr-9 text-sm font-bold text-on-surface shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              <option value="">All Grade Levels</option>
+              {(data?.gradeLevels ?? []).map((level) => (
+                <option key={level.gl_id} value={level.gl_id}>{level.level_name}</option>
+              ))}
+            </select>
+            <span className="material-symbols-outlined pointer-events-none absolute right-2 top-1/2 -translate-y-1 text-base text-on-surface-variant">
+              expand_more
+            </span>
+          </span>
+        </label>
+
+        <div aria-label="PACE analytics quarter">
+          <span className="mb-1.5 block text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant">
+            Quarter
+          </span>
+        <div className="inline-flex rounded-xl bg-surface-container-low p-1">
+          {[1, 2, 3, 4].map((value) => {
+            const active = value === (quarter ?? data?.quarter);
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setQuarter(value)}
+                aria-pressed={active}
+                className={`rounded-lg px-4 py-2 text-xs font-bold transition-colors ${
+                  active
+                    ? "bg-primary text-on-primary shadow-sm"
+                    : "text-on-surface-variant hover:bg-white"
+                }`}
+              >
+                Q{value}
+              </button>
+            );
+          })}
+        </div>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top 10 by PACE completion */}
@@ -1428,6 +1481,8 @@ export default function StudentMonitoring() {
   // When a student's Projected PACE Plan is opened, load their saved projection so the
   // editable grid is seeded with the real plan (not defaults).
   useEffect(() => {
+    // The plan modal owns this request state whenever a student is selected.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!planStudent) { setPlanProjection(null); return; }
     let cancelled = false;
     setPlanLoading(true);
@@ -1565,7 +1620,7 @@ export default function StudentMonitoring() {
         )}
 
         {/* ── Tabs ───────────────────────────────────────────────────── */}
-        {/* tabs -> setActiveTab(id) switches Records / Progress / Recommendations / PACE Analytics */}
+        {/* tabs -> setActiveTab(id) switches Records / Progress / PACE Analytics */}
         <div className="border-b border-outline-variant/20 mb-6">
           <div className="flex items-center gap-6 overflow-x-auto">
             {TABS.map((tab) => {

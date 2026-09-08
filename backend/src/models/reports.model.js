@@ -165,6 +165,12 @@ export const findReportSubmissions = (report_type, quarter, sy_id) =>
     .eq("quarter", quarter)
     .eq("sy_id", sy_id);
 
+export const findAllReportSubmissions = (sy_id) =>
+  supabaseAdmin
+    .from("report_submission")
+    .select("teacher_id, report_type, quarter, submitted_at")
+    .eq("sy_id", sy_id);
+
 export const findReportSubmissionsForTeacher = (teacher_id, sy_id) =>
   supabaseAdmin
     .from("report_submission")

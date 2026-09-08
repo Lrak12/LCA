@@ -45,15 +45,17 @@ export default function SupervisorReportModal({
   teacher,
   quarter,
   gradeRange,
-  submittedAt,
-  status = "Submitted",
+  submissionMatrix = {},
   initialTab = "academic",
   schoolYearId,
   onClose,
 }) {
   const [activeTab, setActiveTab] = useState(initialTab); // which report tab is showing
+  const [activeQuarter, setActiveQuarter] = useState(quarter);
   const teacherName  = teacher ? `${teacher.firstName} ${teacher.lastName}` : "—";
-  const quarterLabel = QUARTER_LABELS[quarter] ?? `Quarter ${quarter}`;
+  const quarterLabel = QUARTER_LABELS[activeQuarter] ?? `Quarter ${activeQuarter}`;
+  const submittedAt = submissionMatrix[activeTab]?.[activeQuarter] ?? null;
+  const currentStatus = submittedAt ? "Submitted" : "Not Submitted";
 
   return (
     <div
@@ -66,7 +68,7 @@ export default function SupervisorReportModal({
         <div className="flex items-start justify-between px-7 pt-5 pb-4 border-b border-outline-variant/20 shrink-0">
           <div>
             <h2 className="text-xl font-extrabold text-on-surface">Supervisor Academic Report</h2>
-            <p className="text-xs text-on-surface-variant mt-0.5">Submitted by {teacherName} — {quarterLabel}</p>
+            <p className="text-xs text-on-surface-variant mt-0.5">Submitted by {teacherName}</p>
           </div>
           <button
             onClick={onClose}
@@ -81,7 +83,26 @@ export default function SupervisorReportModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 items-start">
             <SummaryCell label="Supervisor">{teacherName}</SummaryCell>
             <SummaryCell label="Assigned Grade Level(s)">{gradeRange ?? "—"}</SummaryCell>
-            <SummaryCell label="Quarter">{quarterLabel}</SummaryCell>
+            <div>
+              <p className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant">Quarter</p>
+              <div className="mt-1 inline-flex rounded-lg bg-surface-container-low p-1" aria-label="Report quarter">
+                {[1, 2, 3, 4].map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setActiveQuarter(value)}
+                    aria-pressed={activeQuarter === value}
+                    className={`rounded-md px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                      activeQuarter === value
+                        ? "bg-primary text-white shadow-sm"
+                        : "text-on-surface-variant hover:bg-white hover:text-on-surface"
+                    }`}
+                  >
+                    Q{value}
+                  </button>
+                ))}
+              </div>
+            </div>
             <SummaryCell label="Submission Date">
               {submittedAt ? (
                 <>
@@ -93,11 +114,10 @@ export default function SupervisorReportModal({
             <div>
               <p className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant">Status</p>
               <span className={`inline-block mt-1 text-[10px] font-extrabold uppercase tracking-wide px-2.5 py-1 rounded-full ${
-                status === "Submitted" ? "bg-emerald-100 text-emerald-700"
-                : status === "Partial" ? "bg-amber-100 text-amber-700"
+                currentStatus === "Submitted" ? "bg-emerald-100 text-emerald-700"
                 : "bg-slate-100 text-slate-500"
               }`}>
-                {status}
+                {currentStatus}
               </span>
             </div>
           </div>
@@ -128,12 +148,24 @@ export default function SupervisorReportModal({
           </div>
         </div>
 
-        {/* Active report body — renders the content module for the selected tab */}
+        {/* Active report body — only published report/quarter combinations are viewable. */}
         <div className="flex-1 overflow-auto px-7 py-5 border-t border-outline-variant/15">
-          {activeTab === "academic"   && <ClassAcademicRecordContent teacher={teacher} quarter={quarter} schoolYearId={schoolYearId} />}
-          {activeTab === "attendance" && <AttendanceReportContent teacher={teacher} quarter={quarter} schoolYearId={schoolYearId} />}
-          {activeTab === "pace"       && <PaceProgressContent teacher={teacher} quarter={quarter} schoolYearId={schoolYearId} />}
-          {activeTab === "analytics"  && <PaceAnalyticsRankingsView teacher={teacher} quarter={quarter} schoolYearId={schoolYearId} />}
+          {!submittedAt ? (
+            <div className="flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed border-outline-variant/30 bg-surface-container-lowest px-6 text-center">
+              <span className="material-symbols-outlined mb-2 text-3xl text-on-surface-variant/50">draft</span>
+              <p className="text-sm font-bold text-on-surface">Report not submitted</p>
+              <p className="mt-1 text-xs text-on-surface-variant">
+                The supervisor has not submitted this report for {quarterLabel}.
+              </p>
+            </div>
+          ) : (
+            <>
+              {activeTab === "academic"   && <ClassAcademicRecordContent teacher={teacher} quarter={activeQuarter} schoolYearId={schoolYearId} />}
+              {activeTab === "attendance" && <AttendanceReportContent teacher={teacher} quarter={activeQuarter} schoolYearId={schoolYearId} />}
+              {activeTab === "pace"       && <PaceProgressContent teacher={teacher} quarter={activeQuarter} schoolYearId={schoolYearId} />}
+              {activeTab === "analytics"  && <PaceAnalyticsRankingsView teacher={teacher} quarter={activeQuarter} schoolYearId={schoolYearId} />}
+            </>
+          )}
         </div>
 
         {/* Footer */}

@@ -18,7 +18,10 @@ export const getStudentProfile = asyncHandler(async (req, res) => {
 
 // rankings + completion trend for the PACE Analytics tab
 export const getPaceAnalytics = asyncHandler(async (req, res) => {
-  const data = await StudentMonitoringService.getPaceAnalytics();
+  const data = await StudentMonitoringService.getPaceAnalytics({
+    quarter: req.query.quarter,
+    gradeLevel: req.query.grade_level,
+  });
   sendSuccess(res, data);
 });
 
@@ -34,4 +37,3 @@ export const exportRecords = asyncHandler(async (req, res) => {
   const data = await StudentMonitoringService.exportStudentRecords();
   sendSuccess(res, data);
 });
-

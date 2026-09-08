@@ -1,21 +1,13 @@
-// Supervisor Academic Reports (principal): per-quarter grid showing which supervisors
-// submitted which of the 3 report types; "View Report" opens SupervisorReportModal.
+// Supervisor Academic Reports (principal): combined all-quarter status showing which
+// supervisors submitted each report type; "View Report" owns the quarter filter.
 // Backend chain (frontend api/reports.js -> routes/reports.routes.js):
 //   teachers:    GET /reports/teachers    -> controllers/reports.controller.js > getTeachers (~line 11)            -> services/reports.service.js > getTeachers (~line 152)
 //   submissions: GET /reports/submissions -> controllers/reports.controller.js > getSubmissionStatuses (~line 78) -> services/reports.service.js > getSubmissionStatuses (~line 584)
 import { useState, useEffect } from "react";
 import PrincipalLayout from "../../components/PrincipalLayout.jsx";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
-import { fetchReportSchoolYears, fetchReportTeachers, fetchSubmissionStatuses } from "../../api/reports.js";
+import { fetchReportSchoolYears, fetchReportTeachers, fetchAllSubmissionStatuses } from "../../api/reports.js";
 import SupervisorReportModal from "./SupervisorReportModal.jsx";
-
-// quarter selector tabs
-const QUARTERS = [
-  { label: "1st Qtr", value: 1 },
-  { label: "2nd Qtr", value: 2 },
-  { label: "3rd Qtr", value: 3 },
-  { label: "4th Qtr", value: 4 },
-];
 
 // report types each supervisor is expected to submit
 const REPORT_TYPES = [
@@ -58,7 +50,7 @@ function buildPages(current, total) {
   return [current - 2, current - 1, current, current + 1, current + 2];
 }
 
-// coloured status pill: Submitted (all 3) / Partial (some) / Not Submitted (none)
+// coloured status pill: Submitted (all reports/quarters) / Partial (some) / Not Submitted (none)
 const StatusPill = ({ status }) => {
   const tone = {
     Submitted:       "bg-emerald-100 text-emerald-700",
@@ -76,10 +68,9 @@ export default function Reports() {
   const [selectedSy,     setSelectedSy]     = useState("");
   const [loading,        setLoading]        = useState(true);
   const [error,          setError]          = useState("");
-  const [activeQtr,      setActiveQtr]      = useState(4);     // selected quarter tab
   const [page,           setPage]           = useState(1);
   const [selectedReport, setSelectedReport] = useState(null); // report open in the modal { teacher, quarter, type }
-  const [submissions,    setSubmissions]    = useState({});   // { [type]: { [teacher_id]: submitted_at } }
+  const [submissions,    setSubmissions]    = useState({});   // type -> quarter -> teacher_id -> submitted_at
   const [subLoading,     setSubLoading]     = useState(true);
 
   // Load available years, then default to the operational active year.
@@ -103,19 +94,14 @@ export default function Reports() {
       .finally(() => setLoading(false));
   }, [selectedSy]);
 
-  // Refetch all four report types when the quarter/year changes, when the
-  // principal returns to this window, and periodically while the page is open.
+  // Load the combined status for every report type and quarter. The quarter
+  // filter belongs to the report viewer, not this supervisor summary list.
   useEffect(() => {
     if (!selectedSy) return;
     let cancelled = false;
     const loadSubmissions = () =>
-      Promise.all(REPORT_TYPES.map((rt) => fetchSubmissionStatuses(activeQtr, rt.key, selectedSy)))
-        .then((results) => {
-          if (cancelled) return;
-          const next = {};
-          REPORT_TYPES.forEach((rt, i) => { next[rt.key] = results[i].data ?? {}; });
-          setSubmissions(next);
-        })
+      fetchAllSubmissionStatuses(selectedSy)
+        .then((result) => { if (!cancelled) setSubmissions(result.data ?? {}); })
         .catch(() => {})
         .finally(() => { if (!cancelled) setSubLoading(false); });
 
@@ -127,22 +113,38 @@ export default function Reports() {
       window.clearInterval(refreshTimer);
       window.removeEventListener("focus", loadSubmissions);
     };
-  }, [activeQtr, selectedSy]);
+  }, [selectedSy]);
 
   // paginate the supervisor list
   const totalPages   = Math.max(1, Math.ceil(teachers.length / PAGE_SIZE));
   const currentPage  = Math.min(page, totalPages);
   const pageTeachers = teachers.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
-  const handleQtr  = (q) => { setSubLoading(true); setActiveQtr(q); setPage(1); }; // switch quarter, reset to page 1
   const handlePage = (p) => setPage(Math.max(1, Math.min(totalPages, p)));
 
-  // was this report type submitted by this teacher? returns the submitted_at date or null
-  const subDateFor = (type, teacherId) => submissions[type]?.[teacherId] ?? null;
+  const subDateFor = (type, quarter, teacherId) => submissions[type]?.[quarter]?.[teacherId] ?? null;
+
+  const submissionsForTeacher = (teacherId) => Object.fromEntries(
+    REPORT_TYPES.map((reportType) => [
+      reportType.key,
+      Object.fromEntries([1, 2, 3, 4].map((quarter) => [quarter, subDateFor(reportType.key, quarter, teacherId)])),
+    ])
+  );
 
   // open the report viewer modal for a given teacher + report type
-  const openReport = (teacher, type, meta) =>
-    setSelectedReport({ teacher, quarter: activeQtr, type, ...meta });
+  const openReport = (teacher, type, meta, teacherSubmissions) => {
+    const submittedQuarters = [1, 2, 3, 4]
+      .map((quarter) => ({ quarter, submittedAt: teacherSubmissions[type]?.[quarter] }))
+      .filter((entry) => entry.submittedAt)
+      .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt) || b.quarter - a.quarter);
+    setSelectedReport({
+      teacher,
+      quarter: submittedQuarters[0]?.quarter ?? 1,
+      type,
+      submissionMatrix: teacherSubmissions,
+      ...meta,
+    });
+  };
 
   return (
     <PrincipalLayout schoolYearLabel={schoolYearLabel}>
@@ -194,23 +196,7 @@ export default function Reports() {
           <div className="flex items-start justify-between gap-4 mb-5 flex-wrap">
             <div>
               <h3 className="text-lg font-extrabold text-on-surface">Supervisor Submission Status</h3>
-              <p className="text-xs text-primary mt-0.5 font-bold">Weekly Academic Summaries (Term {activeQtr})</p>
-            </div>
-            {/* Quarter Tabs -> handleQtr(value) sets activeQtr (re-fetches submission statuses) */}
-            <div className="flex items-center gap-1 bg-surface-container-low rounded-xl p-1">
-              {QUARTERS.map((q) => (
-                <button
-                  key={q.value}
-                  onClick={() => handleQtr(q.value)}
-                  className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap ${
-                    activeQtr === q.value
-                      ? "bg-on-surface text-white shadow-sm"
-                      : "text-on-surface-variant hover:text-on-surface"
-                  }`}
-                >
-                  {q.label}
-                </button>
-              ))}
+              <p className="text-xs text-primary mt-0.5 font-bold">Academic report submissions across all quarters</p>
             </div>
           </div>
 
@@ -242,15 +228,20 @@ export default function Reports() {
                     </td>
                   </tr>
                 ) : (
-                  // one row per supervisor: derive their submission counts/status for this quarter
+                  // one row per supervisor: derive combined status across 4 reports × 4 quarters
                   pageTeachers.map((teacher) => {
-                    const tid       = teacher.teacher_id;
-                    const submitted = REPORT_TYPES.map((rt) => subDateFor(rt.key, tid));
-                    const dates     = submitted.filter((value) => typeof value === "string");
+                    const tid = teacher.teacher_id;
+                    const teacherSubmissions = submissionsForTeacher(tid);
+                    const progress = REPORT_TYPES.map((reportType) => ({
+                      ...reportType,
+                      dates: [1, 2, 3, 4].map((quarter) => teacherSubmissions[reportType.key][quarter]).filter(Boolean),
+                    }));
+                    const dates = progress.flatMap((reportType) => reportType.dates);
                     const latest    = dates.length ? dates.map((d) => new Date(d)).sort((a, b) => b - a)[0].toISOString() : null;
-                    const count     = submitted.filter(Boolean).length;
-                    const status    = count === REPORT_TYPES.length ? "Submitted" : count > 0 ? "Partial" : "Not Submitted"; // all/some/none
-                    const firstSub  = REPORT_TYPES.find((rt) => subDateFor(rt.key, tid)); // first submitted type (for the View button)
+                    const count = dates.length;
+                    const expectedCount = REPORT_TYPES.length * 4;
+                    const status = count === expectedCount ? "Submitted" : count > 0 ? "Partial" : "Not Submitted";
+                    const firstSub = progress.find((reportType) => reportType.dates.length > 0);
 
                     return (
                       <tr key={tid} className="hover:bg-surface-container-lowest transition-colors align-top">
@@ -268,19 +259,23 @@ export default function Reports() {
                         <td className="px-5 py-5">
                           <div className="space-y-1.5">
                             {/* each submitted report type -> openReport(teacher, type, meta) opens <SupervisorReportModal> on that tab */}
-                            {REPORT_TYPES.map((rt) => {
-                              const done = Boolean(subDateFor(rt.key, tid));
+                            {progress.map((rt) => {
+                              const quarterCount = rt.dates.length;
+                              const done = quarterCount === 4;
+                              const partial = quarterCount > 0 && !done;
                               return (
                                 <button
                                   key={rt.key}
-                                  onClick={() => done && openReport(teacher, rt.key, { gradeRange: gradeRange(teacher.gradeLevels), submittedAt: latest, status })}
-                                  disabled={!done}
+                                  onClick={() => quarterCount > 0 && openReport(teacher, rt.key, { gradeRange: gradeRange(teacher.gradeLevels), status }, teacherSubmissions)}
+                                  disabled={quarterCount === 0}
                                   className={`flex items-center gap-1.5 text-xs whitespace-nowrap transition-colors ${
-                                    done ? "text-on-surface hover:text-primary cursor-pointer" : "text-on-surface-variant/50 cursor-default"
+                                    quarterCount > 0 ? "text-on-surface hover:text-primary cursor-pointer" : "text-on-surface-variant/50 cursor-default"
                                   }`}
                                 >
-                                  <span className="material-symbols-outlined text-sm">{done ? "check_circle" : "radio_button_unchecked"}</span>
-                                  {rt.label}
+                                  <span className="material-symbols-outlined text-sm">
+                                    {done ? "check_circle" : partial ? "pending" : "radio_button_unchecked"}
+                                  </span>
+                                  {rt.label} <span className="text-on-surface-variant/70">({quarterCount}/4)</span>
                                 </button>
                               );
                             })}
@@ -311,7 +306,7 @@ export default function Reports() {
                         {/* Actions: View Report -> openReport(teacher, firstSub.key, meta) opens the modal on the first submitted tab */}
                         <td className="px-5 py-5 whitespace-nowrap">
                           <button
-                            onClick={() => firstSub && openReport(teacher, firstSub.key, { gradeRange: gradeRange(teacher.gradeLevels), submittedAt: latest, status })}
+                            onClick={() => firstSub && openReport(teacher, firstSub.key, { gradeRange: gradeRange(teacher.gradeLevels), status }, teacherSubmissions)}
                             disabled={!firstSub}
                             className="flex items-center gap-1.5 text-xs font-extrabold text-amber-600 hover:text-amber-700 hover:underline disabled:text-on-surface-variant/40 disabled:no-underline disabled:cursor-not-allowed transition-colors"
                           >
@@ -376,6 +371,7 @@ export default function Reports() {
           gradeRange={selectedReport.gradeRange}
           submittedAt={selectedReport.submittedAt}
           status={selectedReport.status}
+          submissionMatrix={selectedReport.submissionMatrix}
           initialTab={selectedReport.type}
           schoolYearId={selectedSy}
           onClose={() => setSelectedReport(null)}

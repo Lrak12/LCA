@@ -630,14 +630,7 @@ export default function DiagnosticAssessments() {
               {gradeOptions.map((g) => <option key={g} value={g}>{g}</option>)}
             </select>
           </div>
-          {/* Reset Filters -> resetFilters() clears search/grade + page 1 */}
-          <button
-            onClick={resetFilters}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border-2 border-outline-variant/30 text-sm font-bold text-on-surface hover:bg-surface-container-low transition-colors"
-          >
-            <span className="material-symbols-outlined text-base">restart_alt</span>
-            Reset Filters
-          </button>
+        
         </div>
 
         {/* Table */}

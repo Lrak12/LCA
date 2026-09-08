@@ -52,8 +52,18 @@ export const createAnnouncement = async (payload, requestingUser) => {
   return data;
 };
 
-export const updateAnnouncement = async (ann_id, payload) => {
-  const { data, error } = await AnnouncementModel.update(ann_id, payload);
+export const updateAnnouncement = async (ann_id, payload, requestingUser) => {
+  const principal_id = await resolvePrincipalId(requestingUser.user_id);
+  const editable = {};
+  if (payload.title !== undefined) editable.title = String(payload.title).trim();
+  if (payload.content !== undefined) editable.content = String(payload.content).trim();
+  if (payload.audience_role !== undefined) editable.audience_role = payload.audience_role;
+  if (payload.posted_date !== undefined) editable.posted_date = payload.posted_date;
+  if (payload.is_active !== undefined) editable.is_active = Boolean(payload.is_active);
+  if (editable.title === "") throw new Error("Announcement title is required.");
+  if (editable.content === "") throw new Error("Announcement message is required.");
+
+  const { data, error } = await AnnouncementModel.update(ann_id, principal_id, editable);
   if (error) throw new Error(error.message);
   return data;
 };

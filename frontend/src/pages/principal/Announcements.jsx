@@ -6,7 +6,7 @@
 //   delete: DELETE /announcements/:id -> controllers/announcement.controller.js > remove (~line 25) -> services/announcement.service.js > deleteAnnouncement (~line 61)
 import { useEffect, useMemo, useState } from "react";
 import PrincipalLayout from "../../components/PrincipalLayout.jsx";
-import { fetchAnnouncements, createAnnouncement, deleteAnnouncement } from "../../api/announcements.js";
+import { fetchAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement } from "../../api/announcements.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
 
@@ -116,17 +116,30 @@ const AUDIENCE_CHOICES = [
 
 // Rendered by <Announcements> (showModal). onClose = () => setShowModal(false);
 // onSuccess = load (refetches the announcements list).
-function CreateAnnouncementModal({ onClose, onSuccess }) {
-  const [audiences, setAudiences] = useState({ All: false, Students: false, Supervisors: false }); // checked audiences
-  const [title,     setTitle]     = useState("");
-  const [content,   setContent]   = useState("");
+function CreateAnnouncementModal({ onClose, onSuccess, announcement = null }) {
+  const editing = Boolean(announcement);
+  const initialAudience = announcement?.audience_role === "Student"
+    ? "Students"
+    : announcement?.audience_role === "Teacher"
+      ? "Supervisors"
+      : "All";
+  const [audiences, setAudiences] = useState({
+    All: editing && initialAudience === "All",
+    Students: editing && initialAudience === "Students",
+    Supervisors: editing && initialAudience === "Supervisors",
+  });
+  const [title,     setTitle]     = useState(announcement?.title ?? "");
+  const [content,   setContent]   = useState(announcement?.content ?? "");
   const [publish,   setPublish]   = useState("immediate"); // immediate | schedule
   const [date,      setDate]      = useState("");
   const [time,      setTime]      = useState("");
   const [saving,    setSaving]    = useState(false);
   const [error,     setError]     = useState("");
 
-  const toggleAudience = (key) => setAudiences((a) => ({ ...a, [key]: !a[key] })); // check/uncheck one audience
+  const toggleAudience = (key) => setAudiences((current) => {
+    if (editing) return { All: false, Students: false, Supervisors: false, [key]: true };
+    return { ...current, [key]: !current[key] };
+  });
 
   // Resolve checked audiences → distinct backend roles. "All" covers everyone.
   const selectedRoles = () => {
@@ -145,20 +158,32 @@ function CreateAnnouncementModal({ onClose, onSuccess }) {
     if (publish === "schedule" && !date) { setError("Pick a date to schedule this announcement."); return; }
 
     // scheduled -> the chosen date/time; immediate -> now
-    const posted_date = publish === "schedule"
+    const posted_date = editing
+      ? announcement.posted_date
+      : publish === "schedule"
       ? new Date(`${date}T${time || "00:00"}`).toISOString()
       : new Date().toISOString();
 
     setSaving(true);
     try {
-      // One announcement per selected audience.
-      await Promise.all(roles.map((role) => createAnnouncement({
-        title:         title.trim(),
-        content:       content.trim(),
-        audience_role: role,
-        posted_date,
-        is_active:     true,
-      })));
+      if (editing) {
+        await updateAnnouncement(announcement.ann_id, {
+          title: title.trim(),
+          content: content.trim(),
+          audience_role: roles[0],
+          posted_date,
+          is_active: announcement.is_active !== false,
+        });
+      } else {
+        // One announcement per selected audience.
+        await Promise.all(roles.map((role) => createAnnouncement({
+          title:         title.trim(),
+          content:       content.trim(),
+          audience_role: role,
+          posted_date,
+          is_active:     true,
+        })));
+      }
       onSuccess();
       onClose();
     } catch (err) {
@@ -177,7 +202,9 @@ function CreateAnnouncementModal({ onClose, onSuccess }) {
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto flex flex-col">
         {/* Header */}
         <div className="px-7 pt-6 pb-4 border-b border-outline-variant/20 flex items-start justify-between shrink-0">
-          <h2 className="font-headline text-xl font-extrabold text-on-surface">Create New Announcement</h2>
+          <h2 className="font-headline text-xl font-extrabold text-on-surface">
+            {editing ? "Edit Published Announcement" : "Create New Announcement"}
+          </h2>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-surface-container-low text-on-surface-variant hover:text-primary transition-colors">
             <span className="material-symbols-outlined text-base">close</span>
           </button>
@@ -234,8 +261,20 @@ function CreateAnnouncementModal({ onClose, onSuccess }) {
 
             {/* Publication options */}
             <div>
-              <p className={`${sectionLabel} mb-2`}>Publication Option {req}</p>
-              <div className="space-y-3">
+              {editing ? (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                  <p className="flex items-center gap-2 text-sm font-bold text-emerald-700">
+                    <span className="material-symbols-outlined text-base">check_circle</span>
+                    Published
+                  </p>
+                  <p className="mt-2 text-[11px] leading-relaxed text-emerald-700/80">
+                    Saving updates this announcement immediately while preserving its original publication date.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <p className={`${sectionLabel} mb-2`}>Publication Option {req}</p>
+                  <div className="space-y-3">
                 {[
                   { key: "immediate", label: "Publish Immediately", desc: "The announcement will be visible to the selected audience right away." },
                   { key: "schedule",  label: "Schedule Publication", desc: "Choose a future date and time to publish this announcement." },
@@ -258,14 +297,16 @@ function CreateAnnouncementModal({ onClose, onSuccess }) {
                     </span>
                   </button>
                 ))}
-              </div>
+                  </div>
 
-              {publish === "schedule" && (
-                <div className="mt-5">
-                  <p className={`${sectionLabel} mb-2`}>Schedule Date and Time {req}</p>
-                  <input type="date" className={inputClass} value={date} onChange={(e) => setDate(e.target.value)} />
-                  <input type="time" className={`${inputClass} mt-2`} value={time} onChange={(e) => setTime(e.target.value)} />
-                </div>
+                  {publish === "schedule" && (
+                    <div className="mt-5">
+                      <p className={`${sectionLabel} mb-2`}>Schedule Date and Time {req}</p>
+                      <input type="date" className={inputClass} value={date} onChange={(e) => setDate(e.target.value)} />
+                      <input type="time" className={`${inputClass} mt-2`} value={time} onChange={(e) => setTime(e.target.value)} />
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -280,7 +321,7 @@ function CreateAnnouncementModal({ onClose, onSuccess }) {
           <button onClick={handleSubmit} disabled={saving} className="px-7 py-2.5 rounded-xl bg-primary text-white text-sm font-bold flex items-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-60">
             {saving
               ? <><span className="material-symbols-outlined text-base animate-spin">progress_activity</span> Saving…</>
-              : <><span className="material-symbols-outlined text-base">{publish === "schedule" ? "schedule" : "send"}</span> {publish === "schedule" ? "Schedule Announcement" : "Publish Announcement"}</>
+              : <><span className="material-symbols-outlined text-base">{editing ? "save" : publish === "schedule" ? "schedule" : "send"}</span> {editing ? "Save Changes" : publish === "schedule" ? "Schedule Announcement" : "Publish Announcement"}</>
             }
           </button>
         </div>
@@ -300,8 +341,10 @@ export default function Announcements() {
   const [error,         setError]         = useState("");
   const [currentTime,   setCurrentTime]   = useState(0);   // "now" snapshot for published-vs-scheduled split
   const [showModal,     setShowModal]     = useState(false); // Create modal open?
+  const [editTarget,    setEditTarget]    = useState(null);  // published announcement being edited
   const [deleteTarget,  setDeleteTarget]  = useState(null);  // announcement pending delete
   const [deleting,      setDeleting]      = useState(false);
+  const [notice,        setNotice]        = useState("");
 
   const load = async () => {
     setLoading(true);
@@ -316,6 +359,8 @@ export default function Announcements() {
     }
   };
 
+  // Initial page load owns the list request lifecycle.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, []);
 
   // delete the pending announcement, then refresh
@@ -362,6 +407,16 @@ export default function Announcements() {
             onSuccess={load}
           />
         )}
+        {editTarget && (
+          <CreateAnnouncementModal
+            announcement={editTarget}
+            onClose={() => setEditTarget(null)}
+            onSuccess={() => {
+              setNotice("Announcement updated successfully.");
+              load();
+            }}
+          />
+        )}
         {deleteTarget && (
           <ConfirmDeleteModal
             announcement={deleteTarget}
@@ -375,6 +430,17 @@ export default function Announcements() {
           <div className="mb-6 px-4 py-3 rounded-lg bg-error-container text-on-error-container text-sm flex items-center gap-2">
             <span className="material-symbols-outlined text-base">error</span>
             {error}
+          </div>
+        )}
+        {notice && (
+          <div className="mb-6 flex items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            <span className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-base">check_circle</span>
+              {notice}
+            </span>
+            <button type="button" onClick={() => setNotice("")} className="rounded p-1 hover:bg-emerald-100" aria-label="Dismiss notification">
+              <span className="material-symbols-outlined text-base">close</span>
+            </button>
           </div>
         )}
 
@@ -443,15 +509,26 @@ export default function Announcements() {
                                 {daysLeft}d left
                               </span>
                             )}
-                            {/* Delete button — admin only; -> setDeleteTarget(ann) opens <ConfirmDeleteModal> */}
+                            {/* Published announcement actions — principal only. */}
                             {isAdmin && (
-                              <button
-                                onClick={() => setDeleteTarget(ann)}
-                                className="p-1.5 rounded-lg hover:bg-red-50 text-on-surface-variant hover:text-red-500 transition-colors"
-                                title="Delete announcement"
-                              >
-                                <span className="material-symbols-outlined text-base">delete</span>
-                              </button>
+                              <>
+                                <button
+                                  onClick={() => { setNotice(""); setEditTarget(ann); }}
+                                  className="p-1.5 rounded-lg hover:bg-primary/5 text-on-surface-variant hover:text-primary transition-colors"
+                                  title="Edit announcement"
+                                  aria-label={`Edit ${ann.title}`}
+                                >
+                                  <span className="material-symbols-outlined text-base">edit</span>
+                                </button>
+                                <button
+                                  onClick={() => setDeleteTarget(ann)}
+                                  className="p-1.5 rounded-lg hover:bg-red-50 text-on-surface-variant hover:text-red-500 transition-colors"
+                                  title="Delete announcement"
+                                  aria-label={`Delete ${ann.title}`}
+                                >
+                                  <span className="material-symbols-outlined text-base">delete</span>
+                                </button>
+                              </>
                             )}
                           </div>
                         </div>
