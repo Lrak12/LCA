@@ -72,6 +72,17 @@ export const contactAdmin = asyncHandler(async (req, res) => {
 
 export const logout = asyncHandler(async (req, res) => {
   const token = req.headers.authorization?.split(" ")[1];
+
+  // Write while the authenticated user is still available. The frontend clears
+  // its local session even if remote sign-out fails, so this records the user's
+  // explicit logout action reliably before the access token is invalidated.
+  await writeAudit({
+    user_id: req.user.user_id,
+    action: "LOGOUT",
+    entity_affected: "Authentication",
+    details: "User logged out of the system",
+  });
+
   await AuthService.logout(token);
   sendSuccess(res, null, "Logged out successfully");
 });

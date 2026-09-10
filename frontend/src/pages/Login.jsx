@@ -196,12 +196,8 @@ export default function Login() {
             </button>
           </form>
 
-          <div  className="mt-12 pt-8 border-t border-surface-container-high flex items-center justify-center gap-1.5">
-            <span className="text-sm text-on-surface-variant font-body">Need assistance?</span>
-            <Link to="/contact-administrator" className="text-sm font-bold text-primary hover:text-surface-tint transition-colors font-label underline underline-offset-2"
-            >
-              Contact Administrator
-            </Link>
+          <div  className="mt-12 pt-1 border-t border-surface-container-high flex items-center justify-center gap-1.5">
+            <span className="text-sm text-on-surface-variant font-body"></span>
           </div>
         </div>
       </main>

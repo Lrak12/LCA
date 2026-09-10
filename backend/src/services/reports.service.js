@@ -977,7 +977,10 @@ export const getSubmittedReports = async (teacher_id) => {
 
   // Class = the supervisor's grade level(s)
   const { data: gls } = await supabaseAdmin
-    .from("grade_level").select("level_name").eq("teacher_id", teacher_id);
+    .from("grade_level")
+    .select("level_name")
+    .eq("teacher_id", teacher_id)
+    .eq("sy_id", sy?.sy_id ?? -1);
   const className = (gls ?? []).map((g) => g.level_name).join(", ") || "All Students";
 
   const statuses = await getTeacherAllStatuses(teacher_id);

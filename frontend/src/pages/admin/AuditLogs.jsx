@@ -177,6 +177,13 @@ export default function AuditLogs() {
 
         {/* Search and Action apply automatically; the button applies the date range. */}
         <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-5 mb-6">
+          <div className="mb-4 flex items-start gap-2 rounded-lg bg-blue-50 px-3.5 py-3 text-xs text-blue-700">
+            <span className="material-symbols-outlined mt-px text-base shrink-0">info</span>
+            <p>
+              You can use Search, Action, or Date Range independently there is no need to fill in all three filters.
+            </p>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* free-text search (applies automatically after a short pause) */}
             <div>
@@ -187,7 +194,7 @@ export default function AuditLogs() {
                 <input
                   value={draft.search}
                   onChange={onSearchChange}
-                  placeholder="Search name or action…"
+                  placeholder="Search name"
                   className="w-full pl-10 pr-10 py-2.5 bg-white border border-outline-variant/30 rounded-lg text-sm text-on-surface placeholder:text-outline focus:ring-2 focus:ring-primary/20 focus:outline-none"
                 />
                 {/* clear (×) -> empty the box, re-apply filters + reset paging */}

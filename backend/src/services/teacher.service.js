@@ -6,6 +6,29 @@ import * as NotificationService from "./notification.service.js";
 import { supabaseAdmin } from "../config/supabase.js";
 import { describeAuthCreateError } from "../helpers/authErrors.js";
 
+// Grade-level assignments are school-year records. Always resolve them against
+// the requested year (or the active year) so a newly activated year cannot
+// inherit a supervisor's assignment from the previous year.
+const findTeacherGradeLevelsForSchoolYear = async (teacher_id, columns = "gl_id, level_name", sy_id = null) => {
+  let schoolYearId = Number(sy_id) || null;
+  if (!schoolYearId) {
+    const { data: activeYear, error: yearError } = await supabaseAdmin
+      .from("school_year")
+      .select("sy_id")
+      .eq("is_active", true)
+      .maybeSingle();
+    if (yearError) return { data: null, error: yearError };
+    schoolYearId = activeYear?.sy_id ?? null;
+  }
+  if (!schoolYearId) return { data: [], error: null };
+
+  return supabaseAdmin
+    .from("grade_level")
+    .select(columns)
+    .eq("teacher_id", teacher_id)
+    .eq("sy_id", schoolYearId);
+};
+
 export const getAllTeachers = async () => {
   const { data, error } = await TeacherModel.findAll();
   if (error) throw new Error(error.message);
@@ -75,10 +98,7 @@ const resolveTeacherScope = async (user_id) => {
 
   if (!teacher) return { teacher_id: null, studentIds: [] };
 
-  const { data: gradeLevels } = await supabaseAdmin
-    .from("grade_level")
-    .select("gl_id")
-    .eq("teacher_id", teacher.teacher_id);
+  const { data: gradeLevels } = await findTeacherGradeLevelsForSchoolYear(teacher.teacher_id, "gl_id");
 
   const glIds = (gradeLevels ?? []).map((g) => g.gl_id);
   if (!glIds.length) return { teacher_id: teacher.teacher_id, studentIds: [] };
@@ -103,10 +123,10 @@ export const getStudentsForTeacher = async (user_id) => {
   if (tErr) throw new Error(tErr.message);
   if (!teacher) return [];
 
-  const { data: gradeLevels, error: glErr } = await supabaseAdmin
-    .from("grade_level")
-    .select("gl_id, level_name")
-    .eq("teacher_id", teacher.teacher_id);
+  const { data: gradeLevels, error: glErr } = await findTeacherGradeLevelsForSchoolYear(
+    teacher.teacher_id,
+    "gl_id, level_name",
+  );
 
   if (glErr) throw new Error(glErr.message);
 
@@ -427,10 +447,7 @@ export const getAttendance = async (user_id, date) => {
   if (!teacher) return { date, students: [], summary: { total: 0, present: 0, absent: 0, tardy: 0 } }; // no profile > empty day
 
   // The grade level(s) this teacher owns (their class).
-  const { data: gradeLevels } = await supabaseAdmin
-    .from("grade_level")
-    .select("gl_id, level_name")
-    .eq("teacher_id", teacher.teacher_id);
+  const { data: gradeLevels } = await findTeacherGradeLevelsForSchoolYear(teacher.teacher_id, "gl_id, level_name");
 
   const glIds = (gradeLevels ?? []).map((g) => g.gl_id);
   const emptySummary = { total: 0, present: 0, absent: 0, tardy: 0, excused: 0 };
@@ -502,10 +519,7 @@ export const submitAttendance = async (user_id, date, records) => {
   if (!teacher) throw new Error("Teacher profile not found");
 
   // Ownership check: every submitted student must belong to this teacher's grade levels
-  const { data: gradeLevels } = await supabaseAdmin
-    .from("grade_level")
-    .select("gl_id")
-    .eq("teacher_id", teacher.teacher_id);
+  const { data: gradeLevels } = await findTeacherGradeLevelsForSchoolYear(teacher.teacher_id, "gl_id");
 
   const glIds = (gradeLevels ?? []).map((g) => g.gl_id);
   if (!glIds.length) throw new Error("No grade level assigned to this teacher");
@@ -552,10 +566,7 @@ export const getStudentMonitoring = async (user_id, { grade, section, status, pa
 
   if (!teacher) return { students: [], totalStudents: 0, totalPages: 0 };
 
-  const { data: gradeLevels } = await supabaseAdmin
-    .from("grade_level")
-    .select("gl_id")
-    .eq("teacher_id", teacher.teacher_id);
+  const { data: gradeLevels } = await findTeacherGradeLevelsForSchoolYear(teacher.teacher_id, "gl_id");
 
   const glIds = (gradeLevels ?? []).map((g) => g.gl_id);
   if (!glIds.length) return { students: [], totalStudents: 0, totalPages: 0 };
@@ -685,8 +696,7 @@ export const getStudentMonitoringOverview = async (user_id, { grade, search, pac
     .from("teacher").select("teacher_id").eq("user_id", user_id).maybeSingle();
   if (!teacher) return empty;
 
-  const { data: gradeLevels } = await supabaseAdmin
-    .from("grade_level").select("gl_id, level_name").eq("teacher_id", teacher.teacher_id);
+  const { data: gradeLevels } = await findTeacherGradeLevelsForSchoolYear(teacher.teacher_id, "gl_id, level_name");
   if (!gradeLevels?.length) return empty;
 
   const glIds = gradeLevels.map((g) => g.gl_id);
@@ -848,8 +858,7 @@ export const getStudentRankings = async (user_id, { grade, rankBy = "points", pa
     .from("teacher").select("teacher_id").eq("user_id", user_id).maybeSingle();
   if (!teacher) return empty;
 
-  const { data: gradeLevels } = await supabaseAdmin
-    .from("grade_level").select("gl_id, level_name").eq("teacher_id", teacher.teacher_id);
+  const { data: gradeLevels } = await findTeacherGradeLevelsForSchoolYear(teacher.teacher_id, "gl_id, level_name");
   if (!gradeLevels?.length) return empty;
 
   let glIds = gradeLevels.map((g) => g.gl_id);
@@ -910,8 +919,7 @@ export const getPaceAnalyticsOverview = async (user_id, { grade } = {}) => {
     .from("teacher").select("teacher_id").eq("user_id", user_id).maybeSingle();
   if (!teacher) return empty;
 
-  const { data: gradeLevels } = await supabaseAdmin
-    .from("grade_level").select("gl_id, level_name").eq("teacher_id", teacher.teacher_id);
+  const { data: gradeLevels } = await findTeacherGradeLevelsForSchoolYear(teacher.teacher_id, "gl_id, level_name");
   if (!gradeLevels?.length) return empty;
 
   let glIds = gradeLevels.map((g) => g.gl_id);
@@ -1086,10 +1094,11 @@ export const getPaceAnalyticsReport = async (user_id, { grade, quarter, sy_id } 
   base.schoolYear = sy?.year_label ?? "—";
   if (principal) base.principalName = `${principal.first_name ?? ""} ${principal.last_name ?? ""}`.trim() || "—";
 
-  let gradeLevelQuery = supabaseAdmin
-    .from("grade_level").select("gl_id, level_name").eq("teacher_id", teacher.teacher_id);
-  if (sy_id) gradeLevelQuery = gradeLevelQuery.eq("sy_id", Number(sy_id));
-  const { data: gradeLevels } = await gradeLevelQuery;
+  const { data: gradeLevels } = await findTeacherGradeLevelsForSchoolYear(
+    teacher.teacher_id,
+    "gl_id, level_name",
+    sy_id,
+  );
   if (!gradeLevels?.length) return base;
   base.gradeLevels = gradeLevels.map((g) => g.level_name);
 
@@ -1368,10 +1377,7 @@ export const getPaceMonitoring = async (user_id, { student_id } = {}) => {
   if (!teacher) return empty;
 
   // Resolve teacher's grade levels → students
-  const { data: gradeLevels } = await supabaseAdmin
-    .from("grade_level")
-    .select("gl_id, level_name")
-    .eq("teacher_id", teacher.teacher_id);
+  const { data: gradeLevels } = await findTeacherGradeLevelsForSchoolYear(teacher.teacher_id, "gl_id, level_name");
   if (!gradeLevels?.length) return empty;
 
   const glIds = gradeLevels.map((g) => g.gl_id);
@@ -1960,10 +1966,7 @@ export const getScheduledTests = async (user_id, { quarter, subject, status, fro
   if (!teacher) return empty;
   const scheduledByName = `${teacher.first_name ?? ""} ${teacher.last_name ?? ""}`.trim() || "Supervisor";
 
-  const { data: gradeLevels } = await supabaseAdmin
-    .from("grade_level")
-    .select("gl_id")
-    .eq("teacher_id", teacher.teacher_id);
+  const { data: gradeLevels } = await findTeacherGradeLevelsForSchoolYear(teacher.teacher_id, "gl_id");
   if (!gradeLevels?.length) return empty;
 
   const glIds = gradeLevels.map((g) => g.gl_id);
@@ -2152,10 +2155,7 @@ export const getPaceTestScheduling = async (user_id, { subject, quarter } = {}) 
     .maybeSingle();
   if (!teacher) return empty;
 
-  const { data: gradeLevels } = await supabaseAdmin
-    .from("grade_level")
-    .select("gl_id")
-    .eq("teacher_id", teacher.teacher_id);
+  const { data: gradeLevels } = await findTeacherGradeLevelsForSchoolYear(teacher.teacher_id, "gl_id");
   if (!gradeLevels?.length) return empty;
 
   const glIds = gradeLevels.map((g) => g.gl_id);
@@ -2289,10 +2289,7 @@ export const getReturningStudents = async (user_id) => {
     .maybeSingle();
   if (!teacher) return { students: [], schoolYear: "—" };
 
-  const { data: gradeLevels } = await supabaseAdmin
-    .from("grade_level")
-    .select("gl_id")
-    .eq("teacher_id", teacher.teacher_id);
+  const { data: gradeLevels } = await findTeacherGradeLevelsForSchoolYear(teacher.teacher_id, "gl_id");
   if (!gradeLevels?.length) return { students: [], schoolYear: "—" };
 
   const glIds = gradeLevels.map((g) => g.gl_id);
@@ -2815,7 +2812,7 @@ export const getStudentAcademicRecord = async (user_id, student_id) => {
   let rank = null;
   const gradeName = full?.grade_level?.level_name ?? student.grade_level?.level_name;
   {
-    const { data: gl } = await supabaseAdmin.from("grade_level").select("gl_id").eq("teacher_id", teacher.teacher_id);
+    const { data: gl } = await findTeacherGradeLevelsForSchoolYear(teacher.teacher_id, "gl_id");
     const glIds = (gl ?? []).map((g) => g.gl_id);
     const { data: peers } = await supabaseAdmin
       .from("student").select("student_id, grade_level(level_name)").in("gl_id", glIds);
