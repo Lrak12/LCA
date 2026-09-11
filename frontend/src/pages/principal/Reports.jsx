@@ -133,13 +133,9 @@ export default function Reports() {
 
   // open the report viewer modal for a given teacher + report type
   const openReport = (teacher, type, meta, teacherSubmissions) => {
-    const submittedQuarters = [1, 2, 3, 4]
-      .map((quarter) => ({ quarter, submittedAt: teacherSubmissions[type]?.[quarter] }))
-      .filter((entry) => entry.submittedAt)
-      .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt) || b.quarter - a.quarter);
     setSelectedReport({
       teacher,
-      quarter: submittedQuarters[0]?.quarter ?? 1,
+      quarter: 1,
       type,
       submissionMatrix: teacherSubmissions,
       ...meta,

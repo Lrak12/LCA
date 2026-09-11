@@ -69,11 +69,10 @@ export default function Grades() {
       .finally(() => setLoading(false));
   }, [quarter]);
 
-  const student = data?.student ?? { first_name: "Student", last_name: "", lrn: null };
+  const student = data?.student ?? { first_name: "Student", last_name: "" };
   const studentName = `${(student.last_name ?? "").toUpperCase()}, ${(student.first_name ?? "").toUpperCase()}`.replace(/^,\s*/, "");
 
   const gradeLevel = data?.gradeLevel ?? "—";
-  const lrn        = student.lrn ?? "—";
   const syLabel    = data?.schoolYear ?? schoolYearLabel ?? "—";
 
   const subjects = data?.subjects ?? [];
@@ -116,23 +115,9 @@ export default function Grades() {
               to stay on top of your performance.
             </p>
           </div>
-          <div className="flex flex-col items-end gap-3 shrink-0">
-            <div className="flex items-center gap-2 bg-white border border-outline-variant/20 rounded-xl px-4 py-2.5 shadow-sm">
-              <span className="material-symbols-outlined text-secondary text-base" style={fillStyle}>calendar_month</span>
-              <span className="text-sm font-bold text-on-surface">{formatDate()}</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <label className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant">Quarter:</label>
-              <select
-                value={selectedQuarter}
-                onChange={(e) => setQuarter(Number(e.target.value))}
-                className="text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl pl-4 pr-8 py-2.5 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-              >
-                {QUARTER_LABELS.map((label, i) => (
-                  <option key={label} value={i + 1}>{label}</option>
-                ))}
-              </select>
-            </div>
+          <div className="flex items-center gap-2 bg-white border border-outline-variant/20 rounded-xl px-4 py-2.5 shadow-sm shrink-0">
+            <span className="material-symbols-outlined text-secondary text-base" style={fillStyle}>calendar_month</span>
+            <span className="text-sm font-bold text-on-surface">{formatDate()}</span>
           </div>
         </header>
 
@@ -174,7 +159,7 @@ export default function Grades() {
         <article className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 p-7">
 
           {/* Student info bar */}
-          <div className="flex flex-wrap items-center gap-x-10 gap-y-3 pb-5 border-b border-outline-variant/10">
+          <div className="flex flex-wrap items-end gap-x-10 gap-y-3 pb-5 border-b border-outline-variant/10">
             <div>
               <p className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1">Student Name</p>
               <p className="text-sm font-extrabold text-on-surface">{studentName || "—"}</p>
@@ -184,12 +169,20 @@ export default function Grades() {
               <p className="text-sm font-extrabold text-on-surface">{gradeLevel}</p>
             </div>
             <div>
-              <p className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1">LRN</p>
-              <p className="text-sm font-extrabold text-on-surface">{lrn}</p>
-            </div>
-            <div>
               <p className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1">School Year</p>
               <p className="text-sm font-extrabold text-on-surface">{syLabel}</p>
+            </div>
+            <div className="ml-auto min-w-[180px]">
+              <label className="block text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1">Quarter</label>
+              <select
+                value={selectedQuarter}
+                onChange={(e) => setQuarter(Number(e.target.value))}
+                className="w-full text-sm font-bold text-on-surface bg-white border border-outline-variant/30 rounded-lg pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                {QUARTER_LABELS.map((label, i) => (
+                  <option key={label} value={i + 1}>{label}</option>
+                ))}
+              </select>
             </div>
           </div>
 

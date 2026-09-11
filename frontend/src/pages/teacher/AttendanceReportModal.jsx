@@ -33,7 +33,7 @@ const SkeletonRow = ({ cols }) => (
 );
 
 export default function AttendanceReportModal({ onClose }) {
-  const [quarter,     setQuarter]     = useState(4);
+  const [quarter,     setQuarter]     = useState(1);
   const [search,      setSearch]      = useState("");
   const [data,        setData]        = useState(null);
   const [loading,     setLoading]     = useState(true);
