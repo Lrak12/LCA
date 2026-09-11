@@ -129,7 +129,7 @@ export default function Reports() {
             Preview={ClassGradingPreview} onOpen={() => setModal("academic")} />
           <WorkspaceCard icon="pie_chart" iconBg="bg-purple-100" iconColor="text-purple-600"
             title="PACE Analytics & Rankings Report" desc="PACE completion analytics, rankings and performance summaries"
-            Preview={AnalyticsPreview} previewLabel="Top Rankings & Completion Trend" onOpen={() => setModal("analytics")} />
+            Preview={AnalyticsPreview} previewLabel="Student Rankings & Completion Trend" onOpen={() => setModal("analytics")} />
         </div>
 
         {/* Submitted reports */}

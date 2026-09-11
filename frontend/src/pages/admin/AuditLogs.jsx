@@ -80,6 +80,12 @@ const dateBoundary = (value, endOfDay = false) => {
 
 export default function AuditLogs() {
   const schoolYearLabel = useSchoolYear();
+  const now = new Date();
+  const today = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+  ].join("-");
 
   // Draft (in the form) vs applied (committed via Filter button) filters.
   const [draft, setDraft]     = useState(EMPTY_FILTERS); // what's typed/selected in the filter form
@@ -91,8 +97,6 @@ export default function AuditLogs() {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState("");
   const searchTimer = useRef(null);
-
-  const setD = (k) => (e) => setDraft((f) => ({ ...f, [k]: e.target.value })); // curried onChange per draft field
 
   const onSearchChange = (e) => {
     const search = e.target.value;
@@ -109,6 +113,28 @@ export default function AuditLogs() {
     setDraft((current) => ({ ...current, action }));
     setApplied((current) => ({ ...current, action }));
     setPage(1);
+  };
+
+  const onStartDateChange = (e) => {
+    const from = e.target.value;
+    if (from > today) return;
+    setDraft((current) => ({
+      ...current,
+      from,
+      // Clear an existing end date if the new start moves beyond it.
+      to: current.to && from && current.to < from ? "" : current.to,
+    }));
+  };
+
+  const onEndDateChange = (e) => {
+    const to = e.target.value;
+    if (to > today) return;
+    setDraft((current) => ({
+      ...current,
+      to,
+      // Clear an existing start date if the new end moves before it.
+      from: current.from && to && current.from > to ? "" : current.from,
+    }));
   };
 
   // fetch a page of audit entries with the applied filters; re-runs on filter/page/size change
@@ -190,7 +216,7 @@ export default function AuditLogs() {
               <label className="block text-[13px] font-semibold text-on-surface mb-1.5">Search</label>
               <div className="relative">
                 <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1 text-base text-on-surface-variant pointer-events-none">search</span>
-                {/* input -> setD("search") updates draft; Enter -> onFilter() commits it */}
+                {/* Search applies automatically after a short pause. */}
                 <input
                   value={draft.search}
                   onChange={onSearchChange}
@@ -230,11 +256,26 @@ export default function AuditLogs() {
             {/* from/to date range */}
             <div>
               <label className="block text-[13px] font-semibold text-on-surface mb-1.5">Date Range</label>
-              {/* date inputs -> setD("from") / setD("to") update draft */}
+              {/* Each selected boundary constrains the other date picker. */}
               <div className="flex items-center gap-2">
-                <input type="date" value={draft.from} onChange={setD("from")} aria-label="First date in range" className="bg-white border border-outline-variant/30 rounded-lg px-3 py-2.5 text-sm text-on-surface focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+                <input
+                  type="date"
+                  value={draft.from}
+                  max={draft.to && draft.to < today ? draft.to : today}
+                  onChange={onStartDateChange}
+                  aria-label="First date in range"
+                  className="bg-white border border-outline-variant/30 rounded-lg px-3 py-2.5 text-sm text-on-surface focus:ring-2 focus:ring-primary/20 focus:outline-none"
+                />
                 <span className="text-on-surface-variant text-sm">–</span>
-                <input type="date" value={draft.to} onChange={setD("to")} aria-label="Second date in range" className="bg-white border border-outline-variant/30 rounded-lg px-3 py-2.5 text-sm text-on-surface focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+                <input
+                  type="date"
+                  value={draft.to}
+                  min={draft.from || undefined}
+                  max={today}
+                  onChange={onEndDateChange}
+                  aria-label="Second date in range"
+                  className="bg-white border border-outline-variant/30 rounded-lg px-3 py-2.5 text-sm text-on-surface focus:ring-2 focus:ring-primary/20 focus:outline-none"
+                />
                 <button
                   type="button"
                   onClick={resetDateRange}

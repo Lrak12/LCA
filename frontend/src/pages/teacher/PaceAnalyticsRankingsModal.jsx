@@ -151,9 +151,9 @@ export default function PaceAnalyticsRankingsModal({ onClose }) {
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-7">
 
-                {/* 1. Top 10 rankings */}
+                {/* 1. Eligible student rankings */}
                 <section className="lg:row-span-2">
-                  <SectionTitle n={1}>TOP 10 STUDENT RANKINGS</SectionTitle>
+                  <SectionTitle n={1}>STUDENT RANKINGS</SectionTitle>
                   <div className="overflow-hidden rounded-lg border border-slate-200">
                     <table className="w-full border-collapse">
                       <thead>
@@ -167,7 +167,7 @@ export default function PaceAnalyticsRankingsModal({ onClose }) {
                       </thead>
                       <tbody>
                         {(data?.topRankings ?? []).length === 0 ? (
-                          <tr><td colSpan={5} className="border border-slate-200 px-3 py-8 text-center text-xs text-on-surface-variant">No ranking data.</td></tr>
+                          <tr><td colSpan={5} className="border border-slate-200 px-3 py-8 text-center text-xs text-on-surface-variant">No eligible students with an assigned PACE and a recorded test score.</td></tr>
                         ) : data.topRankings.map((r) => (
                           <tr key={r.rank}>
                             <Td className="text-center font-bold">{r.rank}</Td>

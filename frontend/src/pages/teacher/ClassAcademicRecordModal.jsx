@@ -264,7 +264,7 @@ export default function ClassAcademicRecordModal({ onClose }) {
             <span className="material-symbols-outlined text-base" style={fillStyle}>
               {publishing ? "hourglass_top" : "publish"}
             </span>
-            {publishing ? "Publishing…" : published ? "Publish Again" : "Publish to Admin"}
+            {publishing ? "Publishing…" : published ? "Publish Again" : "Publish to Principal"}
           </button>
           <button className="flex items-center gap-2 text-sm font-bold text-on-surface border border-outline-variant/30 rounded-xl px-5 py-2.5 hover:bg-surface-container-low transition-colors">
             <span className="material-symbols-outlined text-base">print</span>

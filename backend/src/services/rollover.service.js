@@ -9,14 +9,15 @@ const CORE_SUBJECTS = ["English", "Mathematics", "Science", "Filipino"];
 const PER_QUARTER   = 3;
 
 // Build: student_id → subject → highest completed PACE number.
-// "Completed" = student_pace.status 'Completed' OR a passed official PACE test.
+// Completion is assessment-owned: only a passed official PACE test advances the
+// student's next-year starting point.
 function buildLastCompleted(studentPaces, passedSpIds) {
   const map = {}; // student_id → { subject: maxNum }
   studentPaces.forEach((sp) => {
     const subject = sp.pace_module?.subject;
     const num     = sp.pace_module?.module_number;
     if (!subject || num == null) return;
-    const done = sp.status === "Completed" || passedSpIds.has(sp.sp_id);
+    const done = passedSpIds.has(sp.sp_id);
     if (!done) return;
     if (!map[sp.student_id]) map[sp.student_id] = {};
     if (map[sp.student_id][subject] == null || num > map[sp.student_id][subject]) {

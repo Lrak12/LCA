@@ -5,7 +5,15 @@
   "main": "src/server.js",
   "scripts": {
     "dev": "node --watch src/server.js",
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "demo:preview": "node scripts/seed-academic-demo.js",
+    "demo:populate": "node scripts/seed-academic-demo.js --apply",
+    "demo:assessments:preview": "node scripts/randomize-demo-assessments.js",
+    "demo:assessments:apply": "node scripts/randomize-demo-assessments.js --apply",
+    "demo:through-q3:preview": "node scripts/extend-demo-through-q3.js",
+    "demo:through-q3:apply": "node scripts/extend-demo-through-q3.js --apply",
+    "demo:attendance:q2-q3:preview": "node scripts/seed-attendance-q2-q3.js",
+    "demo:attendance:q2-q3:apply": "node scripts/seed-attendance-q2-q3.js --apply"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.4",

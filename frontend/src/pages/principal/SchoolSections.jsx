@@ -134,11 +134,11 @@ function EnrollStudentsModal({ level, onClose, onConfirm }) {
       .finally(() => setLoading(false));
   }, []);
 
-  // Only unassigned students are enrollable: a student already in a grade must
-  // be removed from it first (see the details modal's Remove action). This makes
-  // grade-based filtering unnecessary — every candidate here has no grade.
+  // Only students assigned in the active school year are excluded. A student's
+  // gl_id may still point to a previous-year grade and must remain enrollable in
+  // the newly active year.
   const filtered = students.filter((s) => {
-    if (s.gl_id ?? s.grade_level?.gl_id) return false; // already in a grade — not eligible
+    if (Number(s.grade_level?.sy_id) === Number(level.sy_id)) return false;
     const name = `${s.first_name} ${s.last_name}`.toLowerCase();
     return name.includes(search.toLowerCase()) || String(s.student_id).includes(search);
   });
@@ -213,7 +213,7 @@ function EnrollStudentsModal({ level, onClose, onConfirm }) {
         {/* Helper note: this list is limited to students not yet in a grade */}
         {!loading && !error && (
           <p className="px-6 pb-1 shrink-0 text-[11px] text-on-surface-variant">
-            Showing students not yet assigned to a grade level. To move a student already in a grade, remove them from it first.
+            Showing students not yet assigned for the active school year. Previous-year assignments do not prevent enrollment.
           </p>
         )}
 
@@ -766,6 +766,8 @@ export default function SchoolSections() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Initial page load intentionally starts the request lifecycle maintained by loadLevels.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadLevels(); }, [loadLevels]);
 
   // enroll students into a level, then close the modal + refresh

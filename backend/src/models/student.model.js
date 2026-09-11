@@ -3,10 +3,10 @@ import { supabaseAdmin } from "../config/supabase.js";
 const TABLE = "student";
 
 export const findAll = () =>
-  supabaseAdmin.from(TABLE).select("*, users(user_id, username, email, is_active), grade_level(gl_id, level_name)");
+  supabaseAdmin.from(TABLE).select("*, users(user_id, username, email, is_active), grade_level(gl_id, level_name, sy_id)");
 
 export const findById = (student_id) =>
-  supabaseAdmin.from(TABLE).select("*, users(user_id, username, email, is_active), grade_level(gl_id, level_name)").eq("student_id", student_id).single();
+  supabaseAdmin.from(TABLE).select("*, users(user_id, username, email, is_active), grade_level(gl_id, level_name, sy_id)").eq("student_id", student_id).single();
 
 export const findByUserId = (user_id) =>
   supabaseAdmin.from(TABLE).select("*").eq("user_id", user_id).single();

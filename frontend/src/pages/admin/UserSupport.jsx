@@ -54,18 +54,35 @@ const Skeleton = ({ className }) => (
   <div className={`animate-pulse bg-surface-container-high rounded-lg ${className}`} />
 );
 
+const SUPPORT_TIME_ZONE = "Asia/Manila";
+
+// Supabase may return a `timestamp without time zone` without a trailing Z.
+// Support timestamps are written as UTC, so add the missing UTC marker before
+// formatting them in the school's local timezone.
+const parseSupportTimestamp = (value) => {
+  if (!value) return null;
+  const raw = String(value).trim();
+  const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw);
+  const d = new Date(hasTimezone ? raw : `${raw}Z`);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
 // "Month Day, Year" date, or em dash when missing
 const fmtDate = (iso) => {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (isNaN(d)) return "—";
-  return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  const d = parseSupportTimestamp(iso);
+  if (!d) return "—";
+  return d.toLocaleDateString("en-US", {
+    month: "long", day: "numeric", year: "numeric", timeZone: SUPPORT_TIME_ZONE,
+  });
 };
 // "HH:MM AM/PM" time shown under the date
 const fmtTime = (iso) => {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return isNaN(d) ? "" : d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+  const d = parseSupportTimestamp(iso);
+  return d
+    ? d.toLocaleTimeString("en-US", {
+        hour: "2-digit", minute: "2-digit", timeZone: SUPPORT_TIME_ZONE,
+      })
+    : "";
 };
 
 // Compact, windowed page list with ellipsis: 1 … 4 5 [6] 7 8 … 26

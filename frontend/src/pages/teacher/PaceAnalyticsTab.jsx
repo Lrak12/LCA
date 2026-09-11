@@ -40,39 +40,8 @@ function Donut({ segs, total }) {
   );
 }
 
-// Simple line chart for completion by quarter
-function LineChart({ values }) {
-  const W = 420, H = 220, padL = 36, padB = 30, padT = 10, padR = 10;
-  const innerW = W - padL - padR, innerH = H - padT - padB;
-  const x = (i) => padL + (i / 3) * innerW;
-  const y = (v) => padT + innerH - (v / 100) * innerH;
-  const pts = values.map((v, i) => `${x(i)},${y(v)}`).join(" ");
-  const labels = ["1st Quarter", "2nd Quarter", "3rd Quarter", "4th Quarter"];
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
-      {[0, 25, 50, 75, 100].map((g) => (
-        <g key={g}>
-          <line x1={padL} x2={W - padR} y1={y(g)} y2={y(g)} className="stroke-outline-variant/20" strokeWidth="1" />
-          <text x={padL - 6} y={y(g) + 3} textAnchor="end" className="fill-on-surface-variant" style={{ fontSize: 9 }}>{g}%</text>
-        </g>
-      ))}
-      <polyline points={pts} fill="none" className="stroke-blue-500" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-      {values.map((v, i) => (
-        <g key={i}>
-          <circle cx={x(i)} cy={y(v)} r="4" className="fill-blue-500" />
-          <text x={x(i)} y={y(v) - 9} textAnchor="middle" className="fill-blue-600" style={{ fontSize: 10, fontWeight: 700 }}>{v}%</text>
-          <text x={x(i)} y={H - 10} textAnchor="middle" className="fill-on-surface-variant" style={{ fontSize: 8 }}>{labels[i]}</text>
-        </g>
-      ))}
-    </svg>
-  );
-}
-
-const BAR_COLORS = ["bg-green-500", "bg-blue-500", "bg-orange-500", "bg-red-500", "bg-purple-500", "bg-cyan-500"];
-const DIST_COLORS = ["bg-green-500", "bg-blue-500", "bg-purple-500", "bg-red-500"];
-
-// PACE Analytics tab of Student Monitoring. Charts (hand-rolled SVG: Donut/LineChart
-// above) built from GET /teacher/pace-analytics-overview
+// PACE Analytics tab of Student Monitoring. The remaining completion-status donut
+// is built from GET /teacher/pace-analytics-overview
 // (teacher.service.getPaceAnalyticsOverview). Respects the page's Grade Level filter.
 export default function PaceAnalyticsTab({ grade }) {
   const [data,    setData]    = useState(null);
@@ -92,10 +61,7 @@ export default function PaceAnalyticsTab({ grade }) {
 
   const s    = data?.stats ?? {};
   const otl  = data?.onTimeVsLate ?? { onTime: 0, late: 0, extended: 0, notCompleted: 0, total: 0 };
-  const bySubject = data?.completionBySubject ?? [];
-  const dist = data?.pointsDistribution ?? [];
   const below = data?.below50 ?? [];
-  const distMax = Math.max(1, ...dist.map((d) => d.count));
 
   const donutSegs = [
     { label: "On Time",       value: otl.onTime,       color: "#22c55e" },
@@ -115,14 +81,8 @@ export default function PaceAnalyticsTab({ grade }) {
         <StatCard icon="error" iconColor="text-red-500" label="Students Needing Intervention" value={s.needingIntervention ?? 0} sub={`${s.totalStudents ? Math.round((s.needingIntervention / s.totalStudents) * 10000) / 100 : 0}% of total students`} subColor="text-red-500" />
       </div>
 
-      {/* Row: line + donut + subject bars */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 p-5">
-          <p className="text-[11px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-3">PACE Completion by Quarter</p>
-          <LineChart values={data?.completionByQuarter ?? [0, 0, 0, 0]} />
-          <p className="text-[10px] text-center text-on-surface-variant mt-1">Completion Rate (%)</p>
-        </div>
-
+      {/* Remaining detailed analytics */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 p-5">
           <p className="text-[11px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-2 text-center">On-Time vs Late Completion</p>
           <div className="flex justify-center"><Donut segs={donutSegs} total={otl.total} /></div>
@@ -134,38 +94,6 @@ export default function PaceAnalyticsTab({ grade }) {
               </div>
             ))}
           </div>
-        </div>
-
-        <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 p-5">
-          <p className="text-sm font-extrabold text-on-surface mb-4">PACE Completion by Subject Area</p>
-          <div className="space-y-3">
-            {bySubject.length === 0 ? <p className="text-sm text-on-surface-variant">No data.</p> : bySubject.map((b, i) => (
-              <div key={b.subject} className="flex items-center gap-3">
-                <span className="text-xs text-on-surface-variant w-32 shrink-0 truncate">{b.subject}</span>
-                <div className="flex-1 h-2 rounded-full bg-surface-container-high overflow-hidden">
-                  <div className={`h-full rounded-full ${BAR_COLORS[i % BAR_COLORS.length]}`} style={{ width: `${b.rate}%` }} />
-                </div>
-                <span className="text-xs font-bold text-on-surface w-9 text-right">{b.rate}%</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Row: distribution + below-50 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 p-5">
-          <p className="text-[11px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-4">Performance Points Distribution</p>
-          <div className="flex items-end justify-around gap-3 h-48 px-2">
-            {dist.map((d, i) => (
-              <div key={d.label} className="flex-1 flex flex-col items-center justify-end h-full">
-                <span className="text-sm font-extrabold text-on-surface mb-1">{d.count}</span>
-                <div className={`w-full rounded-t-lg ${DIST_COLORS[i % DIST_COLORS.length]}`} style={{ height: `${(d.count / distMax) * 100}%`, minHeight: d.count > 0 ? 6 : 0 }} />
-                <span className="text-[10px] text-on-surface-variant mt-2">{d.label}</span>
-              </div>
-            ))}
-          </div>
-          <p className="text-[10px] text-center text-on-surface-variant mt-2">PERFORMANCE POINTS</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 p-5">

@@ -163,53 +163,6 @@ export default function PrincipalDashboard() {
             </div>
           </section>
 
-          {/* Recent Notifications */}
-          <section className="col-span-12 lg:col-span-6">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold text-primary font-headline tracking-tight">Recent Notifications</h3>
-              <button
-                onClick={() => navigate("/admin/announcements")}
-                className="text-primary font-bold text-sm hover:underline"
-              >
-                View All
-              </button>
-            </div>
-
-            <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 shadow-sm divide-y divide-outline-variant/15">
-              {loading ? (
-                [1, 2, 3, 4].map((i) => (
-                  <div key={i} className="flex gap-4 p-5">
-                    <Skeleton className="w-10 h-10 rounded-full shrink-0" />
-                    <div className="flex-1 space-y-2">
-                      <Skeleton className="h-3 w-2/3" />
-                      <Skeleton className="h-2 w-1/2" />
-                    </div>
-                  </div>
-                ))
-              ) : notifications.length === 0 ? (
-                <p className="text-sm text-on-surface-variant text-center py-10">No recent notifications.</p>
-              ) : (
-                notifications.map((ann) => (
-                  <div key={ann.ann_id} className="flex items-start gap-4 p-5">
-                    <div className="w-10 h-10 rounded-full bg-primary-fixed text-primary flex items-center justify-center shrink-0">
-                      <span className="material-symbols-outlined text-base" style={fillStyle}>campaign</span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-primary truncate">{ann.title}</p>
-                      <p className="text-xs text-on-surface-variant">
-                        {ann.principal
-                          ? `Posted by ${ann.principal.first_name} ${ann.principal.last_name}`
-                          : "Announcement posted"}
-                      </p>
-                    </div>
-                    <span className="text-[11px] text-on-surface-variant whitespace-nowrap shrink-0">
-                      {formatNotificationTime(ann.posted_date)}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
         </div>
       </main>
     </PrincipalLayout>

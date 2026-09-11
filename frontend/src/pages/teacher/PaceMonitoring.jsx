@@ -98,22 +98,27 @@ function buildAutoProjectPaces(q1Data) {
 
 // ─── Status config ────────────────────────────────────────────────────────────
 const STATUS_OPTIONS = [
-  { value: "completed",   icon: "check_circle", color: "text-green-500",  fill: true,  label: "Completed"       },
+  { value: "completed",   icon: "check_circle", color: "text-green-500",  fill: true,  label: "Completed", editable: false },
+  { value: "failed",      icon: "cancel",       color: "text-red-500",    fill: true,  label: "Failed PACE Test", editable: false },
   { value: "ongoing",     icon: "pending",      color: "text-orange-400", fill: true,  label: "Ongoing"         },
   { value: "not-started", icon: "circle",       color: "text-slate-300",  fill: false, label: "Not Yet Started" },
   { value: "taken-home",  icon: "home",         color: "text-orange-400", fill: true,  label: "Taken Home"      },
   { value: "needs-next",  icon: "warning",      color: "text-amber-500",  fill: false, label: "Needs next PACE" },
 ];
+const TERMINAL_STATUSES = new Set(["completed", "failed"]);
 
 // ─── Status Indicator ─────────────────────────────────────────────────────────
 // the clickable status icon in a cell; onClick opens the status picker
 const StatusIndicator = ({ status, onClick }) => {
-  const cfg = STATUS_OPTIONS.find((o) => o.value === status) ?? STATUS_OPTIONS[2];
+  const cfg = STATUS_OPTIONS.find((o) => o.value === status) ?? STATUS_OPTIONS.find((o) => o.value === "not-started");
+  const locked = TERMINAL_STATUSES.has(status);
   return (
     <button
       onClick={(e) => { e.stopPropagation(); onClick?.(); }}
-      className="shrink-0 leading-none flex items-center justify-center hover:scale-125 transition-transform"
-      title={cfg.label}
+      disabled={locked}
+      className={`shrink-0 leading-none flex items-center justify-center transition-transform ${locked ? "cursor-not-allowed" : "hover:scale-125"}`}
+      title={locked ? `${cfg.label} — locked` : cfg.label}
+      aria-label={locked ? `${cfg.label}, locked` : cfg.label}
     >
       <span
         className={`material-symbols-outlined ${cfg.color}`}
@@ -133,9 +138,10 @@ const StatusIndicator = ({ status, onClick }) => {
 const PaceLine = ({ pace, editable = false, onCommit, onStatusClick }) => {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState("");
+  const locked = TERMINAL_STATUSES.has(pace.status);
 
   const startEdit = () => {
-    if (!editable) return;
+    if (!editable || locked) return;
     setVal(pace.num !== "—" ? String(pace.num) : "");
     setEditing(true);
   };
@@ -164,9 +170,9 @@ const PaceLine = ({ pace, editable = false, onCommit, onStatusClick }) => {
         />
       ) : (
         <span
-          className={`text-[11px] font-bold text-slate-700 whitespace-nowrap ${editable ? "cursor-pointer hover:text-primary transition-colors" : ""}`}
+          className={`text-[11px] font-bold whitespace-nowrap ${pace.status === "failed" ? "text-red-700" : "text-slate-700"} ${editable && !locked ? "cursor-pointer hover:text-primary transition-colors" : locked ? "cursor-not-allowed" : ""}`}
           onClick={startEdit}
-          title={editable ? "Click to edit PACE number" : undefined}
+          title={locked ? "Locked after a completed or failed PACE test" : editable ? "Click to edit PACE number" : undefined}
         >
           {pace.num !== "—" ? `- ${pace.num}` : "—"}
         </span>
@@ -183,27 +189,32 @@ const PaceLine = ({ pace, editable = false, onCommit, onStatusClick }) => {
 // `onStatusClick` are called with the PACE's index (0-2) so the caller can tell
 // which of the 3 was edited/clicked.
 const PLACEHOLDER_PACE = { num: "—", status: "not-started" };
-const PaceCellStack = ({ paces, compact = false, editable = false, onCommit, onStatusClick }) => (
-  <td className={`${compact ? "px-1 py-1.5" : "px-1 py-2"} text-center border-r border-slate-100 last:border-0`}>
-    <div className="flex flex-col items-center gap-1">
-      {paces.map((pace, i) => {
-        const p = pace ?? PLACEHOLDER_PACE;
-        return (
-          <PaceLine
-            key={i}
-            pace={p}
-            editable={editable}
-            onCommit={(newNum) => onCommit?.(i, newNum)}
-            onStatusClick={() => onStatusClick?.(i, p.status)}
-          />
-        );
-      })}
-    </div>
-  </td>
-);
+const PaceCellStack = ({ paces, compact = false, editable = false, onCommit, onStatusClick }) => {
+  // Re-basing one number changes the whole three-PACE block, so freeze all numbers
+  // in that subject/quarter as soon as any cell has a terminal test outcome.
+  const blockLocked = paces.some((pace) => TERMINAL_STATUSES.has(pace?.status));
+  return (
+    <td className={`${compact ? "px-1 py-1.5" : "px-1 py-2"} text-center border-r border-slate-100 last:border-0`}>
+      <div className="flex flex-col items-center gap-1">
+        {paces.map((pace, i) => {
+          const p = pace ?? PLACEHOLDER_PACE;
+          return (
+            <PaceLine
+              key={i}
+              pace={p}
+              editable={editable && !blockLocked}
+              onCommit={(newNum) => onCommit?.(i, newNum)}
+              onStatusClick={() => onStatusClick?.(i, p.status)}
+            />
+          );
+        })}
+      </div>
+    </td>
+  );
+};
 
 // ─── Legend ───────────────────────────────────────────────────────────────────
-// icon/colour key for the 5 statuses
+// icon/colour key for all monitoring statuses, including terminal test failure
 const Legend = () => (
   <div className="flex items-center gap-4 flex-wrap text-[11px] text-on-surface-variant">
     {STATUS_OPTIONS.map((opt) => (
@@ -273,7 +284,7 @@ function StatusPickerModal({ cell, currentStatus, onSelect, onClose, saving, err
         </div>
 
         <div className="flex gap-2">
-          {STATUS_OPTIONS.map((opt) => (
+          {STATUS_OPTIONS.filter((opt) => opt.editable !== false).map((opt) => (
             <button
               key={opt.value}
               onClick={() => onSelect(opt.value)}
@@ -529,7 +540,7 @@ function IndividualView({ student, quarters, onPaceEdit, onStatusClick, onAssign
               Projected PACE Monitoring
             </h3>
             {hasProjection && (
-              <span className="text-[13px] text-on-surface-variant italic">Click any PACE number to edit it</span>
+              <span className="text-[13px] text-on-surface-variant italic">Click an unlocked PACE number to edit it</span>
             )}
           </div>
           <Legend />
@@ -603,7 +614,7 @@ function IndividualView({ student, quarters, onPaceEdit, onStatusClick, onAssign
         <div className="px-6 py-4 border-t border-outline-variant/10 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2 text-[11px] text-on-surface-variant">
             <span className="material-symbols-outlined text-sm shrink-0" style={fillStyle}>info</span>
-            Click the house icon to mark a PACE as taken home for homework.
+            Completed and failed PACE tests are locked. Click the house icon to mark an unlocked PACE as taken home.
           </div>
           <button onClick={onManageClick}
             className="flex items-center gap-2 px-5 py-2.5 bg-[#0d1b2e] text-white text-xs font-bold rounded-xl hover:opacity-90 transition-opacity whitespace-nowrap">

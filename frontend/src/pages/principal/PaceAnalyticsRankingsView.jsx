@@ -76,13 +76,13 @@ export default function PaceAnalyticsRankingsView({ teacher, quarter, schoolYear
       </div>
 
       <div className="grid grid-cols-1 gap-x-8 gap-y-7 lg:grid-cols-2">
-        <Section title="1. TOP 10 STUDENT RANKINGS" className="lg:row-span-2">
+        <Section title="1. STUDENT RANKINGS" className="lg:row-span-2">
           <div className="overflow-hidden rounded-lg border border-slate-200">
             <table className="w-full border-collapse">
               <thead><tr><Head className="text-center">Rank</Head><Head>Student</Head><Head className="text-center">Points</Head><Head className="text-center">Completion</Head><Head className="text-center">Status</Head></tr></thead>
               <tbody>
                 {(data?.topRankings ?? []).length === 0
-                  ? <EmptyRow columns={5} text="No ranking data for this quarter." />
+                  ? <EmptyRow columns={5} text="No eligible students with an assigned PACE and a recorded test score." />
                   : data.topRankings.map((row) => (
                     <tr key={row.rank}>
                       <Cell className="text-center font-bold">{row.rank}</Cell>

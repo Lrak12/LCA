@@ -38,6 +38,8 @@ router.patch("/student-record/:id/profile", requireRole("teacher"), TeacherContr
 router.patch("/student-record/grade", requireRole("teacher"), TeacherController.setPaceScore);              // inline grade edit
 // GET /teacher/attendance  - load a day's roster + saved status. NEXT > controller.getAttendance
 router.get("/attendance",         requireRole("teacher"), TeacherController.getAttendance);
+// GET /teacher/attendance/history - all saved entries in the active school year.
+router.get("/attendance/history", requireRole("teacher"), TeacherController.getAttendanceHistory);
 // POST /teacher/attendance - save the day's records.         NEXT > controller.submitAttendance
 router.post("/attendance",        requireRole("teacher"), TeacherController.submitAttendance);
 

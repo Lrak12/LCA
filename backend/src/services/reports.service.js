@@ -90,28 +90,33 @@ const localToday = () => {
 async function getStudentsForTeacher(teacher_id, sy_id = null) {
   const sy = await getSchoolYear(sy_id);
 
-  // History is the reliable source after assignments have changed.
-  const { data: historyRows } = await supabaseAdmin
-    .from("student_supervisor_history")
-    .select("student_id, gl_id, grade_level_name, student(first_name, last_name)")
-    .eq("teacher_id", teacher_id)
-    .eq("sy_id", sy.sy_id);
+  // Preserve the roster snapshot only for archived school years. Active reports
+  // must reflect current grade-level assignments so removed students disappear.
+  if (!sy.is_active) {
+    const { data: historyRows, error: historyError } = await supabaseAdmin
+      .from("student_supervisor_history")
+      .select("student_id, gl_id, grade_level_name, student(first_name, last_name)")
+      .eq("teacher_id", teacher_id)
+      .eq("sy_id", sy.sy_id);
 
-  if (historyRows?.length) {
-    const students = [];
-    const seenStudents = new Set();
-    const levelMap = new Map();
-    historyRows.forEach((row) => {
-      if (row.student && !seenStudents.has(row.student_id)) {
-        seenStudents.add(row.student_id);
-        students.push({ student_id: row.student_id, gl_id: row.gl_id, ...row.student });
-      }
-      const key = row.gl_id ?? row.grade_level_name;
-      if (key != null && !levelMap.has(key)) {
-        levelMap.set(key, { gl_id: row.gl_id, level_name: row.grade_level_name ?? "Unassigned" });
-      }
-    });
-    return { students, gradeLevels: [...levelMap.values()] };
+    if (historyError) throw new Error(historyError.message);
+
+    if (historyRows?.length) {
+      const students = [];
+      const seenStudents = new Set();
+      const levelMap = new Map();
+      historyRows.forEach((row) => {
+        if (row.student && !seenStudents.has(row.student_id)) {
+          seenStudents.add(row.student_id);
+          students.push({ student_id: row.student_id, gl_id: row.gl_id, ...row.student });
+        }
+        const key = row.gl_id ?? row.grade_level_name;
+        if (key != null && !levelMap.has(key)) {
+          levelMap.set(key, { gl_id: row.gl_id, level_name: row.grade_level_name ?? "Unassigned" });
+        }
+      });
+      return { students, gradeLevels: [...levelMap.values()] };
+    }
   }
 
   const { data: gradeLevels, error } = await ReportsModel.findGradeLevelsByTeacherId(teacher_id, sy.sy_id);
@@ -251,10 +256,18 @@ async function computeAcademicMetrics(teacher_id, quarter, sy) {
   if (!students.length) return { students, gradeLevels, metrics: new Map() };
 
   const studentIds = students.map((s) => s.student_id);
+  const gradeLevelIds = gradeLevels.map((level) => level.gl_id).filter((id) => id != null);
+  const { data: activeModules, error: moduleError } = gradeLevelIds.length
+    ? await ReportsModel.findPaceModulesByGradeLevelIds(gradeLevelIds)
+    : { data: [], error: null };
+  if (moduleError) throw new Error(moduleError.message);
+  const activeModuleIds = (activeModules ?? []).map((module) => module.module_id);
 
   const [{ data: projRows }, { data: allPaces }, { data: attRows }, { data: hwRows }] = await Promise.all([
     ReportsModel.findPaceProjectionsForReport(studentIds, quarter, sy.sy_id),
-    ReportsModel.findPacesForStudents(studentIds),       // for pace_test_result lookup via sp_id
+    activeModuleIds.length
+      ? ReportsModel.findPacesForStudents(studentIds, activeModuleIds)
+      : Promise.resolve({ data: [], error: null }),       // for pace_test_result lookup via sp_id
     ReportsModel.findAttendanceByTeacherAndRange(teacher_id, rangeStart, attEnd),
     ReportsModel.findPaceStatusesByStudents(studentIds, sy.sy_id),
   ]);
@@ -468,7 +481,7 @@ export const getTeacherAttendanceReport = async (teacher_id, quarter = 4, sy_id 
   const syLabel = sy?.year_label ?? `${currentYear - 1}–${currentYear}`;
   const qLabel  = QUARTER_LABELS[quarter - 1] ?? `Quarter ${quarter}`;
 
-  const { months, rangeStart } = getQuarterDateRange(sy.start_date, quarter);
+  const { months, rangeStart, rangeEnd } = getQuarterDateRange(sy.start_date, quarter);
   const { students, gradeLevels } = await getStudentsForTeacher(teacher_id, sy.sy_id);
 
   if (!sy.is_active) {
@@ -514,9 +527,6 @@ export const getTeacherAttendanceReport = async (teacher_id, quarter = 4, sy_id 
     };
   }
 
-  // Only fetch up to today — teacher previews what has been entered so far
-  const rangeEnd = localToday();
-
   const { data: attRows } = await ReportsModel.findAttendanceByTeacherAndRange(
     teacher_id, rangeStart, rangeEnd
   );
@@ -546,16 +556,19 @@ export const getTeacherAttendanceReport = async (teacher_id, quarter = 4, sy_id 
     else if (status === "tardy" || status === "late") bucket.t++;
   });
 
-  // Count homework (taken-home PACEs) directly from pace_quarterly_projection
-  const studentIds = resolvedStudents.map((s) => s.student_id);
-  const hwByStudent = new Map(); // student_id → count
-  if (studentIds.length) {
-    const { data: paceRows } = await ReportsModel.findPaceStatusesByStudents(studentIds, sy.sy_id);
-    (paceRows ?? []).forEach((p) => {
-      const count = [p.status_r0, p.status_r1, p.status_r2].filter((s) => s === "taken-home").length;
-      hwByStudent.set(p.student_id, (hwByStudent.get(p.student_id) ?? 0) + count);
-    });
-  }
+  // Demerits and homework monitoring are stored in the monthly attendance
+  // summaries. Aggregate only the three months in the selected quarter.
+  const monthNumbers = months.map((month) => month.monthIndex + 1);
+  const { data: summaryRows } = await ReportsModel.findAttendanceSummaryByTeacher(
+    teacher_id, monthNumbers, sy.sy_id,
+  );
+  const extrasByStudent = new Map();
+  (summaryRows ?? []).forEach((summary) => {
+    const totals = extrasByStudent.get(summary.student_id) ?? { demerits: 0, hw: 0 };
+    totals.demerits += summary.demerit_total ?? 0;
+    totals.hw += summary.homework_days ?? 0;
+    extrasByStudent.set(summary.student_id, totals);
+  });
 
   const rows = resolvedStudents.map((student) => {
     const monthMap = attMap.get(student.student_id) ?? new Map();
@@ -565,8 +578,8 @@ export const getTeacherAttendanceReport = async (teacher_id, quarter = 4, sy_id 
         const b = monthMap.get(m.monthIndex) ?? { p: 0, a: 0, t: 0 };
         return { month: m.label, present: b.p, absent: b.a, tardy: b.t };
       }),
-      demerits: 0,
-      hw:       hwByStudent.get(student.student_id) ?? 0,
+      demerits: extrasByStudent.get(student.student_id)?.demerits ?? 0,
+      hw:       extrasByStudent.get(student.student_id)?.hw ?? 0,
     };
   });
 

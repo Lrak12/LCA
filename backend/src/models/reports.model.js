@@ -48,11 +48,17 @@ export const findStudentsByGradeLevelIds = (glIds) =>
 
 // ── Student paces ─────────────────────────────────────────────────────────────
 
-export const findPacesForStudents = (studentIds) =>
-  supabaseAdmin
+export const findPaceModulesByGradeLevelIds = (glIds) =>
+  supabaseAdmin.from("pace_module").select("module_id").in("gl_id", glIds);
+
+export const findPacesForStudents = (studentIds, moduleIds = null) => {
+  let query = supabaseAdmin
     .from("student_pace")
     .select("sp_id, student_id, status, homework, pace_module(module_number, subject)")
     .in("student_id", studentIds);
+  if (moduleIds) query = query.in("module_id", moduleIds);
+  return query;
+};
 
 export const findPaceTestResultsForPaces = (spIds) =>
   supabaseAdmin

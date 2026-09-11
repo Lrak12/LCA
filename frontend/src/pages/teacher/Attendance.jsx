@@ -3,7 +3,7 @@
 // (teacher.service.getAttendance / submitAttendance).
 import { useState, useEffect } from "react";
 import TeacherLayout from "../../components/TeacherLayout.jsx";
-import { fetchTeacherAttendance, submitTeacherAttendance } from "../../api/teacher.js";
+import { fetchTeacherAttendance, fetchTeacherAttendanceHistory, submitTeacherAttendance } from "../../api/teacher.js";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
@@ -64,13 +64,65 @@ const fmtClock = (iso) => {
 };
 const HIST_PAGE_SIZE = 10;
 
+// Convert cumulative daily records into Q1-Q4 monthly summary tables. All four
+// quarter sections are shown with every record stored for the school year.
+const buildQuarterAttendanceSections = (report) => {
+  const startValue = report.attendanceBounds?.startDate;
+  const endValue = report.attendanceBounds?.endDate;
+  if (!startValue || !endValue) return [];
+
+  const start = new Date(`${startValue}T00:00:00`);
+  const roster = report.students?.length
+    ? report.students
+    : [...new Map((report.records ?? []).map((record) => [record.student_id, {
+        student_id: record.student_id,
+        name: record.name,
+        grade: record.grade,
+      }])).values()].sort((a, b) => a.name.localeCompare(b.name));
+
+  const counts = new Map();
+  (report.records ?? []).forEach((record) => {
+    const monthKey = record.date_recorded?.slice(0, 7);
+    if (!monthKey) return;
+    const key = `${record.student_id}|${monthKey}`;
+    const bucket = counts.get(key) ?? { present: 0, absent: 0, tardy: 0, excused: 0 };
+    if (record.status === "present") bucket.present += 1;
+    else if (record.status === "absent") bucket.absent += 1;
+    else if (record.status === "late") bucket.tardy += 1;
+    else if (record.status === "excused") bucket.excused += 1;
+    counts.set(key, bucket);
+  });
+
+  return Array.from({ length: 4 }, (_, index) => {
+    const quarter = index + 1;
+    const quarterStart = new Date(start.getFullYear(), start.getMonth() + index * 3, 1);
+    const months = Array.from({ length: 3 }, (__, monthOffset) => {
+      const date = new Date(quarterStart.getFullYear(), quarterStart.getMonth() + monthOffset, 1);
+      return {
+        key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`,
+        label: date.toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+      };
+    });
+
+    return {
+      quarter,
+      months,
+      rows: roster.map((student) => ({
+        ...student,
+        months: months.map((month) => counts.get(`${student.student_id}|${month.key}`)
+          ?? { present: 0, absent: 0, tardy: 0, excused: 0 }),
+      })),
+    };
+  });
+};
+
 // ─── Mini Calendar ────────────────────────────────────────────────────────────
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DOW    = ["M","T","W","T","F","S","S"]; // day-of-week headers (Monday-first)
 
 // Sidebar month calendar. Days are coloured by that day's status (from `history`);
 // onSelect(date) reloads that day. `view` tracks the shown month.
-function MiniCalendar({ selectedDate, onSelect, history }) {
+function MiniCalendar({ selectedDate, onSelect, history, minDate, maxDate }) {
   const [view, setView] = useState(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1)); // 1st of shown month
 
   const year   = view.getFullYear();
@@ -82,6 +134,10 @@ function MiniCalendar({ selectedDate, onSelect, history }) {
 
   const todayStr = toDateStr(today);
   const selStr   = toDateStr(selectedDate);
+  const previousMonthLast = toDateStr(new Date(year, month, 0));
+  const nextMonthFirst = toDateStr(new Date(year, month + 1, 1));
+  const canGoPrevious = !minDate || previousMonthLast >= minDate;
+  const canGoNext = !maxDate || nextMonthFirst <= maxDate;
 
   return (
     <div>
@@ -91,13 +147,15 @@ function MiniCalendar({ selectedDate, onSelect, history }) {
         <div className="flex gap-0.5">
           <button
             onClick={() => setView(new Date(year, month - 1, 1))}
-            className="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-container-low text-on-surface-variant transition-colors"
+            disabled={!canGoPrevious}
+            className="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-container-low text-on-surface-variant transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent"
           >
             <span className="material-symbols-outlined text-base">chevron_left</span>
           </button>
           <button
             onClick={() => setView(new Date(year, month + 1, 1))}
-            className="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-container-low text-on-surface-variant transition-colors"
+            disabled={!canGoNext}
+            className="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-container-low text-on-surface-variant transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent"
           >
             <span className="material-symbols-outlined text-base">chevron_right</span>
           </button>
@@ -115,16 +173,18 @@ function MiniCalendar({ selectedDate, onSelect, history }) {
           const isSel   = dateStr === selStr;
           const isToday = dateStr === todayStr;
           const status  = history[dateStr];
+          const disabled = (!!minDate && dateStr < minDate) || (!!maxDate && dateStr > maxDate);
 
-          let cls = "w-8 h-8 mx-auto flex items-center justify-center text-xs font-bold rounded-full cursor-pointer transition-all ";
-          if (isSel)        cls += "bg-on-surface text-white shadow-md";
-          else if (isToday) cls += "bg-primary text-white";
-          else if (status)  cls += (CAL_DOT[status] ?? "bg-green-400 text-white");
-          else              cls += "text-on-surface hover:bg-surface-container-low";
+          let cls = "w-8 h-8 mx-auto flex items-center justify-center text-xs font-bold rounded-full transition-all ";
+          if (disabled)     cls += "text-on-surface-variant/30 cursor-not-allowed";
+          else if (isSel)   cls += "bg-on-surface text-white shadow-md cursor-pointer";
+          else if (isToday) cls += "bg-primary text-white cursor-pointer";
+          else if (status)  cls += `${CAL_DOT[status] ?? "bg-green-400 text-white"} cursor-pointer`;
+          else              cls += "text-on-surface hover:bg-surface-container-low cursor-pointer";
 
           return (
             <div key={day} className="flex items-center justify-center py-0.5">
-              <button onClick={() => onSelect(new Date(year, month, day))} className={cls}>
+              <button disabled={disabled} onClick={() => onSelect(new Date(year, month, day))} className={cls}>
                 {day}
               </button>
             </div>
@@ -141,15 +201,17 @@ export default function Attendance() {
   const schoolYearLabel = useSchoolYear();                                    // active SY label for the layout
   const [viewMode,     setViewMode]     = useState("today");                  // "today" (edit) | "history" (read-only)
   const [selectedDate, setSelectedDate] = useState(today);                    // which day is being viewed/edited
+  const [dateBounds,   setDateBounds]   = useState({ min: "", max: toDateStr(today) });
   const [students,     setStudents]     = useState([]);                       // students in this teacher's class
   const [log,          setLog]          = useState({});                       // per-student edits { id: {status,notes,time} }
   const [search,      setSearch]      = useState("");                         // name/ID search box text
-  const [calHistory,  setCalHistory]  = useState({});                         // date > status map that colours the calendar
-  const [gradeLevels, setGradeLevels] = useState([]);                         // grade-level names for the History filter
-  const [gradeFilter, setGradeFilter] = useState("all");                      // selected grade filter (History)
+  const [calHistory]                  = useState({});                         // date > status map that colours the calendar
+  const [gradeLevels, setGradeLevels] = useState([]);
   const [summary,     setSummary]     = useState({ total: 0, present: 0, absent: 0, tardy: 0, excused: 0 }); // recorded tallies
   const [histPage,    setHistPage]    = useState(1);                          // History table page number
   const [loading,     setLoading]     = useState(false);                      // true while a day is loading
+  const [historyActionLoading, setHistoryActionLoading] = useState(false);    // cumulative Print/Excel request
+  const [historyActionError, setHistoryActionError] = useState("");
   const [submitting,  setSubmitting]  = useState(false);                      // true while a submit is in flight
   const [submitDone,  setSubmitDone]  = useState(false);                      // shows the green success banner
   const [submitError, setSubmitError] = useState("");                         // shows the red error banner
@@ -163,7 +225,11 @@ export default function Attendance() {
       .then((res) => {
         const d = res.data;
         setStudents(d.students ?? []);                   // class roster (+ any saved status)
-        setGradeLevels(d.gradeLevels ?? []);             // grade names for the History filter
+        setDateBounds({
+          min: d.attendanceBounds?.startDate ?? "",
+          max: d.attendanceBounds?.endDate ?? toDateStr(today),
+        });
+        setGradeLevels(d.gradeLevels ?? []);
         setSummary(d.summary ?? { total: 0, present: 0, absent: 0, tardy: 0, excused: 0 });
         // Seed the editable `log` from saved statuses (DB value > button key).
         const newLog = {};
@@ -180,11 +246,16 @@ export default function Attendance() {
       .finally(() => setLoading(false));
   };
 
+  // These effects intentionally start the initial request and reset filter paging.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadAttendance(today); }, []);                 // load today's attendance once on mount
-  useEffect(() => { setHistPage(1); }, [search, gradeFilter]);     // reset History paging when filters change
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setHistPage(1); }, [search]);                  // reset History paging when search changes
 
   // handleDaySelect - user picked a day (calendar / date input): remember it + reload.
   const handleDaySelect = (date) => {
+    const value = toDateStr(date);
+    if ((dateBounds.min && value < dateBounds.min) || (dateBounds.max && value > dateBounds.max)) return;
     setSelectedDate(date);
     setHistPage(1);
     loadAttendance(date);
@@ -196,46 +267,186 @@ export default function Attendance() {
     handleDaySelect(new Date(`${value}T00:00:00`));      // T00:00:00 forces LOCAL midnight (not UTC)
   };
 
-  // gradeLabel - subtitle text: the chosen grade, or all grades joined, or a dash.
-  const gradeLabel = gradeFilter !== "all" ? gradeFilter : (gradeLevels.length ? gradeLevels.join(", ") : "—");
+  const gradeLabel = gradeLevels.length ? gradeLevels.join(", ") : "—";
+  const todayValue = toDateStr(today);
+  const editableMaxDate = dateBounds.max && dateBounds.max < todayValue ? dateBounds.max : todayValue;
   // pctOf - format a count as a % of today's total (guards divide-by-zero).
   const pctOf = (n) => (summary.total ? `${((n / summary.total) * 100).toFixed(1)}%` : "0%");
 
-  // History view: the recorded rows narrowed by search + grade, then paginated.
+  // History view: recorded rows narrowed by search, then paginated.
   const histFiltered = students.filter((s) => {
     const matchSearch = s.name.toLowerCase().includes(search.toLowerCase()) || String(s.student_id).includes(search);
-    const matchGrade  = gradeFilter === "all" || s.grade === gradeFilter;
-    return matchSearch && matchGrade;
+    return matchSearch;
   });
   const histTotalPages = Math.max(1, Math.ceil(histFiltered.length / HIST_PAGE_SIZE));              // at least 1 page
   const histPageRows   = histFiltered.slice((histPage - 1) * HIST_PAGE_SIZE, histPage * HIST_PAGE_SIZE); // this page's rows
 
-  const printReport = () => window.print(); // Print button > browser print dialog
+  // Print a clean cumulative report so the application chrome never appears on
+  // paper. Open the window before awaiting data to avoid popup blockers.
+  const printReport = async () => {
+    const printWindow = window.open("", "_blank", "width=1100,height=800");
+    if (!printWindow) {
+      setHistoryActionError("Please allow pop-ups to print the attendance report.");
+      return;
+    }
 
-  // exportExcel - build an HTML <table> of the filtered History rows and download
-  //   it as a .xls file (Excel opens HTML tables). No server call - pure client-side.
-  const exportExcel = () => {
-    const head = ["Student ID", "Student Name", "Grade", "Status", "Remarks", "Time Recorded"];
-    const body = histFiltered.map((s) => [
-      s.student_id, s.name, s.grade ?? "",
-      HIST_STATUS[s.status]?.label ?? "No Record",
-      (s.notes ?? "").replace(/<[^>]*>/g, ""),
-      fmtClock(s.time_recorded),
-    ]);
+    printWindow.opener = null;
+    printWindow.document.write("<!doctype html><title>Preparing attendance report…</title><p style=\"font-family:Arial;padding:24px\">Preparing attendance report…</p>");
+    setHistoryActionLoading(true);
+    setHistoryActionError("");
+
+    let report;
+    try {
+      const response = await fetchTeacherAttendanceHistory();
+      report = response.data;
+    } catch {
+      printWindow.close();
+      setHistoryActionError("Could not load the complete attendance history. Please try again.");
+      setHistoryActionLoading(false);
+      return;
+    }
+
+    const escapeHtml = (value) => String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+    const rangeStart = report.attendanceBounds?.startDate ?? dateBounds.min;
+    const rangeEnd = report.attendanceBounds?.endDate ?? todayValue;
+    const rangeLabel = `${formatShort(new Date(`${rangeStart}T00:00:00`))} – ${formatShort(new Date(`${rangeEnd}T00:00:00`))}`;
+    const reportGradeLabel = report.gradeLevels?.length ? report.gradeLevels.join(", ") : gradeLabel;
+    const cumulativeSummary = report.summary ?? { total: 0, days: 0, present: 0, absent: 0, tardy: 0, excused: 0 };
+    const quarterSections = buildQuarterAttendanceSections(report);
+    const quarterTables = quarterSections.map((section) => {
+      const monthHeaders = section.months.map((month) => `<th colspan="4">${escapeHtml(month.label)}</th>`).join("");
+      const statusHeaders = section.months.map(() => "<th>P</th><th>A</th><th>T</th><th>E</th>").join("");
+      const studentRows = section.rows.map((student) => {
+        const monthCells = student.months.map((month) => `
+          <td>${month.present}</td><td>${month.absent}</td><td>${month.tardy}</td><td>${month.excused}</td>`).join("");
+        const total = student.months.reduce((sum, month) => sum + month.present + month.absent + month.tardy + month.excused, 0);
+        return `<tr><td>${escapeHtml(student.student_id)}</td><td class="student-name">${escapeHtml(student.name)}</td>${monthCells}<td>${total}</td></tr>`;
+      }).join("");
+      const monthNames = section.months.map((month) => month.label.split(" ")[0]).join(" – ");
+      const columnCount = 3 + section.months.length * 4;
+      return `
+        <section class="quarter-section">
+          <h2>Quarter ${section.quarter} <span>${escapeHtml(monthNames)}</span></h2>
+          <table>
+            <thead>
+              <tr><th rowspan="2">Student ID</th><th rowspan="2" class="student-column">Student Name</th>${monthHeaders}<th rowspan="2">Total</th></tr>
+              <tr>${statusHeaders}</tr>
+            </thead>
+            <tbody>${studentRows || `<tr><td class="empty" colspan="${columnCount}">No students assigned.</td></tr>`}</tbody>
+          </table>
+        </section>`;
+    }).join("");
+
+    printWindow.document.open();
+    printWindow.document.write(`<!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Attendance Report - ${escapeHtml(rangeStart)} to ${escapeHtml(rangeEnd)}</title>
+          <style>
+            @page { size: A4 landscape; margin: 14mm; }
+            * { box-sizing: border-box; }
+            body { margin: 0; color: #102a43; font-family: Arial, Helvetica, sans-serif; font-size: 11px; }
+            .report-header { display: flex; justify-content: space-between; gap: 24px; border-bottom: 2px solid #102a43; padding-bottom: 12px; margin-bottom: 14px; }
+            h1 { margin: 0 0 5px; font-size: 22px; letter-spacing: .04em; text-transform: uppercase; }
+            .school { margin: 0; font-size: 13px; font-weight: 700; }
+            .meta { margin: 3px 0 0; color: #52606d; }
+            .prepared { text-align: right; line-height: 1.5; white-space: nowrap; }
+            .summary { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 14px; }
+            .summary-item { border: 1px solid #d9e2ec; border-radius: 6px; padding: 8px 10px; }
+            .summary-label { color: #627d98; font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+            .summary-value { display: block; margin-top: 3px; font-size: 17px; font-weight: 700; }
+            .quarter-section { margin-top: 16px; break-inside: avoid; }
+            .quarter-section + .quarter-section { break-before: page; }
+            h2 { margin: 0 0 8px; font-size: 15px; text-transform: uppercase; }
+            h2 span { color: #627d98; font-size: 11px; font-weight: 400; margin-left: 5px; text-transform: none; }
+            table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+            th, td { border: 1px solid #d9e2ec; padding: 7px 5px; text-align: center; vertical-align: middle; overflow-wrap: anywhere; }
+            th { background: #f0f4f8; color: #334e68; font-size: 9px; letter-spacing: .05em; text-transform: uppercase; }
+            .student-column { width: 20%; }
+            .student-name { font-weight: 700; text-align: left; }
+            .empty { padding: 28px; color: #627d98; text-align: center; }
+            .footer { margin-top: 10px; color: #7b8794; font-size: 9px; text-align: right; }
+            @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
+          </style>
+        </head>
+        <body>
+          <header class="report-header">
+            <div>
+              <h1>Attendance Report</h1>
+              <p class="school">Lifegiver Christian Academy</p>
+              <p class="meta">${escapeHtml(reportGradeLabel)} &bull; ${escapeHtml(rangeLabel)}</p>
+            </div>
+            <div class="prepared">
+              <strong>Attendance Records History</strong><br />
+              School Year: ${escapeHtml(schoolYearLabel)}
+            </div>
+          </header>
+          <section class="summary">
+            <div class="summary-item"><span class="summary-label">Recorded Days</span><span class="summary-value">${cumulativeSummary.days}</span></div>
+            <div class="summary-item"><span class="summary-label">Total Entries</span><span class="summary-value">${cumulativeSummary.total}</span></div>
+            <div class="summary-item"><span class="summary-label">Present</span><span class="summary-value">${cumulativeSummary.present}</span></div>
+            <div class="summary-item"><span class="summary-label">Absent</span><span class="summary-value">${cumulativeSummary.absent}</span></div>
+            <div class="summary-item"><span class="summary-label">Tardy</span><span class="summary-value">${cumulativeSummary.tardy}</span></div>
+            <div class="summary-item"><span class="summary-label">Excused</span><span class="summary-value">${cumulativeSummary.excused}</span></div>
+          </section>
+          ${quarterTables || '<div class="empty">No elapsed quarters found.</div>'}
+          <div class="footer">Generated ${escapeHtml(new Date().toLocaleString("en-US"))}</div>
+        </body>
+      </html>`);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+      setHistoryActionLoading(false);
+    }, 250);
+  };
+
+  // Export every saved active-school-year record, independent of the
+  // selected date, search text, and table pagination.
+  const exportExcel = async () => {
+    setHistoryActionLoading(true);
+    setHistoryActionError("");
+    let report;
+    try {
+      const response = await fetchTeacherAttendanceHistory();
+      report = response.data;
+    } catch {
+      setHistoryActionError("Could not load the complete attendance history. Please try again.");
+      setHistoryActionLoading(false);
+      return;
+    }
+
     const esc = (v) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const rowsHtml = [head, ...body]
-      .map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`)
-      .join("");
-    const html = `<table>${rowsHtml}</table>`;
-    const blob = new Blob([`﻿<html><head><meta charset="utf-8"></head><body>${html}</body></html>`], {
+    const rangeStart = report.attendanceBounds?.startDate ?? dateBounds.min;
+    const rangeEnd = report.attendanceBounds?.endDate ?? todayValue;
+    const quarterTables = buildQuarterAttendanceSections(report).map((section) => {
+      const monthHeaders = section.months.map((month) => `<th colspan="4">${esc(month.label)}</th>`).join("");
+      const statusHeaders = section.months.map(() => "<th>P</th><th>A</th><th>T</th><th>E</th>").join("");
+      const rows = section.rows.map((student) => {
+        const monthCells = student.months.map((month) => `
+          <td>${month.present}</td><td>${month.absent}</td><td>${month.tardy}</td><td>${month.excused}</td>`).join("");
+        const total = student.months.reduce((sum, month) => sum + month.present + month.absent + month.tardy + month.excused, 0);
+        return `<tr><td>${esc(student.student_id)}</td><td>${esc(student.name)}</td><td>${esc(student.grade)}</td>${monthCells}<td>${total}</td></tr>`;
+      }).join("");
+      return `<h3>Quarter ${section.quarter}</h3><table border="1"><thead><tr><th rowspan="2">Student ID</th><th rowspan="2">Student Name</th><th rowspan="2">Grade</th>${monthHeaders}<th rowspan="2">Total</th></tr><tr>${statusHeaders}</tr></thead><tbody>${rows}</tbody></table><br>`;
+    }).join("");
+    const html = `<h2>Attendance Report</h2><p>Lifegiver Christian Academy<br>School Year: ${esc(schoolYearLabel)}<br>Date Range: ${esc(rangeStart)} to ${esc(rangeEnd)}</p>${quarterTables}`;
+    const blob = new Blob([`\uFEFF<html><head><meta charset="utf-8"></head><body>${html}</body></html>`], {
       type: "application/vnd.ms-excel",
     });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `attendance_${toDateStr(selectedDate)}.xls`;
+    a.download = `attendance_q1_to_${rangeEnd}.xls`;
     a.click();
     URL.revokeObjectURL(url);
+    setHistoryActionLoading(false);
   };
 
   // markAllPresent - set every student's button to P in one click (local only).
@@ -332,15 +543,16 @@ export default function Attendance() {
               </button>
             </div>
             {/* Date picker */}
-            <label className="flex items-center gap-2 bg-white border border-outline-variant/20 rounded-xl px-4 py-2.5 shadow-sm cursor-pointer">
+            <label className="relative flex items-center gap-2 bg-white border border-outline-variant/20 rounded-xl px-4 py-2.5 shadow-sm cursor-pointer overflow-hidden">
               <span className="material-symbols-outlined text-secondary text-base" style={fillStyle}>calendar_month</span>
               <span className="text-sm font-bold text-on-surface">{formatShort(selectedDate)}</span>
               <input
                 type="date"
                 value={toDateStr(selectedDate)}
-                max={toDateStr(today)}
+                min={dateBounds.min || undefined}
+                max={viewMode === "history" ? dateBounds.max : editableMaxDate}
                 onChange={(e) => onDateInput(e.target.value)}
-                className="sr-only"
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
               />
             </label>
           </div>
@@ -545,6 +757,8 @@ export default function Attendance() {
               selectedDate={selectedDate}
               onSelect={handleDaySelect}
               history={calHistory}
+              minDate={dateBounds.min}
+              maxDate={editableMaxDate}
             />
 
             {/* Legend */}
@@ -589,7 +803,7 @@ export default function Attendance() {
 
         {/* ════════════════════════ HISTORY VIEW ════════════════════════ */}
         {/* HISTORY MODE - read-only: recorded stat cards (from `summary`), a
-            date + grade filter bar with Print/Export, and the recorded records
+            date selector with Print/Export, and the recorded records
             table (status pills + remarks + time) with pagination. */}
         {viewMode === "history" && (
         <>
@@ -615,36 +829,31 @@ export default function Attendance() {
           <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 px-5 py-4 mb-5 flex items-end gap-4 flex-wrap">
             <div>
               <label className="block text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1.5">Date</label>
-              <label className="flex items-center gap-2 bg-white border border-outline-variant/30 rounded-lg px-3 py-2 cursor-pointer min-w-[190px]">
-                <span className="material-symbols-outlined text-on-surface-variant text-base">calendar_month</span>
-                <span className="text-sm font-bold text-on-surface flex-1">{formatShort(selectedDate)}</span>
-                <input type="date" value={toDateStr(selectedDate)} max={toDateStr(today)} onChange={(e) => onDateInput(e.target.value)} className="sr-only" />
-                <span className="material-symbols-outlined text-on-surface-variant text-base">expand_more</span>
-              </label>
-            </div>
-            <div>
-              <label className="block text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1.5">Grade Level</label>
-              <div className="relative">
-                <select
-                  value={gradeFilter}
-                  onChange={(e) => setGradeFilter(e.target.value)}
-                  className="appearance-none text-sm font-bold text-on-surface bg-white border border-outline-variant/30 rounded-lg pl-3 pr-9 py-2 min-w-[170px] focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer"
-                >
-                  <option value="all">All Grade Levels</option>
-                  {gradeLevels.map((g) => <option key={g} value={g}>{g}</option>)}
-                </select>
-                <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none text-base">expand_more</span>
-              </div>
+              <input
+                type="date"
+                value={toDateStr(selectedDate)}
+                min={dateBounds.min || undefined}
+                max={dateBounds.max || undefined}
+                onChange={(e) => onDateInput(e.target.value)}
+                className="text-sm font-bold text-on-surface bg-white border border-outline-variant/30 rounded-lg px-3 py-2 min-w-[190px] focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer"
+              />
             </div>
             <div className="ml-auto flex items-center gap-2">
-              <button onClick={printReport} className="flex items-center gap-2 text-sm font-bold text-on-surface border border-outline-variant/30 rounded-lg px-4 py-2 hover:bg-surface-container-low transition-colors">
-                <span className="material-symbols-outlined text-base">print</span> Print Attendance Report
+              <button disabled={historyActionLoading} onClick={printReport} className="flex items-center gap-2 text-sm font-bold text-on-surface border border-outline-variant/30 rounded-lg px-4 py-2 hover:bg-surface-container-low transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                <span className="material-symbols-outlined text-base">print</span> {historyActionLoading ? "Preparing…" : "Print All Quarters"}
               </button>
-              <button onClick={exportExcel} className="flex items-center gap-2 text-sm font-bold text-white bg-primary rounded-lg px-4 py-2 hover:bg-primary/90 transition-colors shadow-sm">
-                <span className="material-symbols-outlined text-base">download</span> Export (Excel)
+              <button disabled={historyActionLoading} onClick={exportExcel} className="flex items-center gap-2 text-sm font-bold text-white bg-primary rounded-lg px-4 py-2 hover:bg-primary/90 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                <span className="material-symbols-outlined text-base">download</span> {historyActionLoading ? "Preparing…" : "Export All Quarters"}
               </button>
             </div>
           </div>
+
+          {historyActionError && (
+            <div className="mb-5 flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-4 py-2.5">
+              <span className="material-symbols-outlined text-base">error</span>
+              {historyActionError}
+            </div>
+          )}
 
           {/* Records table */}
           <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 overflow-hidden">

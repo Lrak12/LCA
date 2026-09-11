@@ -70,6 +70,11 @@ export const setPaceScore = (body) =>
 export const fetchTeacherAttendance = (params = {}) =>
   client.get("/teacher/attendance", { params });
 
+// Load all saved attendance entries for the full active school year for
+// cumulative History printing and Excel export.
+export const fetchTeacherAttendanceHistory = () =>
+  client.get("/teacher/attendance/history");
+
 // Save the day's attendance (body { date, records:[{student_id,status,notes}] }).
 // Backend: POST /teacher/attendance > controller.submitAttendance > service.submitAttendance.
 export const submitTeacherAttendance = (body) =>
@@ -113,8 +118,8 @@ export const saveStudentPace = (body) =>
 
 // One student's per-PACE assessments. UI: teacher/Assessments.jsx.
 // Backend: GET /teacher/record-assessments > controller.getStudentAssessments > service (~2590).
-export const fetchStudentAssessments = (student_id) =>
-  client.get("/teacher/record-assessments", { params: { student_id } });
+export const fetchStudentAssessments = (student_id, { page = 1, pageSize = 10 } = {}) =>
+  client.get("/teacher/record-assessments", { params: { student_id, page, page_size: pageSize } });
 
 // Record a self-test attempt (body { sp_id, score, date_taken }). Backend: service.recordSelfTest (~2686).
 export const recordSelfTest = (body) =>

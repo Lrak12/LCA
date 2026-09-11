@@ -4,10 +4,9 @@
 // getStudentPaceManage / saveStudentPace (/teacher/student-pace-manage).
 //
 // Settled PACEs open read-only. The backend flags each PACE with `locked` (see
-// _isPaceLocked in teacher.service.js ~line 2356): a passed test, a hand-set Completed,
-// or all 3 attempts used with none passing. The flag is per sp_id, so locking one PACE
-// never freezes the rest of the subject. The lock is presentational only - the modal
-// hides Save, but /teacher/student-pace-manage itself still accepts writes.
+// _isPaceLocked in teacher.service.js): a passed test or all 3 attempts used with
+// none passing. The terminal row is locked, and a failed result also blocks later
+// PACEs in that subject until the next school-year rollover.
 import { useState, useEffect, useCallback } from "react";
 import { fetchStudentPaceManage, saveStudentPace } from "../../api/teacher.js";
 
@@ -20,7 +19,6 @@ const SUBJECTS = [
 const STATUS_OPTS = [
   { value: "Assigned",    label: "Not Yet Started" },
   { value: "In Progress", label: "Ongoing" },
-  { value: "Completed",   label: "Completed" },
 ];
 
 const QUARTER_LABELS = { 1: "1st Quarter", 2: "2nd Quarter", 3: "3rd Quarter", 4: "4th Quarter" };
@@ -43,9 +41,8 @@ const fmtDate = (iso) => {
   return isNaN(d) ? "—" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 };
 
-// "Passed" = completed with a passing PACE test on record; "Completed" = marked complete
-// by hand with no test; "Failed" = all 3 attempts used, none passing. All three are locked
-// (read-only) - see the backend's _isPaceLocked. The wording is modal-local on purpose.
+// "Passed" requires a passing PACE test; "Failed" means all 3 attempts were used
+// without a pass. Both are read-only terminal states.
 const STATUS_BADGE = {
   "Passed":          "bg-green-100 text-green-700",
   "Completed":       "bg-green-100 text-green-700",

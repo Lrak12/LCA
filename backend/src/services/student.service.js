@@ -108,14 +108,13 @@ function paceRemark(score) {
 }
 
 /**
- * Resolve a projection slot's effective status. A PACE that the student has
- * actually finished (student_pace.status='Completed') counts as completed even
- * if the supervisor never flipped the projection slot — recording a passing
- * PACE test completes the student_pace but does NOT touch the projection grid.
+ * Resolve a projection slot's effective status. Completion comes only from a
+ * recorded passing official PACE test (represented by completedKeys). A raw
+ * projection "completed" value without that test is treated as still ongoing.
  */
 function effectiveSlotStatus(subject, paceNo, rawStatus, completedKeys) {
-  if (rawStatus === "completed") return "completed";
   if (paceNo != null && completedKeys.has(`${subject}::${paceNo}`)) return "completed";
+  if (rawStatus === "completed") return "ongoing";
   return rawStatus ?? "not-started";
 }
 
@@ -689,9 +688,9 @@ export const getStudentGrades = async (user_id, quarter) => {
     const paceNumbers = [0, 1, 2].map((i) => (r.pace_start != null ? r.pace_start + i : null));
     const paceScores  = paceNumbers.map((paceNo) => (paceNo != null ? scoreFor(r.subject, paceNo) : null));
 
-    [r.status_r0, r.status_r1, r.status_r2].forEach((s) => {
+    [r.status_r0, r.status_r1, r.status_r2].forEach((_, index) => {
       totalSlots++;
-      if (s === "completed") completedSlots++;
+      if (paceScores[index] != null && paceScores[index] >= 90) completedSlots++;
     });
 
     const validScores = paceScores.filter((s) => s != null);
@@ -948,9 +947,6 @@ export const getStudentPace = async (user_id) => {
       completion_date: p.completion_date ?? null,
       status:          p.status,
     });
-    if (String(p.status ?? "").toLowerCase() === "completed") {
-      completedKeys.add(key);
-    }
   });
   const spIds = [...subjectByModuleKey.keys()];
 
@@ -970,8 +966,7 @@ export const getStudentPace = async (user_id) => {
     });
   }
 
-  // A PACE with a passing test (≥90) also counts as completed, even if the
-  // supervisor never flipped the student_pace status or the projection slot.
+  // Only a recorded passing official PACE test (≥90) counts as completion.
   scoreByModuleKey.forEach((scores, key) => {
     if (scores.some((s) => s != null && s >= 90)) completedKeys.add(key);
   });

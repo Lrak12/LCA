@@ -29,6 +29,47 @@ const findTeacherGradeLevelsForSchoolYear = async (teacher_id, columns = "gl_id,
     .eq("sy_id", schoolYearId);
 };
 
+// student_pace has no sy_id column. Its school year is inherited from
+// student_pace.module_id -> pace_module.gl_id -> grade_level.sy_id. Resolve the
+// active grade's module ids once and use them to prevent prior-year execution
+// rows from leaking into a newly assigned class.
+const findPaceModuleIdsForGradeLevels = async (glIds) => {
+  if (!glIds?.length) return [];
+  const { data, error } = await supabaseAdmin
+    .from("pace_module")
+    .select("module_id")
+    .in("gl_id", glIds);
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => row.module_id);
+};
+
+// Assessment terminal rules are shared by Record Assessments and PACE Monitoring.
+// A PACE is immutable after it passes, or after all three official test attempts fail.
+const ASSESS_PASS_MARK = 90;
+const MAX_ATTEMPTS = 3;
+
+const localDateValue = (date = new Date()) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+
+const getActiveAttendanceBounds = async () => {
+  const { data, error } = await supabaseAdmin
+    .from("school_year")
+    .select("start_date, end_date")
+    .eq("is_active", true)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("No active school year found");
+  const today = localDateValue();
+  return { startDate: data.start_date, endDate: data.end_date < today ? data.end_date : today };
+};
+
+const assertAttendanceDateInActiveYear = (date, bounds) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date ?? ""))) throw new Error("A valid attendance date is required");
+  if (date < bounds.startDate || date > bounds.endDate) {
+    throw new Error(`Attendance dates must be within the active school year (${bounds.startDate} to ${bounds.endDate}).`);
+  }
+};
+
 export const getAllTeachers = async () => {
   const { data, error } = await TeacherModel.findAll();
   if (error) throw new Error(error.message);
@@ -96,19 +137,19 @@ const resolveTeacherScope = async (user_id) => {
     .eq("user_id", user_id)
     .maybeSingle();
 
-  if (!teacher) return { teacher_id: null, studentIds: [] };
+  if (!teacher) return { teacher_id: null, studentIds: [], glIds: [] };
 
   const { data: gradeLevels } = await findTeacherGradeLevelsForSchoolYear(teacher.teacher_id, "gl_id");
 
   const glIds = (gradeLevels ?? []).map((g) => g.gl_id);
-  if (!glIds.length) return { teacher_id: teacher.teacher_id, studentIds: [] };
+  if (!glIds.length) return { teacher_id: teacher.teacher_id, studentIds: [], glIds: [] };
 
   const { data: scopedStudents } = await supabaseAdmin
     .from("student")
     .select("student_id")
     .in("gl_id", glIds);
 
-  return { teacher_id: teacher.teacher_id, studentIds: (scopedStudents ?? []).map((s) => s.student_id) };
+  return { teacher_id: teacher.teacher_id, studentIds: (scopedStudents ?? []).map((s) => s.student_id), glIds };
 };
 
 // ── Student resolver (grade_level.teacher_id → student.gl_id) ────────────────
@@ -174,10 +215,15 @@ export const getStudentPaceProjection = async (user_id, student_id) => {
     .order("quarter")
     .order("subject");
 
-  const { data: spRows } = await supabaseAdmin
-    .from("student_pace")
-    .select("sp_id")
-    .eq("student_id", Number(student_id));
+  const { data: activeGrades } = await findTeacherGradeLevelsForSchoolYear(teacher.teacher_id, "gl_id");
+  const activeModuleIds = await findPaceModuleIdsForGradeLevels((activeGrades ?? []).map((g) => g.gl_id));
+  const { data: spRows } = activeModuleIds.length
+    ? await supabaseAdmin
+        .from("student_pace")
+        .select("sp_id")
+        .eq("student_id", Number(student_id))
+        .in("module_id", activeModuleIds)
+    : { data: [] };
   const spIds = (spRows ?? []).map((r) => r.sp_id);
 
   let lockedQuarters = [];
@@ -194,7 +240,7 @@ export const getStudentPaceProjection = async (user_id, student_id) => {
 
 // ── Last completed PACE per subject (basis for Assign Pace) ──────────────────
 // For a returning student: the highest PACE number they actually finished —
-// a student_pace marked "Completed" or one with a passed official PACE test.
+// only a passed official PACE test counts as completed.
 // Returns { subject: maxPaceNumber }. Empty when no history exists.
 export const getLastCompletedPaces = async (user_id, student_id) => {
   const { data: teacher } = await supabaseAdmin
@@ -234,7 +280,7 @@ export const getLastCompletedPaces = async (user_id, student_id) => {
     const subject = sp.pace_module?.subject;
     const num     = sp.pace_module?.module_number;
     if (!subject || num == null) return;
-    const isCompleted = sp.status === "Completed" || passedSp.has(sp.sp_id);
+    const isCompleted = passedSp.has(sp.sp_id);
     if (!isCompleted) return;
     if (maxBySubject[subject] == null || num > maxBySubject[subject]) maxBySubject[subject] = num;
   });
@@ -255,7 +301,8 @@ export const getTeacherDashboard = async (user_id) => {
 
   // studentIds = only the students in this teacher's grade level(s). Everything
   // below is filtered to these ids so a supervisor only sees their own class.
-  const { studentIds } = await resolveTeacherScope(user_id);
+  const { studentIds, glIds } = await resolveTeacherScope(user_id);
+  const activeModuleIds = await findPaceModuleIdsForGradeLevels(glIds);
 
   // Total students (scoped) - a COUNT only (head:true = no rows returned).
   const { count: totalStudents } = await supabaseAdmin
@@ -264,10 +311,13 @@ export const getTeacherDashboard = async (user_id) => {
     .in("student_id", studentIds);
 
   // All PACE rows for those students (status + name + grade level, for grouping).
-  const { data: allPaces } = await supabaseAdmin
-    .from("student_pace")
-    .select("student_id, status, student(first_name, last_name), pace_module(grade_level(level_name))")
-    .in("student_id", studentIds);
+  const { data: allPaces } = studentIds.length && activeModuleIds.length
+    ? await supabaseAdmin
+        .from("student_pace")
+        .select("student_id, status, student(first_name, last_name), pace_module(grade_level(level_name))")
+        .in("student_id", studentIds)
+        .in("module_id", activeModuleIds)
+    : { data: [] };
 
   // Group the flat PACE rows BY student, so each student holds a list of paces.
   const studentMap = {};
@@ -316,13 +366,16 @@ export const getTeacherDashboard = async (user_id) => {
   };
 
   // The 3 most-recently completed PACEs (newest end_date first) for the feed.
-  const { data: recentCompleted } = await supabaseAdmin
-    .from("student_pace")
-    .select("student_id, student(first_name, last_name), pace_module(module_name, subject), end_date")
-    .eq("status", "Completed")
-    .in("student_id", studentIds)
-    .order("end_date", { ascending: false })
-    .limit(3);
+  const { data: recentCompleted } = studentIds.length && activeModuleIds.length
+    ? await supabaseAdmin
+        .from("student_pace")
+        .select("student_id, student(first_name, last_name), pace_module(module_name, subject), end_date")
+        .eq("status", "Completed")
+        .in("student_id", studentIds)
+        .in("module_id", activeModuleIds)
+        .order("end_date", { ascending: false })
+        .limit(3)
+    : { data: [] };
 
   // Shape each completion into a ready-to-render feed item (icon + text + date).
   const recentActivity = (recentCompleted ?? [])
@@ -354,13 +407,17 @@ export const getTeacherDashboard = async (user_id) => {
 };
 
 export const getAssessments = async (user_id) => {
-  const { studentIds } = await resolveTeacherScope(user_id);
+  const { studentIds, glIds } = await resolveTeacherScope(user_id);
+  const activeModuleIds = await findPaceModuleIdsForGradeLevels(glIds);
 
   // Fetch student_paces scoped to teacher's students
-  const { data: paces } = await supabaseAdmin
-    .from("student_pace")
-    .select("sp_id, student_id, pace_module(subject), student(first_name, last_name)")
-    .in("student_id", studentIds);
+  const { data: paces } = studentIds.length && activeModuleIds.length
+    ? await supabaseAdmin
+        .from("student_pace")
+        .select("sp_id, student_id, pace_module(subject), student(first_name, last_name)")
+        .in("student_id", studentIds)
+        .in("module_id", activeModuleIds)
+    : { data: [] };
 
   const spIds = (paces ?? []).map((p) => p.sp_id);
 
@@ -437,6 +494,8 @@ export const getAssessments = async (user_id) => {
 // Loads one day's attendance for the teacher's class: one row per student (saved
 // status/notes/time, or null if unmarked) plus a summary tally.
 export const getAttendance = async (user_id, date) => {
+  const attendanceBounds = await getActiveAttendanceBounds();
+  assertAttendanceDateInActiveYear(date, attendanceBounds);
   // Find this supervisor's teacher_id from their login user_id.
   const { data: teacher, error: tErr } = await supabaseAdmin
     .from("teacher")
@@ -444,14 +503,14 @@ export const getAttendance = async (user_id, date) => {
     .eq("user_id", user_id)
     .maybeSingle();
   if (tErr) throw new Error(tErr.message);
-  if (!teacher) return { date, students: [], summary: { total: 0, present: 0, absent: 0, tardy: 0 } }; // no profile > empty day
+  if (!teacher) return { date, students: [], summary: { total: 0, present: 0, absent: 0, tardy: 0 }, attendanceBounds }; // no profile > empty day
 
   // The grade level(s) this teacher owns (their class).
   const { data: gradeLevels } = await findTeacherGradeLevelsForSchoolYear(teacher.teacher_id, "gl_id, level_name");
 
   const glIds = (gradeLevels ?? []).map((g) => g.gl_id);
   const emptySummary = { total: 0, present: 0, absent: 0, tardy: 0, excused: 0 };
-  if (!glIds.length) return { date, students: [], summary: emptySummary, gradeLevels: [] }; // no class assigned > empty
+  if (!glIds.length) return { date, students: [], summary: emptySummary, gradeLevels: [], attendanceBounds }; // no class assigned > empty
 
   // All students in those grade levels (alphabetical by last name).
   const { data: students, error: sErr } = await supabaseAdmin
@@ -498,6 +557,105 @@ export const getAttendance = async (user_id, date) => {
     students: rows,
     summary: { total: rows.length, present, absent, tardy, excused },
     gradeLevels: (gradeLevels ?? []).map((g) => g.level_name),
+    attendanceBounds,
+  };
+};
+
+// Loads every saved attendance entry for the supervisor's current class across
+// the full active school year. This is used only by History Print/Excel; the
+// on-screen date picker remains capped at today.
+export const getAttendanceHistory = async (user_id) => {
+  const { data: activeYear, error: yearError } = await supabaseAdmin
+    .from("school_year")
+    .select("start_date, end_date")
+    .eq("is_active", true)
+    .maybeSingle();
+  if (yearError) throw new Error(yearError.message);
+  if (!activeYear) throw new Error("No active school year found");
+  const attendanceBounds = { startDate: activeYear.start_date, endDate: activeYear.end_date };
+  const { data: teacher, error: teacherError } = await supabaseAdmin
+    .from("teacher")
+    .select("teacher_id")
+    .eq("user_id", user_id)
+    .maybeSingle();
+  if (teacherError) throw new Error(teacherError.message);
+  if (!teacher) {
+    return { students: [], records: [], summary: { total: 0, days: 0, present: 0, absent: 0, tardy: 0, excused: 0 }, gradeLevels: [], attendanceBounds };
+  }
+
+  const { data: gradeLevels, error: gradeError } = await findTeacherGradeLevelsForSchoolYear(
+    teacher.teacher_id,
+    "gl_id, level_name",
+  );
+  if (gradeError) throw new Error(gradeError.message);
+
+  const glIds = (gradeLevels ?? []).map((grade) => grade.gl_id);
+  const emptySummary = { total: 0, days: 0, present: 0, absent: 0, tardy: 0, excused: 0 };
+  if (!glIds.length) {
+    return { records: [], summary: emptySummary, gradeLevels: [], attendanceBounds };
+  }
+
+  const { data: students, error: studentError } = await supabaseAdmin
+    .from("student")
+    .select("student_id, first_name, last_name, gl_id, grade_level(level_name)")
+    .in("gl_id", glIds);
+  if (studentError) throw new Error(studentError.message);
+
+  const studentMap = new Map((students ?? []).map((student) => [student.student_id, student]));
+  const roster = (students ?? []).map((student) => ({
+    student_id: student.student_id,
+    name: `${student.first_name ?? ""} ${student.last_name ?? ""}`.trim(),
+    grade: student.grade_level?.level_name ?? "—",
+  })).sort((a, b) => a.name.localeCompare(b.name));
+  const studentIds = [...studentMap.keys()];
+  if (!studentIds.length) {
+    return {
+      students: [],
+      records: [],
+      summary: emptySummary,
+      gradeLevels: (gradeLevels ?? []).map((grade) => grade.level_name),
+      attendanceBounds,
+    };
+  }
+
+  const { data: attendanceRows, error: attendanceError } = await supabaseAdmin
+    .from("attendance")
+    .select("student_id, date_recorded, status, notes, time_recorded")
+    .eq("teacher_id", teacher.teacher_id)
+    .in("student_id", studentIds)
+    .gte("date_recorded", attendanceBounds.startDate)
+    .lte("date_recorded", attendanceBounds.endDate)
+    .order("date_recorded", { ascending: true });
+  if (attendanceError) throw new Error(attendanceError.message);
+
+  const records = (attendanceRows ?? []).map((record) => {
+    const student = studentMap.get(record.student_id);
+    return {
+      student_id: record.student_id,
+      name: `${student?.first_name ?? ""} ${student?.last_name ?? ""}`.trim(),
+      grade: student?.grade_level?.level_name ?? "—",
+      date_recorded: record.date_recorded,
+      status: record.status?.toLowerCase() ?? null,
+      notes: record.notes ?? "",
+      time_recorded: record.time_recorded ?? null,
+    };
+  }).sort((a, b) => a.date_recorded.localeCompare(b.date_recorded) || a.name.localeCompare(b.name));
+
+  const summary = {
+    total: records.length,
+    days: new Set(records.map((record) => record.date_recorded)).size,
+    present: records.filter((record) => record.status === "present").length,
+    absent: records.filter((record) => record.status === "absent").length,
+    tardy: records.filter((record) => record.status === "late").length,
+    excused: records.filter((record) => record.status === "excused").length,
+  };
+
+  return {
+    students: roster,
+    records,
+    summary,
+    gradeLevels: (gradeLevels ?? []).map((grade) => grade.level_name),
+    attendanceBounds,
   };
 };
 
@@ -508,6 +666,8 @@ export const submitAttendance = async (user_id, date, records) => {
   if (!date || !Array.isArray(records) || records.length === 0) {
     throw new Error("date and records[] are required");
   }
+  const attendanceBounds = await getActiveAttendanceBounds();
+  assertAttendanceDateInActiveYear(date, attendanceBounds);
 
   // Resolve the submitting teacher.
   const { data: teacher, error: tErr } = await supabaseAdmin
@@ -570,6 +730,7 @@ export const getStudentMonitoring = async (user_id, { grade, section, status, pa
 
   const glIds = (gradeLevels ?? []).map((g) => g.gl_id);
   if (!glIds.length) return { students: [], totalStudents: 0, totalPages: 0 };
+  const activeModuleIds = await findPaceModuleIdsForGradeLevels(glIds);
 
   // Fetch ALL of the teacher's students — filters must apply before pagination
   let query = supabaseAdmin
@@ -584,10 +745,13 @@ export const getStudentMonitoring = async (user_id, { grade, section, status, pa
   const studentIds = (students ?? []).map((s) => s.student_id);
 
   // Fetch all student_paces for these students
-  const { data: paces } = await supabaseAdmin
-    .from("student_pace")
-    .select("sp_id, student_id, status, current_pace, pace_module(subject, module_number, total_paces)")
-    .in("student_id", studentIds);
+  const { data: paces } = studentIds.length && activeModuleIds.length
+    ? await supabaseAdmin
+        .from("student_pace")
+        .select("sp_id, student_id, status, current_pace, pace_module(subject, module_number, total_paces)")
+        .in("student_id", studentIds)
+        .in("module_id", activeModuleIds)
+    : { data: [] };
 
   const spIds = (paces ?? []).map((p) => p.sp_id);
 
@@ -700,6 +864,7 @@ export const getStudentMonitoringOverview = async (user_id, { grade, search, pac
   if (!gradeLevels?.length) return empty;
 
   const glIds = gradeLevels.map((g) => g.gl_id);
+  const activeModuleIds = await findPaceModuleIdsForGradeLevels(glIds);
   const { data: students } = await supabaseAdmin
     .from("student")
     .select("student_id, first_name, last_name, gender, grade_level(level_name)")
@@ -710,10 +875,13 @@ export const getStudentMonitoringOverview = async (user_id, { grade, search, pac
   const studentIds = students.map((s) => s.student_id);
 
   // All execution records (per student)
-  const { data: paces } = await supabaseAdmin
-    .from("student_pace")
-    .select("sp_id, student_id, status, completion_status, assigned_date, points_earned, pace_module(module_number, subject)")
-    .in("student_id", studentIds);
+  const { data: paces } = activeModuleIds.length
+    ? await supabaseAdmin
+        .from("student_pace")
+        .select("sp_id, student_id, status, completion_status, assigned_date, points_earned, pace_module(module_number, subject)")
+        .in("student_id", studentIds)
+        .in("module_id", activeModuleIds)
+    : { data: [] };
 
   const pacesByStudent = {};
   studentIds.forEach((id) => { pacesByStudent[id] = []; });
@@ -864,16 +1032,20 @@ export const getStudentRankings = async (user_id, { grade, rankBy = "points", pa
   let glIds = gradeLevels.map((g) => g.gl_id);
   if (grade && grade !== "all") glIds = gradeLevels.filter((g) => g.level_name === grade).map((g) => g.gl_id);
   if (!glIds.length) return empty;
+  const activeModuleIds = await findPaceModuleIdsForGradeLevels(glIds);
 
   const { data: students } = await supabaseAdmin
     .from("student").select("student_id, first_name, last_name, grade_level(level_name)").in("gl_id", glIds);
   if (!students?.length) return empty;
   const studentIds = students.map((s) => s.student_id);
 
-  const { data: paces } = await supabaseAdmin
-    .from("student_pace")
-    .select("student_id, status, completion_status, points_earned")
-    .in("student_id", studentIds);
+  const { data: paces } = activeModuleIds.length
+    ? await supabaseAdmin
+        .from("student_pace")
+        .select("student_id, status, completion_status, points_earned")
+        .in("student_id", studentIds)
+        .in("module_id", activeModuleIds)
+    : { data: [] };
 
   const byStudent = new Map();
   students.forEach((s) => byStudent.set(s.student_id, {
@@ -919,7 +1091,7 @@ export const getPaceAnalyticsOverview = async (user_id, { grade } = {}) => {
     .from("teacher").select("teacher_id").eq("user_id", user_id).maybeSingle();
   if (!teacher) return empty;
 
-  const { data: gradeLevels } = await findTeacherGradeLevelsForSchoolYear(teacher.teacher_id, "gl_id, level_name");
+  const { data: gradeLevels } = await findTeacherGradeLevelsForSchoolYear(teacher.teacher_id, "gl_id, level_name, sy_id");
   if (!gradeLevels?.length) return empty;
 
   let glIds = gradeLevels.map((g) => g.gl_id);
@@ -927,22 +1099,27 @@ export const getPaceAnalyticsOverview = async (user_id, { grade } = {}) => {
     glIds = gradeLevels.filter((g) => g.level_name === grade).map((g) => g.gl_id);
   }
   if (!glIds.length) return empty;
+  const activeModuleIds = await findPaceModuleIdsForGradeLevels(glIds);
 
   const { data: students } = await supabaseAdmin
     .from("student").select("student_id, first_name, last_name").in("gl_id", glIds);
   if (!students?.length) return empty;
   const studentIds = students.map((s) => s.student_id);
 
-  const { data: paces } = await supabaseAdmin
-    .from("student_pace")
-    .select("student_id, status, completion_status, completion_date, points_earned, ready_for_next, pace_module(subject, module_number)")
-    .in("student_id", studentIds);
+  const { data: paces } = activeModuleIds.length
+    ? await supabaseAdmin
+        .from("student_pace")
+        .select("student_id, status, completion_status, completion_date, points_earned, ready_for_next, pace_module(subject, module_number)")
+        .in("student_id", studentIds)
+        .in("module_id", activeModuleIds)
+    : { data: [] };
   const spList = paces ?? [];
 
   const { data: projections } = await supabaseAdmin
     .from("pace_quarterly_projection")
     .select("student_id, subject, quarter, pace_start, pace_end")
-    .in("student_id", studentIds);
+    .in("student_id", studentIds)
+    .eq("sy_id", gradeLevels[0].sy_id);
 
   // Quarter of a PACE (via projection range), null if unknown
   const projByStudent = {};
@@ -1105,25 +1282,41 @@ export const getPaceAnalyticsReport = async (user_id, { grade, quarter, sy_id } 
   let glIds = gradeLevels.map((g) => g.gl_id);
   if (grade && grade !== "all") glIds = gradeLevels.filter((g) => g.level_name === grade).map((g) => g.gl_id);
   if (!glIds.length) return base;
+  const activeModuleIds = await findPaceModuleIdsForGradeLevels(glIds);
 
   const { data: students } = await supabaseAdmin
     .from("student").select("student_id, first_name, last_name").in("gl_id", glIds);
   if (!students?.length) return base;
   const studentIds = students.map((s) => s.student_id);
 
-  const { data: paces } = await supabaseAdmin
-    .from("student_pace")
-    .select("sp_id, student_id, status, completion_status, points_earned, ready_for_next")
-    .in("student_id", studentIds);
+  const { data: paces } = activeModuleIds.length
+    ? await supabaseAdmin
+        .from("student_pace")
+        .select("sp_id, student_id, status, completion_status, points_earned, ready_for_next, pace_module(module_number)")
+        .in("student_id", studentIds)
+        .in("module_id", activeModuleIds)
+    : { data: [] };
   const spList = paces ?? [];
 
   // PACE-test pass map (to flag "PACE Test Not Passed") — by sp_id
   const spIds = spList.map((p) => p.sp_id);
+  const studentBySp = new Map(spList.map((p) => [p.sp_id, p.student_id]));
+  const studentsWithAssignedPace = new Set(
+    spList.filter((p) => p.pace_module?.module_number != null).map((p) => p.student_id),
+  );
+  const studentsWithScoredTest = new Set();
   let passBySp = new Map();
   if (spIds.length) {
     const { data: tests } = await supabaseAdmin
       .from("pace_test_result").select("sp_id, score").in("sp_id", spIds);
     (tests ?? []).forEach((t) => {
+      // A scored result is linked to its assigned PACE through sp_id. Do not
+      // require pace_test_result.quarter: recorded scores commonly leave that
+      // redundant field null, which would incorrectly hide eligible students.
+      if (t.score != null) {
+        const studentId = studentBySp.get(t.sp_id);
+        if (studentId != null) studentsWithScoredTest.add(studentId);
+      }
       const prev = passBySp.get(t.sp_id) ?? { has: false, passed: false };
       prev.has = true;
       if ((t.score ?? 0) >= 90) prev.passed = true;
@@ -1157,10 +1350,11 @@ export const getPaceAnalyticsReport = async (user_id, { grade, quarter, sy_id } 
 
   const statusOf = (rate) => (rate >= 70 ? "On Track" : rate >= 50 ? "Ongoing" : "Needs Intervention");
 
-  // 1. Top 10 rankings (by performance points, tiebreak completion)
+  // 1. Student rankings. Include every eligible student: they must have both
+  // an assigned PACE number and at least one scored PACE test.
   base.topRankings = [...rows]
+    .filter((r) => studentsWithAssignedPace.has(r.id) && studentsWithScoredTest.has(r.id))
     .sort((a, b) => b.points - a.points || b.completionRate - a.completionRate || a.name.localeCompare(b.name))
-    .slice(0, 10)
     .map((r, i) => ({
       rank: i + 1, name: r.name, points: r.points,
       completionRate: r.completionRate, status: statusOf(r.completionRate),
@@ -1239,6 +1433,95 @@ const PACE_SUBJECT_ORDER = [
 
 const PACE_QUARTER_LABELS = ["1st Quarter", "2nd Quarter", "3rd Quarter", "4th Quarter"];
 
+// Resolve terminal official-test outcomes for projected PACE cells. These outcomes
+// are overlaid when the monitoring grid is read instead of storing "failed" in the
+// projection table, whose status check constraint predates the failed visual state.
+async function _terminalPaceOutcomes(studentIds, moduleIds) {
+  const outcomes = new Map();
+  if (!studentIds?.length || !moduleIds?.length) return outcomes;
+
+  const { data: paces, error: paceError } = await supabaseAdmin
+    .from("student_pace")
+    .select("sp_id, student_id, status, pace_module!inner(subject, module_number)")
+    .in("student_id", studentIds)
+    .in("module_id", moduleIds);
+  if (paceError) throw new Error(paceError.message);
+  if (!paces?.length) return outcomes;
+
+  const { data: results, error: resultError } = await supabaseAdmin
+    .from("pace_test_result")
+    .select("sp_id, score, passed")
+    .in("sp_id", paces.map((pace) => pace.sp_id))
+    .not("score", "is", null);
+  if (resultError) throw new Error(resultError.message);
+
+  const attemptsBySp = new Map();
+  (results ?? []).forEach((result) => {
+    const attempts = attemptsBySp.get(result.sp_id) ?? [];
+    attempts.push(result);
+    attemptsBySp.set(result.sp_id, attempts);
+  });
+
+  paces.forEach((pace) => {
+    const attempts = attemptsBySp.get(pace.sp_id) ?? [];
+    const passed = attempts.some(
+      (attempt) => attempt.passed === true || Number(attempt.score) >= ASSESS_PASS_MARK,
+    );
+    const failed = !passed && attempts.length >= MAX_ATTEMPTS;
+    if (!passed && !failed) return;
+    const key = `${pace.student_id}|${pace.pace_module?.subject}|${pace.pace_module?.module_number}`;
+    outcomes.set(key, passed ? "completed" : "failed");
+  });
+
+  return outcomes;
+}
+
+async function _findEarlierTerminalFailure(studentId, subject, paceNumber, moduleIds) {
+  if (!moduleIds?.length) return null;
+  const { data: earlierPaces, error: paceError } = await supabaseAdmin
+    .from("student_pace")
+    .select("sp_id, pace_module!inner(subject, module_number)")
+    .eq("student_id", Number(studentId))
+    .in("module_id", moduleIds)
+    .eq("pace_module.subject", subject)
+    .lt("pace_module.module_number", Number(paceNumber));
+  if (paceError) throw new Error(paceError.message);
+  if (!earlierPaces?.length) return null;
+
+  const { data: results, error: resultError } = await supabaseAdmin
+    .from("pace_test_result")
+    .select("sp_id, score, passed")
+    .in("sp_id", earlierPaces.map((pace) => pace.sp_id))
+    .not("score", "is", null);
+  if (resultError) throw new Error(resultError.message);
+
+  const attemptsBySp = new Map();
+  (results ?? []).forEach((result) => {
+    const attempts = attemptsBySp.get(result.sp_id) ?? [];
+    attempts.push(result);
+    attemptsBySp.set(result.sp_id, attempts);
+  });
+  return earlierPaces.find((pace) => {
+    const attempts = attemptsBySp.get(pace.sp_id) ?? [];
+    return attempts.length >= MAX_ATTEMPTS && !attempts.some(
+      (result) => result.passed === true || Number(result.score) >= ASSESS_PASS_MARK,
+    );
+  }) ?? null;
+}
+
+async function _isOfficialPaceTerminal(spId) {
+  const { data: attempts, error } = await supabaseAdmin
+    .from("pace_test_result")
+    .select("score, passed")
+    .eq("sp_id", Number(spId))
+    .not("score", "is", null);
+  if (error) throw new Error(error.message);
+  const passed = (attempts ?? []).some(
+    (result) => result.passed === true || Number(result.score) >= ASSESS_PASS_MARK,
+  );
+  return passed || (attempts?.length ?? 0) >= MAX_ATTEMPTS;
+}
+
 // Build 3-row PACE grid from subject→projection map for one quarter
 function _buildPaceRows(subjectMap) {
   const rows = [[], [], []];
@@ -1289,11 +1572,13 @@ function _deriveStatus(proj) {
 // (sp_id, quarter), but rows written with a null quarter never match that filter and
 // so insert duplicates — which makes a 3-attempt gate fire unpredictably here.
 // Returns Map(subject → { label, pace }).
-async function _paceTestReadinessForStudent(student_id) {
+async function _paceTestReadinessForStudent(student_id, moduleIds) {
+  if (!moduleIds?.length) return new Map();
   const { data: sp } = await supabaseAdmin
     .from("student_pace")
     .select("sp_id, pace_module!inner(subject, module_number)")
-    .eq("student_id", student_id);
+    .eq("student_id", student_id)
+    .in("module_id", moduleIds);
   if (!sp?.length) return new Map();
 
   // Only SCORED attempts count. A Requested/Scheduled row carries no score yet and
@@ -1381,6 +1666,7 @@ export const getPaceMonitoring = async (user_id, { student_id } = {}) => {
   if (!gradeLevels?.length) return empty;
 
   const glIds = gradeLevels.map((g) => g.gl_id);
+  const activeModuleIds = await findPaceModuleIdsForGradeLevels(glIds);
 
   const { data: students } = await supabaseAdmin
     .from("student")
@@ -1394,7 +1680,7 @@ export const getPaceMonitoring = async (user_id, { student_id } = {}) => {
   // Active school year (for the profile card "School Year" line)
   const { data: sy } = await supabaseAdmin
     .from("school_year")
-    .select("year_label")
+    .select("sy_id, year_label")
     .eq("is_active", true)
     .maybeSingle();
   const schoolYearLabel = sy?.year_label ?? "—";
@@ -1404,8 +1690,21 @@ export const getPaceMonitoring = async (user_id, { student_id } = {}) => {
     .from("pace_quarterly_projection")
     .select("student_id, quarter, subject, pace_start, pace_end, pace_count, status_r0, status_r1, status_r2")
     .in("student_id", studentIds)
+    .eq("sy_id", sy?.sy_id ?? 0)
     .order("quarter")
     .order("subject");
+
+  // Official test outcomes own terminal states. Overlay them onto the response so
+  // a failed PACE is red in both Individual and Class views, even though "failed"
+  // is not a persisted pace_quarterly_projection status value.
+  const terminalOutcomes = await _terminalPaceOutcomes(studentIds, activeModuleIds);
+  (projections ?? []).forEach((projection) => {
+    for (let index = 0; index < 3; index += 1) {
+      const paceNumber = Number(projection.pace_start) + index;
+      const terminal = terminalOutcomes.get(`${projection.student_id}|${projection.subject}|${paceNumber}`);
+      if (terminal) projection[`status_r${index}`] = terminal;
+    }
+  });
 
   // New vs Returning classification. Intended production rule: a student becomes
   // "Returning" once their account has been DISABLED for a set number of months (they
@@ -1477,6 +1776,7 @@ export const getPaceMonitoring = async (user_id, { student_id } = {}) => {
         .from("pace_quarterly_projection")
         .select("created_at")
         .eq("student_id", targetStudent.student_id)
+        .eq("sy_id", sy?.sy_id ?? 0)
         .order("created_at", { ascending: true })
         .limit(1);
       planGenerated = createdRows?.[0]?.created_at ?? null;
@@ -1486,7 +1786,9 @@ export const getPaceMonitoring = async (user_id, { student_id } = {}) => {
 
     // Readiness is per CURRENT PACE, not per quarter, so the same row is attached
     // to all four quarters (the UI renders quarters[0].readiness).
-    const readinessRow = _buildReadiness(await _paceTestReadinessForStudent(targetStudent.student_id));
+    const readinessRow = _buildReadiness(
+      await _paceTestReadinessForStudent(targetStudent.student_id, activeModuleIds),
+    );
 
     individual = {
       student_id:        targetStudent.student_id,
@@ -1557,15 +1859,40 @@ export const updatePaceProjectionCell = async (user_id, { student_id, subject, q
     .eq("is_active", true)
     .maybeSingle();
   if (!sy) throw new Error("No active school year");
+  const activeModuleIds = await findPaceModuleIdsForGradeLevels([studentRow.gl_id]);
 
   const start  = Number(pace_start);
   const count  = Number(pace_count) || 3;
 
+  const { data: currentProjection } = await supabaseAdmin
+    .from("pace_quarterly_projection")
+    .select("pace_start, status_r0, status_r1, status_r2")
+    .eq("student_id", Number(student_id))
+    .eq("sy_id", sy.sy_id)
+    .eq("quarter", Number(quarter))
+    .eq("subject", subject)
+    .maybeSingle();
+
+  if (currentProjection) {
+    const storedStatuses = [currentProjection.status_r0, currentProjection.status_r1, currentProjection.status_r2];
+    const terminalOutcomes = await _terminalPaceOutcomes([Number(student_id)], activeModuleIds);
+    const hasTerminalCell = storedStatuses.some((value) => value === "completed") ||
+      [0, 1, 2].some((index) => terminalOutcomes.has(
+        `${Number(student_id)}|${subject}|${Number(currentProjection.pace_start) + index}`,
+      ));
+    if (hasTerminalCell) {
+      throw new Error("This PACE block is locked because it contains a completed or failed PACE test");
+    }
+  }
+
   // Locked quarter check: no re-planning once an official PACE test is recorded
-  const { data: spRows } = await supabaseAdmin
-    .from("student_pace")
-    .select("sp_id")
-    .eq("student_id", Number(student_id));
+  const { data: spRows } = activeModuleIds.length
+    ? await supabaseAdmin
+        .from("student_pace")
+        .select("sp_id")
+        .eq("student_id", Number(student_id))
+        .in("module_id", activeModuleIds)
+    : { data: [] };
   const spIds = (spRows ?? []).map((r) => r.sp_id);
   if (spIds.length) {
     const { data: scored } = await supabaseAdmin
@@ -1585,11 +1912,12 @@ export const updatePaceProjectionCell = async (user_id, { student_id, subject, q
   // and the Student Profile modal). Students never skip an unpassed PACE, so the
   // plan cannot move the start number past an unresolved failed PACE in the
   // same subject until it's retaken and passed.
-  {
+  if (activeModuleIds.length) {
     const { data: subjSp } = await supabaseAdmin
       .from("student_pace")
       .select("sp_id, pace_module!inner(subject, module_number)")
       .eq("student_id", Number(student_id))
+      .in("module_id", activeModuleIds)
       .eq("pace_module.subject", subject);
     const priorSp = (subjSp ?? []).filter((r) => (r.pace_module?.module_number ?? 0) < start);
     if (priorSp.length) {
@@ -1640,6 +1968,9 @@ export const updatePaceProjectionCell = async (user_id, { student_id, subject, q
 //   checked. Called by controller.updatePaceCellStatus (PATCH /teacher/pace-projection/
 //   status) from teacher/PaceMonitoring.jsx (the status picker).
 export const updatePaceProjectionStatus = async (user_id, { student_id, subject, quarter, row_index, status }) => {
+  if (status === "completed") {
+    throw new Error("Completion is recorded automatically after a passing PACE test");
+  }
   const { data: teacher } = await supabaseAdmin
     .from("teacher")
     .select("teacher_id")
@@ -1649,7 +1980,7 @@ export const updatePaceProjectionStatus = async (user_id, { student_id, subject,
 
   const { data: studentRow } = await supabaseAdmin
     .from("student")
-    .select("student_id, grade_level!inner(teacher_id)")
+    .select("student_id, gl_id, grade_level!inner(teacher_id)")
     .eq("student_id", Number(student_id))
     .eq("grade_level.teacher_id", teacher.teacher_id)
     .maybeSingle();
@@ -1663,6 +1994,30 @@ export const updatePaceProjectionStatus = async (user_id, { student_id, subject,
   if (!sy) throw new Error("No active school year");
 
   const col = `status_r${row_index}`;
+
+  const { data: projection, error: projectionError } = await supabaseAdmin
+    .from("pace_quarterly_projection")
+    .select("pace_start, status_r0, status_r1, status_r2")
+    .eq("student_id", Number(student_id))
+    .eq("sy_id", sy.sy_id)
+    .eq("quarter", Number(quarter))
+    .eq("subject", subject)
+    .maybeSingle();
+  if (projectionError) throw new Error(projectionError.message);
+  if (!projection) throw new Error("PACE projection cell not found");
+
+  const currentStatus = projection[col] ?? "not-started";
+  if (["completed", "failed"].includes(currentStatus)) {
+    throw new Error("Completed or failed PACE tests are locked and cannot be overwritten");
+  }
+
+  const moduleIds = await findPaceModuleIdsForGradeLevels([studentRow.gl_id]);
+  const paceNumber = Number(projection.pace_start) + Number(row_index);
+  const terminal = (await _terminalPaceOutcomes([Number(student_id)], moduleIds))
+    .get(`${Number(student_id)}|${subject}|${paceNumber}`);
+  if (terminal) {
+    throw new Error(`${terminal === "failed" ? "Failed" : "Completed"} PACE test ${paceNumber} is locked and cannot be overwritten`);
+  }
 
   // NOTE: homework (taken-home) counts are computed live from the projection
   // statuses wherever they are displayed. We deliberately do NOT write into
@@ -2372,25 +2727,19 @@ async function _ownedStudent(user_id, student_id) {
   return { teacher, student };
 }
 
-// A PACE is settled once there is nothing left to manage on it, so the Assign/Manage
-// modal shows it read-only. Two ways to get there, both judged per PACE (per sp_id),
-// never per subject - the other PACEs in the same subject stay editable:
-//   1. status "Completed" - recordPaceTest (~line 3349) sets this on a passing test,
-//      and a supervisor can also set it by hand here.
-//   2. all MAX_ATTEMPTS official attempts recorded with none passing = failed out.
-//      Same rule as the advance-gate at ~line 1577, so both agree on what "Failed" means.
+// A PACE is settled once it has a passing official result or all MAX_ATTEMPTS
+// official attempts have failed. The Assign/Manage modal then becomes read-only.
 // `test` is { attempts, passed } from the tally in getStudentPaceManage below.
 const _isPaceLocked = (sp, test) => {
   if (!sp) return false;                                   // nothing assigned yet
-  if (sp.status === "Completed") return true;
-  return !!test && test.attempts >= MAX_ATTEMPTS && !test.passed;
+  if (test?.passed) return true;
+  return !!test && test.attempts >= MAX_ATTEMPTS;
 };
 // Status wording for THIS modal only (the badge + the read-only Status field).
-// "Completed" reads as "Passed" when a passing test actually backs it; a hand-set
-// Completed with no test on record keeps saying "Completed" since nothing was passed.
+// Completion is derived from a passing official result, never a hand-set status.
 const _displayStatus = (sp, test) => {
   if (!sp) return "Not Yet Started";
-  if (sp.status === "Completed") return test?.passed ? "Passed" : "Completed";
+  if (test?.passed) return "Passed";
   if (_isPaceLocked(sp, test)) return "Failed";            // attempts used up, none passing
   // Past the expected end date and still unfinished → Overdue (regardless of
   // whether it was started). The completion status/points are computed only on
@@ -2417,16 +2766,21 @@ export const getStudentPaceManage = async (user_id, student_id) => {
 
   const { data: sy } = await supabaseAdmin
     .from("school_year")
-    .select("year_label")
+    .select("sy_id, year_label")
     .eq("is_active", true)
     .maybeSingle();
 
-  // All execution records for this student
-  const { data: paces } = await supabaseAdmin
-    .from("student_pace")
-    .select("sp_id, status, assigned_date, start_date, end_date, completion_date, completion_status, extension_count, points_earned, pace_module(subject, module_number, module_name)")
-    .eq("student_id", student.student_id)
-    .order("assigned_date", { ascending: false });
+  // Execution records only for modules belonging to the student's active-year
+  // grade. Older rows remain historical and must not populate this workspace.
+  const activeModuleIds = await findPaceModuleIdsForGradeLevels([student.gl_id]);
+  const { data: paces } = activeModuleIds.length
+    ? await supabaseAdmin
+        .from("student_pace")
+        .select("sp_id, status, assigned_date, start_date, end_date, completion_date, completion_status, extension_count, points_earned, pace_module(subject, module_number, module_name)")
+        .eq("student_id", student.student_id)
+        .in("module_id", activeModuleIds)
+        .order("assigned_date", { ascending: false })
+    : { data: [] };
 
   // Official PACE-test attempts per assigned PACE, for the locked/Passed/Failed wording
   // below. Only rows with a real score count - request/schedule rows share this table
@@ -2453,6 +2807,7 @@ export const getStudentPaceManage = async (user_id, student_id) => {
     .from("pace_quarterly_projection")
     .select("subject, quarter, pace_start, pace_end")
     .eq("student_id", student.student_id)
+    .eq("sy_id", sy?.sy_id ?? 0)
     .order("quarter");
 
   // Available PACE modules for this grade level (for the form's PACE-number picker)
@@ -2621,6 +2976,16 @@ export const saveStudentPace = async (user_id, payload) => {
   const paceNum = Number(pace_number);
   const newStatus = status || "Assigned";
 
+  // A terminal failure stops progression in this subject for the rest of the
+  // school year. The next year's rollover will start from this same failed PACE.
+  const activeModuleIds = await findPaceModuleIdsForGradeLevels([student.gl_id]);
+  const failedPace = await _findEarlierTerminalFailure(
+    student.student_id, subject, paceNum, activeModuleIds,
+  );
+  if (failedPace) {
+    throw new Error(`Cannot assign PACE ${paceNum}; ${subject} PACE ${failedPace.pace_module.module_number} must be retaken next school year`);
+  }
+
   // Resolve (or create) the pace_module for this grade level + subject + PACE number
   let { data: module } = await supabaseAdmin
     .from("pace_module")
@@ -2650,6 +3015,28 @@ export const saveStudentPace = async (user_id, payload) => {
 
   const extCount = extension_count != null ? Number(extension_count) : (existing?.extension_count ?? 0);
 
+  if (existing?.sp_id) {
+    if (await _isOfficialPaceTerminal(existing.sp_id)) {
+      throw new Error("Passed or failed PACE records are locked and cannot be overwritten");
+    }
+  }
+
+  // Completion is assessment-owned. Managing dates/status cannot create a final
+  // grade unless an official passing PACE-test result already exists.
+  if (newStatus === "Completed") {
+    if (!existing?.sp_id) throw new Error("Record a passing PACE test before marking this PACE completed");
+    const { data: officialResults, error: resultError } = await supabaseAdmin
+      .from("pace_test_result")
+      .select("score, passed")
+      .eq("sp_id", existing.sp_id)
+      .not("score", "is", null);
+    if (resultError) throw new Error(resultError.message);
+    const hasPassingTest = (officialResults ?? []).some(
+      (result) => result.passed === true || Number(result.score) >= ASSESS_PASS_MARK,
+    );
+    if (!hasPassingTest) throw new Error("Record a passing PACE test before marking this PACE completed");
+  }
+
   const row = {
     student_id:     student.student_id,
     module_id:      module.module_id,
@@ -2670,11 +3057,10 @@ export const saveStudentPace = async (user_id, payload) => {
     if (existing?.sp_id) {
       const { data: pt } = await supabaseAdmin
         .from("pace_test_result")
-        .select("passed")
+        .select("score, passed")
         .eq("sp_id", existing.sp_id)
-        .order("date_taken", { ascending: false })
-        .limit(1);
-      passed = pt?.[0]?.passed === true;
+        .not("score", "is", null);
+      passed = (pt ?? []).some((result) => result.passed === true || Number(result.score) >= ASSESS_PASS_MARK);
     }
     const { completion_status, points_earned } = _computePaceCompletion({
       end_date: row.end_date, completion_date: compDate, extension_count: extCount, passed,
@@ -2768,7 +3154,7 @@ export const getStudentAcademicRecord = async (user_id, student_id) => {
 
   const { data: sy } = await supabaseAdmin
     .from("school_year")
-    .select("sy_id, year_label, start_date")
+    .select("sy_id, year_label, start_date, end_date")
     .eq("is_active", true)
     .maybeSingle();
 
@@ -2779,11 +3165,16 @@ export const getStudentAcademicRecord = async (user_id, student_id) => {
     .eq("student_id", student.student_id)
     .maybeSingle();
 
-  // All execution records
-  const { data: paces } = await supabaseAdmin
-    .from("student_pace")
-    .select("sp_id, status, completion_status, points_earned, homework, ready_for_next, assigned_date, start_date, end_date, completion_date, pace_module(subject, module_number, module_name)")
-    .eq("student_id", student.student_id);
+  // Current-year execution records only. The student's current grade points to
+  // the active year's grade-level modules; older modules remain historical.
+  const activeModuleIds = await findPaceModuleIdsForGradeLevels([student.gl_id]);
+  const { data: paces } = activeModuleIds.length
+    ? await supabaseAdmin
+        .from("student_pace")
+        .select("sp_id, status, completion_status, points_earned, homework, ready_for_next, assigned_date, start_date, end_date, completion_date, pace_module(subject, module_number, module_name)")
+        .eq("student_id", student.student_id)
+        .in("module_id", activeModuleIds)
+    : { data: [] };
   const spList = paces ?? [];
   const spIds  = spList.map((p) => p.sp_id);
 
@@ -2814,13 +3205,17 @@ export const getStudentAcademicRecord = async (user_id, student_id) => {
   {
     const { data: gl } = await findTeacherGradeLevelsForSchoolYear(teacher.teacher_id, "gl_id");
     const glIds = (gl ?? []).map((g) => g.gl_id);
+    const peerModuleIds = await findPaceModuleIdsForGradeLevels(glIds);
     const { data: peers } = await supabaseAdmin
       .from("student").select("student_id, grade_level(level_name)").in("gl_id", glIds);
     const sameGrade = (peers ?? []).filter((s) => (s.grade_level?.level_name ?? null) === gradeName);
     const peerIds = sameGrade.map((s) => s.student_id);
-    if (peerIds.length) {
+    if (peerIds.length && peerModuleIds.length) {
       const { data: peerPaces } = await supabaseAdmin
-        .from("student_pace").select("student_id, points_earned").in("student_id", peerIds);
+        .from("student_pace")
+        .select("student_id, points_earned")
+        .in("student_id", peerIds)
+        .in("module_id", peerModuleIds);
       const ptsBy = new Map();
       (peerPaces ?? []).forEach((p) => ptsBy.set(p.student_id, (ptsBy.get(p.student_id) ?? 0) + (p.points_earned ?? 0)));
       const ordered = peerIds
@@ -2843,7 +3238,11 @@ export const getStudentAcademicRecord = async (user_id, student_id) => {
 
   // ── Attendance summary ────────────────────────────────────────────────────────
   const { data: att } = await supabaseAdmin
-    .from("attendance").select("status").eq("student_id", student.student_id);
+    .from("attendance")
+    .select("status")
+    .eq("student_id", student.student_id)
+    .gte("date_recorded", sy?.start_date ?? "0001-01-01")
+    .lte("date_recorded", sy?.end_date ?? "9999-12-31");
   const aRows = att ?? [];
   const aTotal = aRows.length || 1;
   const attendanceSummary = {
@@ -2861,7 +3260,8 @@ export const getStudentAcademicRecord = async (user_id, student_id) => {
   const { data: projections } = await supabaseAdmin
     .from("pace_quarterly_projection")
     .select("subject, quarter, pace_start, status_r0, status_r1, status_r2")
-    .eq("student_id", student.student_id);
+    .eq("student_id", student.student_id)
+    .eq("sy_id", sy?.sy_id ?? 0);
 
   // student_pace lookup by subject|module_number
   const spBySubjModule = new Map();
@@ -2891,7 +3291,7 @@ export const getStudentAcademicRecord = async (user_id, student_id) => {
         const attempts  = sp ? (testsBySp.get(sp.sp_id) ?? []) : [];
         const passedAny = attempts.some((a) => a.passed === true || (a.score != null && a.score >= ASSESS_PASS_MARK));
         const status = !sp ? "Not Started"
-          : (passedAny || sp.status === "Completed") ? "Completed"
+          : passedAny ? "Completed"
           : attempts.length >= MAX_ATTEMPTS ? "Failed"
           : (sp.status === "In Progress" || attempts.length > 0) ? "Ongoing"
           : "Not Started";
@@ -3133,6 +3533,8 @@ export const updateStudentProfile = async (user_id, student_id, fields = {}) => 
 // completion/points (>=90 completes it; below reverts to In Progress; blank clears).
 export const setPaceScore = async (user_id, { student_id, subject, pace_number, score }) => {
   const { teacher, student } = await _ownedStudent(user_id, student_id);
+  const activeModuleIds = await findPaceModuleIdsForGradeLevels([student.gl_id]);
+  if (!activeModuleIds.length) throw new Error("This student has no PACE modules for the active school year.");
   const blank = score === "" || score == null;
   const sc = blank ? null : Number(score);
   if (!blank && (isNaN(sc) || sc < 0 || sc > 100)) throw new Error("Score must be between 0 and 100.");
@@ -3141,10 +3543,14 @@ export const setPaceScore = async (user_id, { student_id, subject, pace_number, 
   const { data: sps } = await supabaseAdmin
     .from("student_pace")
     .select("sp_id, end_date, extension_count, completion_date, pace_module!inner(subject, module_number)")
-    .eq("student_id", student.student_id);
+    .eq("student_id", student.student_id)
+    .in("module_id", activeModuleIds);
   const sp = (sps ?? []).find((p) =>
     p.pace_module?.subject === subject && String(p.pace_module?.module_number) === String(pace_number));
   if (!sp) throw new Error("This PACE isn't assigned to the student, so it can't be graded.");
+  if (await _isOfficialPaceTerminal(sp.sp_id)) {
+    throw new Error("Passed or failed PACE records are locked and cannot be overwritten");
+  }
 
   const passed  = !blank && sc >= ASSESS_PASS_MARK;
   const takenOn = new Date().toISOString().split("T")[0];
@@ -3191,14 +3597,20 @@ export const setPaceScore = async (user_id, { student_id, subject, pace_number, 
 // Flags the student's current (or latest) PACE ready_for_next = true.
 export const markReadyForNext = async (user_id, student_id) => {
   const { student } = await _ownedStudent(user_id, student_id);
+  const activeModuleIds = await findPaceModuleIdsForGradeLevels([student.gl_id]);
+  if (!activeModuleIds.length) throw new Error("No PACE is assigned for the active school year.");
   // Flag the current In Progress PACE (else the most recently assigned) as ready
   const { data: sp } = await supabaseAdmin
     .from("student_pace")
     .select("sp_id, status, assigned_date")
     .eq("student_id", student.student_id)
+    .in("module_id", activeModuleIds)
     .order("assigned_date", { ascending: false });
   const target = (sp ?? []).find((p) => p.status === "In Progress") ?? (sp ?? [])[0];
   if (!target) throw new Error("No PACE to flag for this student");
+  if (await _isOfficialPaceTerminal(target.sp_id)) {
+    throw new Error("Passed or failed PACE records are locked and cannot be changed");
+  }
   const { error } = await supabaseAdmin
     .from("student_pace").update({ ready_for_next: true }).eq("sp_id", target.sp_id);
   if (error) throw new Error(error.message);
@@ -3206,9 +3618,6 @@ export const markReadyForNext = async (user_id, student_id) => {
 };
 
 // ─── Record Assessments (student-centric self-test + PACE-test scoring) ───────
-const ASSESS_PASS_MARK = 90;          // PACE test pass + self-test "Ready" gate
-const MAX_ATTEMPTS = 3;
-
 // Verify the sp_id belongs to one of the teacher's students; returns teacher row.
 async function _ownsSpId(user_id, sp_id) {
   const { data: teacher } = await supabaseAdmin
@@ -3218,48 +3627,59 @@ async function _ownsSpId(user_id, sp_id) {
     .maybeSingle();
   if (!teacher) throw new Error("Teacher not found");
 
+  const { data: gradeLevels } = await findTeacherGradeLevelsForSchoolYear(teacher.teacher_id, "gl_id");
+  const activeModuleIds = await findPaceModuleIdsForGradeLevels(
+    (gradeLevels ?? []).map((gradeLevel) => gradeLevel.gl_id),
+  );
+
   const { data: sp } = await supabaseAdmin
     .from("student_pace")
-    .select("sp_id, student(grade_level!inner(teacher_id))")
+    .select("sp_id, module_id, student(grade_level!inner(teacher_id))")
     .eq("sp_id", Number(sp_id))
     .maybeSingle();
-  if (!sp || sp.student?.grade_level?.teacher_id !== teacher.teacher_id) {
+  if (
+    !sp ||
+    sp.student?.grade_level?.teacher_id !== teacher.teacher_id ||
+    !activeModuleIds.includes(sp.module_id)
+  ) {
     throw new Error("PACE not found or not assigned to this teacher");
   }
   return teacher;
 }
 
-// One student's current PACE per subject + their test attempts. Finds the current
-// PACE per subject, pulls all self-test + pace-test attempts, and derives each row's
-// average/ready/passed flags and status label.
-export const getStudentAssessments = async (user_id, student_id) => {
+// Every active-year PACE assigned to one student, including the complete Self-Test
+// and official PACE-Test attempt history for each row.
+export const getStudentAssessments = async (user_id, student_id, { page = 1, pageSize = 10 } = {}) => {
   const { student } = await _ownedStudent(user_id, student_id); // ownership check + student record
+  const activeModuleIds = await findPaceModuleIdsForGradeLevels([student.gl_id]);
 
-  // Every PACE assigned to this student (+ its module info).
-  const { data: paces } = await supabaseAdmin
-    .from("student_pace")
-    .select("sp_id, status, assigned_date, pace_module(subject, module_number, module_name)")
-    .eq("student_id", student.student_id);
+  // PACEs assigned through the student's active-year grade modules only.
+  const { data: paces } = activeModuleIds.length
+    ? await supabaseAdmin
+        .from("student_pace")
+        .select("sp_id, status, assigned_date, pace_module(subject, module_number, module_name)")
+        .eq("student_id", student.student_id)
+        .in("module_id", activeModuleIds)
+    : { data: [] };
 
-  // Current PACE per subject — DETERMINISTIC by PACE number (stable across saves):
-  // prefer In Progress, else lowest not-yet-started, else highest completed.
-  const _bySubj = new Map();
-  (paces ?? []).forEach((p) => {
-    const subj = p.pace_module?.subject;
-    if (!subj) return;
-    (_bySubj.get(subj) ?? _bySubj.set(subj, []).get(subj)).push(p);
+  const orderIndex = (subject) => {
+    const index = PACE_SUBJECT_ORDER.indexOf(subject);
+    return index === -1 ? 999 : index;
+  };
+  const sortedPaces = [...(paces ?? [])].sort((a, b) => {
+    const subjectA = a.pace_module?.subject ?? "";
+    const subjectB = b.pace_module?.subject ?? "";
+    return orderIndex(subjectA) - orderIndex(subjectB) ||
+      subjectA.localeCompare(subjectB) ||
+      (a.pace_module?.module_number ?? 0) - (b.pace_module?.module_number ?? 0);
   });
-  const _num = (p) => p.pace_module?.module_number ?? 0;
-  const currentBySubject = new Map();
-  _bySubj.forEach((arr, subj) => {
-    const inProg    = arr.filter((p) => p.status === "In Progress").sort((a, b) => _num(a) - _num(b));
-    const assigned  = arr.filter((p) => p.status === "Assigned").sort((a, b) => _num(a) - _num(b));
-    const completed = arr.filter((p) => p.status === "Completed").sort((a, b) => _num(b) - _num(a));
-    currentBySubject.set(subj, inProg[0] ?? assigned[0] ?? completed[0] ?? arr[0]);
-  });
-
-  const current = [...currentBySubject.values()];      // one current PACE per subject
-  const spIds   = current.map((p) => p.sp_id);          // their student_pace ids
+  const normalizedPageSize = Math.min(50, Math.max(5, Number(pageSize) || 10));
+  const total = sortedPaces.length;
+  const totalPages = Math.max(1, Math.ceil(total / normalizedPageSize));
+  const normalizedPage = Math.min(totalPages, Math.max(1, Number(page) || 1));
+  const offset = (normalizedPage - 1) * normalizedPageSize;
+  const displayPaces = sortedPaces.slice(offset, offset + normalizedPageSize);
+  const spIds = displayPaces.map((pace) => pace.sp_id);
 
   // Fetch all attempts for these PACEs in two batches (self-test + pace-test), then
   //   index each list by sp_id for quick per-row lookup below.
@@ -3270,7 +3690,7 @@ export const getStudentAssessments = async (user_id, student_id) => {
       // Only rows with an actual score are real attempts. Schedule/request rows also
       // live in pace_test_result (assessment_status set, score null) — exclude them so
       // a scheduled-but-not-taken test doesn't show as a failed null% attempt.
-      supabaseAdmin.from("pace_test_result").select("sp_id, score, date_taken, passed, recorded_by").in("sp_id", spIds).not("score", "is", null).order("date_taken", { ascending: true }),
+      supabaseAdmin.from("pace_test_result").select("sp_id, attempt_no, score, date_taken, passed, recorded_by").in("sp_id", spIds).not("score", "is", null).order("date_taken", { ascending: true }),
     ]);
     (selfRows ?? []).forEach((r) => { (selfBySp.get(r.sp_id) ?? selfBySp.set(r.sp_id, []).get(r.sp_id)).push(r); });
     (paceRows ?? []).forEach((r) => { (paceBySp.get(r.sp_id) ?? paceBySp.set(r.sp_id, []).get(r.sp_id)).push(r); });
@@ -3285,14 +3705,14 @@ export const getStudentAssessments = async (user_id, student_id) => {
   };
   const passedAny = (arr) => (arr ?? []).some((r) => r.passed === true || (r.score != null && r.score >= PASS));
 
-  const orderIndex = (s) => { const i = PACE_SUBJECT_ORDER.indexOf(s); return i === -1 ? 999 : i; };
-
-  // Build one display row per current PACE: attempts + averages + gating flags + status.
-  const rows = current
+  // Build one display row per assigned PACE: attempts + averages + gating flags + status.
+  const rows = displayPaces
     .map((p) => {
       const subject     = p.pace_module?.subject ?? "—";
       const selfAtt     = (selfBySp.get(p.sp_id) ?? []).sort((a, b) => (a.attempt_no ?? 0) - (b.attempt_no ?? 0));
-      const paceAtt     = (paceBySp.get(p.sp_id) ?? []);
+      const paceAtt     = (paceBySp.get(p.sp_id) ?? []).sort((a, b) =>
+        (a.attempt_no ?? 0) - (b.attempt_no ?? 0) || String(a.date_taken ?? "").localeCompare(String(b.date_taken ?? "")),
+      );
       const selfAvg     = avgScore(selfAtt);                   // informational only
       const selfReady   = passedAny(selfAtt);                  // READY when ANY attempt >= 90
       const selfNeedsIntervention = !selfReady && selfAtt.length >= MAX_ATTEMPTS; // 3 tries, none passed
@@ -3320,31 +3740,43 @@ export const getStudentAssessments = async (user_id, student_id) => {
           attemptsUsed: selfAtt.length,
           canRecord:   !selfReady && selfAtt.length < MAX_ATTEMPTS,   // stop once passed or capped
           needsIntervention: selfNeedsIntervention,                   // 3 failed attempts, none >= 90
-          canReset:    selfAtt.length > 0,                            // supervisor can clear + re-record
+          canReset:    selfAtt.length > 0 && !pacePassed && paceAtt.length < MAX_ATTEMPTS,
         },
         paceTest: {
-          attempts:    paceAtt.map((r, i) => ({ attempt: i + 1, score: r.score, date: r.date_taken, passed: r.passed ?? (r.score >= PASS), recordedBy: r.recorded_by ?? null })),
+          attempts:    paceAtt.map((r, i) => ({ attempt: r.attempt_no ?? i + 1, score: r.score, date: r.date_taken, passed: r.passed ?? (r.score >= PASS), recordedBy: r.recorded_by ?? null })),
           passed:      pacePassed,
           latestScore: paceAtt.length ? paceAtt[paceAtt.length - 1].score : null,  // most recent attempt
           attemptsUsed: paceAtt.length,
           available:   selfReady,                        // unlocked once a self-test attempt passes
-          canRecord:   selfReady && paceAtt.length < MAX_ATTEMPTS,
+          canRecord:   selfReady && !pacePassed && paceAtt.length < MAX_ATTEMPTS,
         },
         status,
       };
     })
-    .sort((a, b) => orderIndex(a.subject) - orderIndex(b.subject) || a.subject.localeCompare(b.subject));
+    .sort((a, b) => orderIndex(a.subject) - orderIndex(b.subject) ||
+      a.subject.localeCompare(b.subject) || (a.paceNumber ?? 0) - (b.paceNumber ?? 0));
 
   return {
     student: { student_id: student.student_id, name: `${student.first_name} ${student.last_name}`.trim(), gradeLevel: student.grade_level?.level_name ?? "—" },
     rows,
     passMark: PASS,
+    pagination: {
+      page: normalizedPage,
+      pageSize: normalizedPageSize,
+      total,
+      totalPages,
+      hasPrevious: normalizedPage > 1,
+      hasNext: normalizedPage < totalPages,
+    },
   };
 };
 
 // Insert one self-test attempt for a PACE (max 3); returns whether this attempt passed.
 export const recordSelfTest = async (user_id, { sp_id, score, date_taken }) => {
   const teacher = await _ownsSpId(user_id, sp_id);     // ownership check (teacher owns this PACE)
+  if (await _isOfficialPaceTerminal(sp_id)) {
+    throw new Error("Passed or failed PACE records are locked and cannot be overwritten");
+  }
   const sc = Number(score);
   if (isNaN(sc) || sc < 0 || sc > 100) throw new Error("Score must be between 0 and 100"); // validate range
 
@@ -3368,6 +3800,9 @@ export const recordSelfTest = async (user_id, { sp_id, score, date_taken }) => {
 // Per product decision this CLEARS the attempts (old attempts are not retained).
 export const resetSelfTest = async (user_id, { sp_id }) => {
   await _ownsSpId(user_id, sp_id);                     // ownership check (throws if not owned)
+  if (await _isOfficialPaceTerminal(sp_id)) {
+    throw new Error("Passed or failed PACE records are locked and cannot be overwritten");
+  }
   const { error } = await supabaseAdmin
     .from("self_test_result")
     .delete()
@@ -3401,9 +3836,12 @@ export const recordPaceTest = async (user_id, { sp_id, score, date_taken }) => {
   // rows (score null) share this table and must not consume attempt slots.
   const { data: existing } = await supabaseAdmin
     .from("pace_test_result")
-    .select("pacetest_id")
+    .select("pacetest_id, score, passed")
     .eq("sp_id", Number(sp_id))
     .not("score", "is", null);
+  if ((existing ?? []).some((attempt) => attempt.passed === true || Number(attempt.score) >= ASSESS_PASS_MARK)) {
+    throw new Error("This PACE test is completed and locked; its result cannot be overwritten");
+  }
   if ((existing?.length ?? 0) >= MAX_ATTEMPTS) throw new Error(`Maximum ${MAX_ATTEMPTS} PACE test attempts already recorded`);
 
   const passed  = sc >= ASSESS_PASS_MARK;               // did this attempt pass?
@@ -3445,7 +3883,9 @@ export const recordPaceTest = async (user_id, { sp_id, score, date_taken }) => {
     const subj = spRow?.pace_module?.subject ?? null;
     const num  = spRow?.pace_module?.module_number ?? null;
 
-    // Auto-update the PACE Monitoring icon: pass → Completed, fail → Ongoing.
+    // Auto-update the persisted monitoring icon. A terminal failure is derived from
+    // the three official attempts when the grid is read (the projection constraint
+    // does not persist a "failed" value).
     if (spRow?.student_id && subj && num != null) {
       await _syncProjectionCell(spRow.student_id, subj, num, passed ? "completed" : "ongoing");
     }
@@ -3570,6 +4010,15 @@ export const bulkSaveSelfTestResults = async (user_id, records) => {
       continue;
     }
 
+    const activeModuleIds = await findPaceModuleIdsForGradeLevels([glId]);
+    const failedPace = await _findEarlierTerminalFailure(
+      studentId, r.subject, paceNumber, activeModuleIds,
+    );
+    if (failedPace) {
+      errors.push(`Student ${studentId}: ${r.subject} PACE ${failedPace.pace_module.module_number} must be retaken next school year`);
+      continue;
+    }
+
     // Find the student's existing assignment for this PACE number + subject,
     // regardless of which grade level the module was created under
     const { data: spRows } = await supabaseAdmin
@@ -3616,6 +4065,11 @@ export const bulkSaveSelfTestResults = async (user_id, records) => {
         .single();
       if (spErr) { errors.push(`Student ${studentId}: failed to assign PACE ${paceNumber} — ${spErr.message}`); continue; }
       spId = newSp.sp_id;
+    }
+
+    if (await _isOfficialPaceTerminal(spId)) {
+      errors.push(`Student ${studentId}: passed or failed PACE records are locked`);
+      continue;
     }
 
     const payload = {
@@ -3714,6 +4168,15 @@ export const bulkSavePaceTestResults = async (user_id, records) => {
       continue;
     }
 
+    const activeModuleIds = await findPaceModuleIdsForGradeLevels([glId]);
+    const failedPace = await _findEarlierTerminalFailure(
+      studentId, r.subject, paceNumber, activeModuleIds,
+    );
+    if (failedPace) {
+      errors.push(`Student ${studentId}: ${r.subject} PACE ${failedPace.pace_module.module_number} must be retaken next school year`);
+      continue;
+    }
+
     // Find the student's existing assignment for this PACE number + subject,
     // regardless of which grade level the module was created under
     const { data: spRows } = await supabaseAdmin
@@ -3760,6 +4223,11 @@ export const bulkSavePaceTestResults = async (user_id, records) => {
         .single();
       if (spErr) { errors.push(`Student ${studentId}: failed to assign PACE ${paceNumber} — ${spErr.message}`); continue; }
       spId = newSp.sp_id;
+    }
+
+    if (await _isOfficialPaceTerminal(spId)) {
+      errors.push(`Student ${studentId}: passed or failed PACE records are locked`);
+      continue;
     }
 
     const payload = {

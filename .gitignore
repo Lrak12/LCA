@@ -12,6 +12,9 @@ node_modules/
 frontend/dist/
 backend/dist/
 
+# Local database/demo scripts
+backend/scripts/
+
 # Logs
 *.log
 npm-debug.log*

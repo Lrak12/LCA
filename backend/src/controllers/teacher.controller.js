@@ -226,9 +226,13 @@ export const setPaceScore = asyncHandler(async (req, res) => {
 //   Validates the id, then returns that student's per-PACE assessments.
 //   NEXT > service.getStudentAssessments. UI: teacher/Assessments.jsx.
 export const getStudentAssessments = asyncHandler(async (req, res) => {
-  const { student_id } = req.query;
+  const { student_id, page, page_size } = req.query;
   if (!student_id) return res.status(400).json({ message: "student_id is required" });
-  const data = await TeacherService.getStudentAssessments(req.user.user_id, parseInt(student_id, 10));
+  const data = await TeacherService.getStudentAssessments(
+    req.user.user_id,
+    parseInt(student_id, 10),
+    { page: parseInt(page, 10) || 1, pageSize: parseInt(page_size, 10) || 10 },
+  );
   sendSuccess(res, data);
 });
 
@@ -271,6 +275,12 @@ export const getAttendance = asyncHandler(async (req, res) => {
     req.user.user_id,
     date ?? new Date().toISOString().split("T")[0]        // fallback: today's date
   );
+  sendSuccess(res, data);
+});
+
+// Full active-school-year attendance used by History Print and Excel export.
+export const getAttendanceHistory = asyncHandler(async (req, res) => {
+  const data = await TeacherService.getAttendanceHistory(req.user.user_id);
   sendSuccess(res, data);
 });
 

@@ -41,7 +41,7 @@ export const getAllGradeLevels = async () => {
 
   const { data: levels, error } = await supabaseAdmin
     .from("grade_level")
-    .select("gl_id, level_name, level_order, teacher_id")
+    .select("gl_id, sy_id, level_name, level_order, teacher_id")
     .eq("sy_id", sy.sy_id)
     .order("level_order");
   if (error) throw new Error(error.message);
@@ -67,6 +67,7 @@ export const getAllGradeLevels = async () => {
 
     return {
       id:          gl.gl_id,
+      sy_id:       gl.sy_id,
       name:        gl.level_name,
       grade:       gl.level_name.toUpperCase(),
       level_order: gl.level_order,
@@ -85,17 +86,24 @@ export const enrollStudents = async (gl_id, student_ids, recorded_by = null) => 
     .eq("gl_id", gl_id)
     .single();
   if (glErr) throw new Error("Grade level not found");
+  const activeSy = await getActiveSY();
+  if (Number(gl.sy_id) !== Number(activeSy.sy_id)) {
+    throw new Error("Students can only be enrolled in a grade level from the active school year.");
+  }
 
-  // Guardrail: a student already enrolled in a grade level cannot be enrolled
-  // into another. They must be removed (unassigned) from their current grade
-  // first. This backs up the UI, which only lists unassigned students.
+  // Guardrail: block only assignments that belong to this active school year.
+  // A non-null gl_id from a previous year is historical and must not prevent the
+  // student from being assigned to a new-year grade level.
   const { data: alreadyAssigned, error: chkErr } = await supabaseAdmin
     .from("student")
-    .select("student_id")
+    .select("student_id, grade_level(sy_id)")
     .in("student_id", student_ids)
     .not("gl_id", "is", null);
   if (chkErr) throw new Error(chkErr.message);
-  if (alreadyAssigned?.length) {
+  const assignedThisYear = (alreadyAssigned ?? []).filter(
+    (student) => Number(student.grade_level?.sy_id) === Number(gl.sy_id),
+  );
+  if (assignedThisYear.length) {
     throw new Error(
       "One or more selected students are already enrolled in a grade level. Remove them from their current grade before enrolling.",
     );

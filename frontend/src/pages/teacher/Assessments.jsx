@@ -452,6 +452,8 @@ export default function Assessments() {
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState("");
   const [rec,       setRec]       = useState(null); // which recording view is open: { sp_id, kind:'self'|'pace' } or null
+  const [page,      setPage]      = useState(1);
+  const [pageSize,  setPageSize]  = useState(10);
 
   // Load the student dropdown once; auto-select the first student.
   useEffect(() => {
@@ -470,16 +472,23 @@ export default function Assessments() {
     if (!selId) return;
     setLoading(true);
     setError("");
-    fetchStudentAssessments(selId)                     // GET /record-assessments?student_id=
-      .then((res) => setData(res.data ?? null))
+    fetchStudentAssessments(selId, { page, pageSize })
+      .then((res) => {
+        const payload = res.data ?? null;
+        setData(payload);
+        if (payload?.pagination?.page && payload.pagination.page !== page) {
+          setPage(payload.pagination.page);
+        }
+      })
       .catch((err) => setError(err.response?.data?.message ?? err.message ?? "Failed to load assessments."))
       .finally(() => setLoading(false));
-  }, [selId]);
+  }, [selId, page, pageSize]);
 
   useEffect(() => { load(); }, [load]);                // reload whenever the selected student changes
 
-  const rows     = data?.rows ?? [];                   // one row per current PACE (per subject)
+  const rows     = data?.rows ?? [];
   const passMark = data?.passMark ?? 90;               // pass threshold from the backend
+  const pagination = data?.pagination ?? { page: 1, pageSize, total: rows.length, totalPages: 1, hasPrevious: false, hasNext: false };
   const recRow   = rec ? rows.find((r) => r.sp_id === rec.sp_id) ?? null : null; // the PACE being recorded, if any
 
   return (
@@ -532,7 +541,11 @@ export default function Assessments() {
           <label className="block text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-2">Search Student</label>
           <div className="relative max-w-md mb-7">
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1 text-base text-on-surface-variant pointer-events-none" style={fillStyle}>person</span>
-            <select value={selId ?? ""} onChange={(e) => setSelId(e.target.value ? parseInt(e.target.value, 10) : null)} disabled={!students.length}
+            <select value={selId ?? ""} onChange={(e) => {
+              setSelId(e.target.value ? parseInt(e.target.value, 10) : null);
+              setPage(1);
+              setRec(null);
+            }} disabled={!students.length}
               className="w-full pl-9 pr-10 py-2.5 text-sm font-bold text-on-surface bg-white border border-outline-variant/30 rounded-xl appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60"
               style={{ WebkitAppearance: "none", MozAppearance: "none", appearance: "none" }}>
               {students.length === 0
@@ -555,7 +568,8 @@ export default function Assessments() {
               <span className="text-sm">Loading…</span>
             </div>
           ) : (
-            <div className="overflow-x-auto border border-outline-variant/15 rounded-xl">
+            <div className="border border-outline-variant/15 rounded-xl overflow-hidden">
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-surface-container-lowest text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant">
@@ -598,6 +612,30 @@ export default function Assessments() {
                   ))}
                 </tbody>
               </table>
+              </div>
+              {pagination.total > 0 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-outline-variant/15 bg-surface-container-lowest/40">
+                  <p className="text-xs text-on-surface-variant">
+                    Showing {(pagination.page - 1) * pagination.pageSize + 1}–{Math.min(pagination.page * pagination.pageSize, pagination.total)} of {pagination.total} PACEs
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-on-surface-variant" htmlFor="assessment-page-size">Rows</label>
+                    <select id="assessment-page-size" value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+                      className="border border-outline-variant/30 rounded-lg px-2 py-1.5 text-xs font-bold bg-white focus:outline-none focus:ring-2 focus:ring-primary/20">
+                      {[10, 20, 30].map((size) => <option key={size} value={size}>{size}</option>)}
+                    </select>
+                    <button type="button" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={!pagination.hasPrevious || loading}
+                      className="px-3 py-1.5 border border-outline-variant/30 rounded-lg text-xs font-bold text-primary disabled:opacity-40 disabled:cursor-not-allowed hover:bg-primary/5">
+                      Previous
+                    </button>
+                    <span className="text-xs font-bold text-on-surface whitespace-nowrap">Page {pagination.page} of {pagination.totalPages}</span>
+                    <button type="button" onClick={() => setPage((value) => Math.min(pagination.totalPages, value + 1))} disabled={!pagination.hasNext || loading}
+                      className="px-3 py-1.5 border border-outline-variant/30 rounded-lg text-xs font-bold text-primary disabled:opacity-40 disabled:cursor-not-allowed hover:bg-primary/5">
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
