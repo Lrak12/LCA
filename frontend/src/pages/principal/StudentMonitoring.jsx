@@ -1105,7 +1105,7 @@ function PaceAnalyticsTab() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top 10 by PACE completion */}
         <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 p-6">
-          <h3 className="font-bold text-on-surface">Top 10 Students by PACE Completion</h3>
+          <h3 className="font-bold text-on-surface">Student Ranking</h3>
           <p className="text-xs text-on-surface-variant mt-0.5 mb-5">
             {data?.quarterLabel ?? "This quarter"} · ranked by PACE speed points · bar shows % completed
           </p>
