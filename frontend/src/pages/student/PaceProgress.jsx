@@ -21,7 +21,7 @@
 //          - finds its quarter from pace_quarterly_projection so the supervisor's
 //            quarter-filtered scheduling list picks it up
 //          - resolves the supervisor: student_pace.teacher_id, else grade_level.teacher_id
-//          - GATE: self_test_result average for this PACE must be >= 90, and no request is
+//          - GATE: any self_test_result attempt for this PACE must be >= 80, and no request is
 //            already pending/scheduled, else it throws
 //          - STORES the request as a pace_test_result row (status "Requested") - the one
 //            student write - then notifies the supervisor (notification.service)
@@ -115,14 +115,16 @@ const NextTestField = ({ label, value }) => (
 );
 
 // ─── Readiness / Schedule-status badges (Readiness & Scheduling table) ─────────
-const ReadinessBadge = ({ ready }) => (
+const ReadinessBadge = ({ ready, failed = false }) => (
   <span className={`text-[10px] font-extrabold tracking-widest uppercase px-3 py-1.5 rounded-full ${ready ? "bg-green-100 text-green-700" : "bg-rose-100 text-rose-600"}`}>
-    {ready ? "Ready" : "Not Ready"}
+    {failed ? "Failed" : ready ? "Ready" : "Not Ready"}
   </span>
 );
 
 // Maps a test-request row to its schedule-status label + action.
 const scheduleStatusInfo = (req) => {
+  if (req.failed)
+    return { label: "PACE Test Failed", sub: "Maximum attempts used", cls: "bg-rose-100 text-rose-700", action: "failed" };
   if (req.state === "scheduled")
     return { label: "Scheduled", sub: "", cls: "bg-blue-100 text-blue-700", action: "view-schedule" };
   if (req.state === "requested")
@@ -186,7 +188,7 @@ export default function PaceProgress() {
     setNotice("");
     try {
       // POST /student/pace/test-request - inserts the "Requested" pace_test_result row
-      // (backend gates on self-test >= 90 and notifies the supervisor); then reload.
+      // (backend gates on self-test >= 80 and notifies the supervisor); then reload.
       await submitPaceTestRequest(sp_id);
       setNotice("Your PACE test request was submitted. Your supervisor will schedule it.");
       await load(false);
@@ -557,7 +559,7 @@ export default function PaceProgress() {
                           <span className="text-sm font-bold text-on-surface">{req.paceNo ?? "—"}</span>
                         </td>
                         <td className="py-4 pr-6">
-                          <ReadinessBadge ready={req.eligible} />
+                          <ReadinessBadge ready={req.eligible} failed={req.failed} />
                         </td>
                         <td className="py-4 pr-6">
                           <div className="flex flex-col gap-0.5">
@@ -584,6 +586,15 @@ export default function PaceProgress() {
                               className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-outline-variant/40 text-xs font-bold text-on-surface hover:bg-surface-container-low transition-colors disabled:opacity-40"
                             >
                               {submittingId === req.sp_id ? "Submitting…" : "Submit Request"}
+                            </button>
+                          ) : info.action === "failed" ? (
+                            <button
+                              type="button"
+                              disabled
+                              title="This PACE Test was failed after three attempts and can be retaken next school year."
+                              className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-rose-200 bg-rose-50 text-xs font-bold text-rose-500 cursor-not-allowed opacity-75"
+                            >
+                              Unavailable
                             </button>
                           ) : info.action === "self-test" ? (
                             <button
@@ -738,7 +749,7 @@ export default function PaceProgress() {
         {/* Go to Self-Test modal — self-test progress + attempt results for a PACE */}
         {viewSelfTest && (() => {
           const required  = 3; // target number of self-tests per PACE
-          const passMark  = 90; // a self-test must score ≥ 90 to count as passed
+          const passMark  = 80; // a self-test must score ≥ 80 to count as passed
           const attempts  = viewSelfTest.selfTests ?? [];
           const completed = attempts.length;
           const progress  = Math.round((Math.min(completed, required) / required) * 100);

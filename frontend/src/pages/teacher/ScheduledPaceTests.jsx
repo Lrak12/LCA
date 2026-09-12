@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import TeacherLayout from "../../components/TeacherLayout.jsx";
 import ConfirmModal from "../../components/ConfirmModal.jsx";
+import Pagination from "../../components/Pagination.jsx";
 import {fetchScheduledTests,updatePaceTestSchedule,cancelPaceTest,} from "../../api/teacher.js";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
 
@@ -69,6 +70,8 @@ const TINTS = {
 export default function ScheduledPaceTests() {
   const schoolYearLabel = useSchoolYear();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const selectedStudentId = Number(searchParams.get("student_id")) || null;
 
   const [data,    setData]    = useState(null);
   const [loading, setLoading] = useState(true);
@@ -93,11 +96,11 @@ export default function ScheduledPaceTests() {
   const load = useCallback(() => {
     setLoading(true);
     setError("");
-    fetchScheduledTests({ quarter, subject, status, from, to })
+    fetchScheduledTests({ quarter, subject, status, from, to, student_id: selectedStudentId })
       .then((res) => setData(res.data ?? null))
       .catch((err) => setError(err.response?.data?.message ?? err.message ?? "Failed to load."))
       .finally(() => setLoading(false));
-  }, [quarter, subject, status, from, to]);
+  }, [quarter, subject, status, from, to, selectedStudentId]);
 
   useEffect(() => { load(); }, [load, refresh]);
   useEffect(() => { setPage(1); }, [quarter, subject, status, from, to]);
@@ -106,9 +109,10 @@ export default function ScheduledPaceTests() {
   const subjects = data?.subjects ?? [];
   const tests    = data?.tests ?? [];
   const totalPages = Math.max(1, Math.ceil(tests.length / PAGE_SIZE));
-  const pageRows   = tests.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const startIdx   = tests.length ? (page - 1) * PAGE_SIZE + 1 : 0;
-  const endIdx     = Math.min(page * PAGE_SIZE, tests.length);
+  const currentPage = Math.min(page, totalPages);
+  const pageRows   = tests.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const startIdx   = tests.length ? (currentPage - 1) * PAGE_SIZE + 1 : 0;
+  const endIdx     = Math.min(currentPage * PAGE_SIZE, tests.length);
   const selected   = tests.find((t) => t.pts_id === selId) ?? null;
 
   const openDetails = (t) => {
@@ -177,7 +181,11 @@ export default function ScheduledPaceTests() {
         <header className="flex items-start justify-between gap-4 mb-6">
           <div>
             <h2 className="font-headline text-4xl font-extrabold tracking-tight text-primary">SCHEDULED PACE TEST</h2>
-            <p className="text-on-surface-variant mt-1">View and manage scheduled PACE assessments for students.</p>
+              <p className="text-on-surface-variant mt-1">
+                {selectedStudentId
+                  ? "View and manage scheduled PACE assessments for the selected student."
+                  : "View and manage scheduled PACE assessments for students."}
+              </p>
           </div>
           <div className="flex items-center gap-2 bg-white border border-outline-variant/20 rounded-xl px-4 py-2.5 shadow-sm shrink-0">
             <span className="material-symbols-outlined text-secondary text-base" style={fillStyle}>calendar_month</span>
@@ -235,7 +243,11 @@ export default function ScheduledPaceTests() {
             <div className="text-center py-16">
               <span className="material-symbols-outlined text-5xl text-on-surface-variant/40 mb-3 block" style={fillStyle}>event_busy</span>
               <p className="text-base font-bold text-on-surface">No scheduled tests</p>
-              <p className="text-sm text-on-surface-variant mt-1">Schedule a PACE test from the PACE Test Scheduling page.</p>
+              <p className="text-sm text-on-surface-variant mt-1">
+                {selectedStudentId
+                  ? "This student has no scheduled PACE tests matching the selected filters."
+                  : "Schedule a PACE test from the PACE Test Scheduling page."}
+              </p>
             </div>
           ) : (
             <>
@@ -277,22 +289,7 @@ export default function ScheduledPaceTests() {
 
               <div className="flex items-center justify-between px-6 py-4 flex-wrap gap-3">
                 <p className="text-xs text-on-surface-variant">Showing {startIdx} to {endIdx} of {tests.length} entries</p>
-                <div className="flex items-center gap-1">
-                  <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-on-surface-variant hover:bg-gray-50 disabled:opacity-40">
-                    <span className="material-symbols-outlined text-base">chevron_left</span>
-                  </button>
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                    <button key={p} onClick={() => setPage(p)}
-                      className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm font-bold transition-colors ${p === page ? "bg-primary text-white" : "border border-gray-200 text-on-surface-variant hover:bg-gray-50"}`}>
-                      {p}
-                    </button>
-                  ))}
-                  <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-on-surface-variant hover:bg-gray-50 disabled:opacity-40">
-                    <span className="material-symbols-outlined text-base">chevron_right</span>
-                  </button>
-                </div>
+                <Pagination page={currentPage} totalPages={totalPages} onPageChange={setPage} />
               </div>
             </>
           )}

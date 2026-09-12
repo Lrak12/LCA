@@ -8,6 +8,7 @@ import * as StudentPaceModel from "../models/studentPace.model.js";
 import * as TeacherModel    from "../models/teacher.model.js";
 
 const PASSING_SCORE = 80;
+const PACE_TEST_PASSING_SCORE = 90;
 
 // ─── Diagnostic Assessments ───────────────────────────────────────────────────
 
@@ -102,7 +103,7 @@ export const getPaceTestByPace = async (sp_id) => {
 
 export const recordPaceTest = async (payload, requestingUser) => {
   const recorded_by = await resolveTeacherId(payload, requestingUser);
-  const passed = payload.score >= PASSING_SCORE;
+  const passed = payload.score >= PACE_TEST_PASSING_SCORE;
 
   const { data: existing } = await PaceTestModel.findByPace(payload.pacetest_id);
 

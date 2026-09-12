@@ -6,6 +6,7 @@ import * as StudentMonitoringModel from "../models/studentMonitoring.model.js";
 import { getEligibleUserIds, getSchoolYear } from "./schoolYearStatus.service.js";
 import { findActive as findActiveSchoolYear } from "../models/schoolYear.model.js";
 import { getCurrentQuarter } from "./settings.service.js";
+import { addAttendanceCredits } from "../helpers/attendanceCredits.js";
 
 const sectionFallbacks = ["Wisdom", "Faith", "Grace"];
 
@@ -807,10 +808,7 @@ export const getStudentProfile = async (student_id) => {
   // Attendance counts
   const attendance = { present: 0, absent: 0, tardy: 0 };
   for (const row of attendanceRows) {
-    const s = (row.status || "").toLowerCase();
-    if (s === "present")               attendance.present++;
-    else if (s === "absent")           attendance.absent++;
-    else if (s === "tardy" || s === "late") attendance.tardy++;
+    addAttendanceCredits(attendance, row.status);
   }
 
   // PACEs brought home = cells marked "taken-home" in the quarterly projection
@@ -969,10 +967,8 @@ export const exportStudentRecords = async () => {
   const attByStudent = new Map();
   currentAttendance.forEach((r) => {
     const a = attByStudent.get(r.student_id) ?? { present: 0, absent: 0, tardy: 0, total: 0 };
-    a.total += 1;
-    if (r.status === "Present") a.present += 1;
-    else if (r.status === "Absent") a.absent += 1;
-    else if (r.status === "Late" || r.status === "Tardy") a.tardy += 1;
+    a.total += 0.5;
+    addAttendanceCredits(a, r.status);
     attByStudent.set(r.student_id, a);
   });
 

@@ -32,7 +32,6 @@ const today      = new Date();
 // toDateStr - local YYYY-MM-DD (built from local parts, NOT toISOString, to avoid
 //   the UTC off-by-one that would shift the date in a +8 timezone).
 const toDateStr  = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-const formatFull = (d) => d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }); // "Monday, July 10, 2026"
 const formatShort= (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });                 // "Jul 10, 2026"
 // fmtTime - the "Last Updated" cell: clock time if updated today, "Yesterday",
 //   else a short date.
@@ -86,10 +85,10 @@ const buildQuarterAttendanceSections = (report) => {
     if (!monthKey) return;
     const key = `${record.student_id}|${monthKey}`;
     const bucket = counts.get(key) ?? { present: 0, absent: 0, tardy: 0, excused: 0 };
-    if (record.status === "present") bucket.present += 1;
-    else if (record.status === "absent") bucket.absent += 1;
-    else if (record.status === "late") bucket.tardy += 1;
-    else if (record.status === "excused") bucket.excused += 1;
+    if (["present", "late", "excused"].includes(record.status)) bucket.present += 0.5;
+    if (record.status === "absent") bucket.absent += 1;
+    if (record.status === "late") bucket.tardy += 0.5;
+    if (record.status === "excused") bucket.excused += 0.5;
     counts.set(key, bucket);
   });
 
@@ -212,15 +211,16 @@ export default function Attendance() {
   const [loading,     setLoading]     = useState(false);                      // true while a day is loading
   const [historyActionLoading, setHistoryActionLoading] = useState(false);    // cumulative Print/Excel request
   const [historyActionError, setHistoryActionError] = useState("");
-  const [submitting,  setSubmitting]  = useState(false);                      // true while a submit is in flight
-  const [submitDone,  setSubmitDone]  = useState(false);                      // shows the green success banner
+  const [submitting,  setSubmitting]  = useState(null);                       // null | "AM" | "PM"
+  const [submitDone,  setSubmitDone]  = useState("");                         // session-specific success message
   const [submitError, setSubmitError] = useState("");                         // shows the red error banner
 
   // loadAttendance - fetch one day's attendance and hydrate the page from it.
   //   keepDone=true keeps the success banner visible after a submit+reload.
   const loadAttendance = (date, keepDone = false) => {
     setLoading(true);
-    if (!keepDone) setSubmitDone(false);                 // clear old success banner unless we just submitted
+    setSubmitError("");
+    if (!keepDone) setSubmitDone("");                    // clear old success banner unless we just submitted
     fetchTeacherAttendance({ date: toDateStr(date) })    // GET /teacher/attendance?date=...
       .then((res) => {
         const d = res.data;
@@ -234,14 +234,20 @@ export default function Attendance() {
         // Seed the editable `log` from saved statuses (DB value > button key).
         const newLog = {};
         (d.students ?? []).forEach((s) => {
-          newLog[s.student_id] = { status: DB_TO_KEY[s.status] ?? null, notes: s.notes ?? "", time: null };
+          newLog[s.student_id] = {
+            amStatus: DB_TO_KEY[s.am_status] ?? null,
+            pmStatus: DB_TO_KEY[s.pm_status] ?? null,
+            notes: s.am_notes || s.pm_notes || "",
+            time: null,
+          };
         });
         setLog(newLog);
       })
-      .catch(() => {                                      // on error, reset to an empty day
+      .catch((error) => {                                 // expose API/schema failures instead of looking like an empty roster
         setStudents([]);
         setLog({});
         setSummary({ total: 0, present: 0, absent: 0, tardy: 0, excused: 0 });
+        setSubmitError(error.response?.data?.message ?? error.message ?? "Failed to load attendance records.");
       })
       .finally(() => setLoading(false));
   };
@@ -271,7 +277,7 @@ export default function Attendance() {
   const todayValue = toDateStr(today);
   const editableMaxDate = dateBounds.max && dateBounds.max < todayValue ? dateBounds.max : todayValue;
   // pctOf - format a count as a % of today's total (guards divide-by-zero).
-  const pctOf = (n) => (summary.total ? `${((n / summary.total) * 100).toFixed(1)}%` : "0%");
+  const pctOf = (n, denominator = summary.total) => (denominator ? `${((n / denominator) * 100).toFixed(1)}%` : "0%");
 
   // History view: recorded rows narrowed by search, then paginated.
   const histFiltered = students.filter((s) => {
@@ -324,7 +330,7 @@ export default function Attendance() {
       const studentRows = section.rows.map((student) => {
         const monthCells = student.months.map((month) => `
           <td>${month.present}</td><td>${month.absent}</td><td>${month.tardy}</td><td>${month.excused}</td>`).join("");
-        const total = student.months.reduce((sum, month) => sum + month.present + month.absent + month.tardy + month.excused, 0);
+        const total = student.months.reduce((sum, month) => sum + month.present, 0);
         return `<tr><td>${escapeHtml(student.student_id)}</td><td class="student-name">${escapeHtml(student.name)}</td>${monthCells}<td>${total}</td></tr>`;
       }).join("");
       const monthNames = section.months.map((month) => month.label.split(" ")[0]).join(" – ");
@@ -334,7 +340,7 @@ export default function Attendance() {
           <h2>Quarter ${section.quarter} <span>${escapeHtml(monthNames)}</span></h2>
           <table>
             <thead>
-              <tr><th rowspan="2">Student ID</th><th rowspan="2" class="student-column">Student Name</th>${monthHeaders}<th rowspan="2">Total</th></tr>
+              <tr><th rowspan="2">Student ID</th><th rowspan="2" class="student-column">Student Name</th>${monthHeaders}<th rowspan="2">Total Present</th></tr>
               <tr>${statusHeaders}</tr>
             </thead>
             <tbody>${studentRows || `<tr><td class="empty" colspan="${columnCount}">No students assigned.</td></tr>`}</tbody>
@@ -431,10 +437,10 @@ export default function Attendance() {
       const rows = section.rows.map((student) => {
         const monthCells = student.months.map((month) => `
           <td>${month.present}</td><td>${month.absent}</td><td>${month.tardy}</td><td>${month.excused}</td>`).join("");
-        const total = student.months.reduce((sum, month) => sum + month.present + month.absent + month.tardy + month.excused, 0);
+        const total = student.months.reduce((sum, month) => sum + month.present, 0);
         return `<tr><td>${esc(student.student_id)}</td><td>${esc(student.name)}</td><td>${esc(student.grade)}</td>${monthCells}<td>${total}</td></tr>`;
       }).join("");
-      return `<h3>Quarter ${section.quarter}</h3><table border="1"><thead><tr><th rowspan="2">Student ID</th><th rowspan="2">Student Name</th><th rowspan="2">Grade</th>${monthHeaders}<th rowspan="2">Total</th></tr><tr>${statusHeaders}</tr></thead><tbody>${rows}</tbody></table><br>`;
+      return `<h3>Quarter ${section.quarter}</h3><table border="1"><thead><tr><th rowspan="2">Student ID</th><th rowspan="2">Student Name</th><th rowspan="2">Grade</th>${monthHeaders}<th rowspan="2">Total Present</th></tr><tr>${statusHeaders}</tr></thead><tbody>${rows}</tbody></table><br>`;
     }).join("");
     const html = `<h2>Attendance Report</h2><p>Lifegiver Christian Academy<br>School Year: ${esc(schoolYearLabel)}<br>Date Range: ${esc(rangeStart)} to ${esc(rangeEnd)}</p>${quarterTables}`;
     const blob = new Blob([`\uFEFF<html><head><meta charset="utf-8"></head><body>${html}</body></html>`], {
@@ -449,18 +455,11 @@ export default function Attendance() {
     setHistoryActionLoading(false);
   };
 
-  // markAllPresent - set every student's button to P in one click (local only).
-  const markAllPresent = () => {
-    const next = {};
-    students.forEach((s) => { next[s.student_id] = { ...log[s.student_id], status: "P" }; });
-    setLog(next);
-    setSubmitDone(false);
-  };
-
   // setStatus - one student's P/A/T/E button was clicked; update just their entry.
-  const setStatus = (id, key) => {
-    setLog((prev) => ({ ...prev, [id]: { ...prev[id], status: key } }));
-    setSubmitDone(false);                                 // edits invalidate the "submitted" banner
+  const setStatus = (id, session, key) => {
+    const field = session === "PM" ? "pmStatus" : "amStatus";
+    setLog((prev) => ({ ...prev, [id]: { ...prev[id], [field]: key } }));
+    setSubmitDone("");                                    // edits invalidate the "submitted" banner
   };
 
   // setNote - one student's note field changed; update just their entry.
@@ -469,41 +468,44 @@ export default function Attendance() {
   };
 
   // handleSubmit - save the day's attendance to the backend.
-  const handleSubmit = async () => {
-    setSubmitting(true);
+  const handleSubmit = async (session) => {
+    setSubmitting(session);
     setSubmitError("");
-    // Build the payload from ONLY the students who have a status set (skip unmarked),
-    //   mapping the button key back to the DB value via STATUS_CFG.
-    const records = students
-      .filter((s) => log[s.student_id]?.status != null)
-      .map((s) => ({
-        student_id: s.student_id,
-        status:     STATUS_CFG[log[s.student_id].status].db,   // "P" > "Present", etc.
-        notes:      log[s.student_id].notes ?? "",
-      }));
+    const field = session === "PM" ? "pmStatus" : "amStatus";
+    // Save only the requested session so AM and PM can be submitted independently.
+    const records = students.flatMap((student) => {
+      const entry = log[student.student_id] ?? {};
+      const key = entry[field];
+      return key == null ? [] : [{
+        student_id: student.student_id,
+        session,
+        status: STATUS_CFG[key].db,
+        notes: entry.notes ?? "",
+      }];
+    });
     if (!records.length) {                                 // nothing marked > show a hint, don't call the API
-      setSubmitError("No students have been marked yet.");
-      setSubmitting(false);
+      setSubmitError(`No students have been marked for the ${session} session yet.`);
+      setSubmitting(null);
       return;
     }
     try {
       await submitTeacherAttendance({ date: toDateStr(selectedDate), records }); // POST /teacher/attendance
-      setSubmitDone(true);                                 // green success banner
-      loadAttendance(selectedDate, true);                  // reload to show saved values (keep banner)
+      setSubmitDone(`${session} attendance submitted successfully.`);
     } catch {
       setSubmitError("Failed to submit. Please try again.");
     } finally {
-      setSubmitting(false);
+      setSubmitting(null);
     }
   };
 
   // Stats - the 4 Today stat cards, computed live from the editable `log`.
   const total      = students.length;
-  const present    = Object.values(log).filter((r) => r.status === "P" || r.status === "E").length; // Present counts Excused too
-  const absent     = Object.values(log).filter((r) => r.status === "A").length;
-  const tardy      = Object.values(log).filter((r) => r.status === "T").length;
+  const sessionStatuses = Object.values(log).flatMap((entry) => [entry.amStatus, entry.pmStatus]).filter(Boolean);
+  const present    = sessionStatuses.filter((status) => ["P", "T", "E"].includes(status)).length * 0.5;
+  const absent     = sessionStatuses.filter((status) => status === "A").length;
+  const tardy      = sessionStatuses.filter((status) => status === "T").length * 0.5;
   const presentPct = total ? ((present / total) * 100).toFixed(1) : "0";
-  const absentPct  = total ? ((absent  / total) * 100).toFixed(1) : "0";
+  const absentPct  = total ? ((absent / (total * 2)) * 100).toFixed(1) : "0";
   const tardyPct   = total ? ((tardy   / total) * 100).toFixed(1) : "0";
 
   // filtered - the Today table rows narrowed by the search box (name or ID).
@@ -522,8 +524,8 @@ export default function Attendance() {
             <h2 className="font-headline text-4xl font-extrabold tracking-tight text-primary uppercase">
               Attendance Records
             </h2>
-            <p className="text-on-surface-variant mt-1 text-sm">
-              {gradeLabel}&nbsp;•&nbsp;{formatFull(selectedDate)}
+            <p className="text-on-surface-variant mt-1 text-2xl font-extrabold uppercase">
+              {gradeLabel}
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -627,29 +629,12 @@ export default function Attendance() {
                   >close</button>
                 )}
               </div>
-              <button
-                onClick={markAllPresent}
-                className="text-sm font-bold text-on-surface border border-outline-variant/30 px-4 py-2 rounded-lg hover:bg-surface-container-low transition-colors whitespace-nowrap"
-              >
-                Mark All Present
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={submitting}
-                className="flex items-center gap-2 bg-primary text-white text-sm font-bold px-4 py-2 rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors shadow-sm shadow-primary/20 whitespace-nowrap"
-              >
-                {submitting
-                  ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                  : null
-                }
-                {submitting ? "Saving…" : "Submit Attendance"}
-              </button>
             </div>
 
             {submitDone && (
               <div className="mx-5 mt-3 flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-100 rounded-lg px-4 py-2.5">
                 <span className="material-symbols-outlined text-base" style={fillStyle}>check_circle</span>
-                Attendance submitted successfully.
+                {submitDone}
               </div>
             )}
             {submitError && (
@@ -664,18 +649,29 @@ export default function Attendance() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-outline-variant/10">
-                    {["Student Name", "Status", "Notes", "Last Updated"].map((h) => (
-                      <th key={h} className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant px-5 py-3 text-left whitespace-nowrap">
-                        {h}
+                    <th className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant px-5 py-3 text-left whitespace-nowrap">
+                      Student Name
+                    </th>
+                    {["AM", "PM"].map((session) => (
+                      <th key={session} className="px-5 py-3 min-w-[260px] align-top">
+                        <span className="block text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant text-center whitespace-nowrap">
+                          {session} Status
+                        </span>
                       </th>
                     ))}
+                    <th className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant px-5 py-3 text-left whitespace-nowrap">
+                      Notes
+                    </th>
+                    <th className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant px-5 py-3 text-left whitespace-nowrap">
+                      Last Updated
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-outline-variant/10">
                   {loading ? (
                     Array.from({ length: 6 }).map((_, i) => (
                       <tr key={i}>
-                        {Array.from({ length: 4 }).map((__, j) => (
+                        {Array.from({ length: 5 }).map((__, j) => (
                           <td key={j} className="px-5 py-5">
                             <div className="animate-pulse bg-surface-container-high rounded h-4 w-full" />
                           </td>
@@ -684,18 +680,17 @@ export default function Attendance() {
                     ))
                   ) : filtered.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="px-5 py-10 text-center text-sm text-on-surface-variant">
+                      <td colSpan={5} className="px-5 py-10 text-center text-sm text-on-surface-variant">
                         No students found.
                       </td>
                     </tr>
                   ) : (
                     filtered.map((s) => {
-                      const entry  = log[s.student_id] ?? { status: null, notes: "", time: null };
-                      const cur    = entry.status;
+                      const entry = log[s.student_id] ?? { amStatus: null, pmStatus: null, notes: "", time: null };
                       const noteColor =
-                        cur === "A" ? "text-red-500"   :
-                        cur === "T" ? "text-amber-600" :
-                        cur === "E" ? "text-blue-600"  : "text-on-surface";
+                        [entry.amStatus, entry.pmStatus].includes("A") ? "text-red-500" :
+                        [entry.amStatus, entry.pmStatus].includes("T") ? "text-amber-600" :
+                        [entry.amStatus, entry.pmStatus].includes("E") ? "text-blue-600" : "text-on-surface";
                       return (
                         <tr key={s.student_id} className="hover:bg-surface-container-lowest transition-colors">
                           {/* Name */}
@@ -704,23 +699,27 @@ export default function Attendance() {
                             <p className="text-[11px] text-on-surface-variant">ID: {s.student_id}</p>
                           </td>
 
-                          {/* P / A / T / E buttons */}
-                          <td className="px-5 py-4">
-                            <div className="flex items-center gap-1.5">
-                              {Object.entries(STATUS_CFG).map(([key, cfg]) => (
-                                <button
-                                  key={key}
-                                  title={cfg.db}
-                                  onClick={() => setStatus(s.student_id, key)}
-                                  className={`w-8 h-8 rounded-full text-xs font-extrabold transition-all flex items-center justify-center ${
-                                    cur === key ? cfg.activeClass : INACTIVE_BTN
-                                  }`}
-                                >
-                                  {key}
-                                </button>
-                              ))}
-                            </div>
-                          </td>
+                          {["AM", "PM"].map((session) => {
+                            const current = session === "AM" ? entry.amStatus : entry.pmStatus;
+                            return (
+                              <td key={session} className="px-5 py-4">
+                                <div className="flex items-center justify-center gap-1.5">
+                                  {Object.entries(STATUS_CFG).map(([key, cfg]) => (
+                                    <button
+                                      key={key}
+                                      title={`${session} ${cfg.db}`}
+                                      onClick={() => setStatus(s.student_id, session, key)}
+                                      className={`w-8 h-8 rounded-full text-xs font-extrabold transition-all flex items-center justify-center ${
+                                        current === key ? cfg.activeClass : INACTIVE_BTN
+                                      }`}
+                                    >
+                                      {key}
+                                    </button>
+                                  ))}
+                                </div>
+                              </td>
+                            );
+                          })}
 
                           {/* Notes */}
                           <td className="px-5 py-4 min-w-[180px]">
@@ -735,13 +734,40 @@ export default function Attendance() {
 
                           {/* Last Updated */}
                           <td className="px-5 py-4 text-sm text-on-surface-variant whitespace-nowrap">
-                            {entry.time ?? fmtTime(s.updated_at) ?? "—"}
+                            {entry.time ?? fmtTime(s.pm_time_recorded || s.am_time_recorded) ?? "—"}
                           </td>
                         </tr>
                       );
                     })
                   )}
                 </tbody>
+                {!loading && filtered.length > 0 && (
+                  <tfoot>
+                    <tr className="border-t border-outline-variant/10 bg-surface-container-lowest/40">
+                      <td aria-hidden="true" />
+                      {["AM", "PM"].map((session) => (
+                        <td key={session} className="px-5 py-4">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleSubmit(session)}
+                              disabled={submitting != null}
+                              className="inline-flex items-center gap-2 bg-primary text-white text-xs font-bold px-3 py-2 rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors shadow-sm shadow-primary/20 whitespace-nowrap"
+                            >
+                              {submitting === session
+                                ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                                : null
+                              }
+                              {submitting === session ? "Saving…" : `Submit ${session} Attendance`}
+                            </button>
+                          </div>
+                        </td>
+                      ))}
+                      <td aria-hidden="true" />
+                      <td aria-hidden="true" />
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
           </div>
@@ -760,41 +786,6 @@ export default function Attendance() {
               minDate={dateBounds.min}
               maxDate={editableMaxDate}
             />
-
-            {/* Legend */}
-            <div className="mt-5 pt-4 border-t border-outline-variant/10">
-              <p className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-3">Legend</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-3">
-                {[
-                  { dot: "bg-green-400", label: "Present"  },
-                  { dot: "bg-amber-400", label: "Late"     },
-                  { dot: "bg-red-500",   label: "Absent"   },
-                  { dot: "bg-on-surface",label: "Selected" },
-                  { dot: "bg-blue-500",  label: "Excused"  },
-                ].map(({ dot, label }) => (
-                  <div key={label} className="flex items-center gap-1.5">
-                    <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${dot}`} />
-                    <span className="text-[11px] text-on-surface-variant">{label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Selected date */}
-            <div className="mt-4 pt-4 border-t border-outline-variant/10">
-              <p className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-2">
-                Selected Date
-              </p>
-              <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-on-surface shrink-0" />
-                <span className="text-xs font-bold text-on-surface flex-1 leading-snug">
-                  {formatFull(selectedDate)}
-                </span>
-                <span className="text-[10px] font-extrabold tracking-widest uppercase bg-primary text-white px-2 py-0.5 rounded shrink-0">
-                  {toDateStr(selectedDate) === toDateStr(today) ? "Today" : "Selected"}
-                </span>
-              </div>
-            </div>
           </div>
 
         </div>
@@ -812,7 +803,7 @@ export default function Attendance() {
             {[
               { label: "Total Students", value: summary.total,   pct: "100%",            accent: "",                          pill: "bg-blue-50 text-blue-600"  },
               { label: "Present Today",  value: summary.present,  pct: pctOf(summary.present), accent: "border-l-4 border-l-green-400", pill: "bg-green-50 text-green-600" },
-              { label: "Absent",         value: summary.absent,   pct: pctOf(summary.absent),  accent: "border-l-4 border-l-red-400",   pill: "bg-red-50 text-red-600"   },
+              { label: "Absent",         value: summary.absent,   pct: pctOf(summary.absent, summary.total * 2), accent: "border-l-4 border-l-red-400", pill: "bg-red-50 text-red-600" },
               { label: "Tardy",          value: summary.tardy,    pct: pctOf(summary.tardy),   accent: "border-l-4 border-l-amber-400", pill: "bg-amber-50 text-amber-600" },
             ].map((c) => (
               <div key={c.label} className={`bg-white rounded-2xl px-6 py-5 shadow-sm border border-outline-variant/20 ${c.accent}`}>
@@ -861,42 +852,44 @@ export default function Attendance() {
               <table className="w-full">
                 <thead>
                   <tr className="bg-surface-container-lowest border-b border-outline-variant/10">
-                    {["Student ID", "Student Name", "Status", "Remarks", "Time Recorded"].map((h, i) => (
-                      <th key={h} className={`text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant px-6 py-4 whitespace-nowrap ${i === 4 ? "text-right" : "text-left"}`}>{h}</th>
+                    {["Student ID", "Student Name", "AM Status", "PM Status", "Remarks", "Last Updated"].map((h, i) => (
+                      <th key={h} className={`text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant px-6 py-4 whitespace-nowrap ${i === 5 ? "text-right" : "text-left"}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-outline-variant/10">
                   {loading ? (
                     Array.from({ length: 8 }).map((_, i) => (
-                      <tr key={i}>{Array.from({ length: 5 }).map((__, j) => (
+                      <tr key={i}>{Array.from({ length: 6 }).map((__, j) => (
                         <td key={j} className="px-6 py-5"><div className="animate-pulse bg-surface-container-high rounded h-4 w-full" /></td>
                       ))}</tr>
                     ))
                   ) : histPageRows.length === 0 ? (
-                    <tr><td colSpan={5} className="px-6 py-12 text-center text-sm text-on-surface-variant">No attendance records for this date.</td></tr>
+                    <tr><td colSpan={6} className="px-6 py-12 text-center text-sm text-on-surface-variant">No attendance records for this date.</td></tr>
                   ) : histPageRows.map((s) => {
-                    const cfg = HIST_STATUS[s.status];
+                    const sessionCell = (status) => {
+                      const cfg = HIST_STATUS[status];
+                      return cfg ? (
+                        <span className="inline-flex items-center gap-2">
+                          <span className={`w-5 h-5 rounded-full flex items-center justify-center ${cfg.dot}`}>
+                            <span className="material-symbols-outlined text-white" style={{ fontSize: 13, ...fillStyle }}>{cfg.icon}</span>
+                          </span>
+                          <span className={`text-sm font-bold ${cfg.text}`}>{cfg.label}</span>
+                        </span>
+                      ) : <span className="text-sm text-on-surface-variant">No record</span>;
+                    };
                     return (
                       <tr key={s.student_id} className="hover:bg-surface-container-lowest transition-colors">
                         <td className="px-6 py-4 text-sm text-on-surface-variant">{s.student_id}</td>
                         <td className="px-6 py-4 text-sm font-extrabold text-on-surface">{s.name}</td>
-                        <td className="px-6 py-4">
-                          {cfg ? (
-                            <span className="inline-flex items-center gap-2">
-                              <span className={`w-5 h-5 rounded-full flex items-center justify-center ${cfg.dot}`}>
-                                <span className="material-symbols-outlined text-white" style={{ fontSize: 13, ...fillStyle }}>{cfg.icon}</span>
-                              </span>
-                              <span className={`text-sm font-bold ${cfg.text}`}>{cfg.label}</span>
-                            </span>
-                          ) : (
-                            <span className="text-sm text-on-surface-variant">No record</span>
-                          )}
+                        <td className="px-6 py-4">{sessionCell(s.am_status)}</td>
+                        <td className="px-6 py-4">{sessionCell(s.pm_status)}</td>
+                        <td className="px-6 py-4 text-sm text-on-surface-variant">
+                          {s.am_notes?.trim() || s.pm_notes?.trim() || "—"}
                         </td>
-                        <td className={`px-6 py-4 text-sm ${s.notes?.trim() ? (cfg?.remark ?? "text-on-surface-variant") : "text-on-surface-variant"}`}>
-                          {s.notes?.trim() ? s.notes : "—"}
+                        <td className="px-6 py-4 text-sm text-on-surface-variant text-right whitespace-nowrap">
+                          {fmtClock(s.pm_time_recorded || s.am_time_recorded)}
                         </td>
-                        <td className="px-6 py-4 text-sm text-on-surface-variant text-right whitespace-nowrap">{fmtClock(s.time_recorded)}</td>
                       </tr>
                     );
                   })}

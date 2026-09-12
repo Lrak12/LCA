@@ -1,5 +1,4 @@
 import * as ReportsService from "../services/reports.service.js";
-import * as TeacherService from "../services/teacher.service.js";
 import * as TeacherModel   from "../models/teacher.model.js";
 import { sendSuccess } from "../helpers/response.js";
 import asyncHandler from "../helpers/asyncHandler.js";
@@ -22,30 +21,32 @@ export const getTeachers = asyncHandler(async (req, res) => {
 export const getTeacherAcademicReport = asyncHandler(async (req, res) => {
   const { teacher_id } = req.params;
   const quarter = parseInt(req.query.quarter, 10) || 4;
-  const data = await ReportsService.getTeacherAcademicReport(Number(teacher_id), quarter, req.query.sy_id);
+  const data = await ReportsService.getPublishedReportSnapshot(Number(teacher_id), "academic", quarter, req.query.sy_id);
+  if (!data) return res.status(404).json({ message: "This academic report has not been published by the supervisor." });
   sendSuccess(res, data);
 });
 
 export const getTeacherAttendanceReport = asyncHandler(async (req, res) => {
   const { teacher_id } = req.params;
   const quarter = parseInt(req.query.quarter, 10) || 4;
-  const data = await ReportsService.getTeacherAttendanceReport(Number(teacher_id), quarter, req.query.sy_id);
+  const data = await ReportsService.getPublishedReportSnapshot(Number(teacher_id), "attendance", quarter, req.query.sy_id);
+  if (!data) return res.status(404).json({ message: "This attendance report has not been published by the supervisor." });
   sendSuccess(res, data);
 });
 
 export const getTeacherPaceReport = asyncHandler(async (req, res) => {
   const { teacher_id } = req.params;
   const quarter = parseInt(req.query.quarter, 10) || 1;
-  const data = await ReportsService.getTeacherPaceReport(Number(teacher_id), quarter, req.query.sy_id);
+  const data = await ReportsService.getPublishedReportSnapshot(Number(teacher_id), "pace", quarter, req.query.sy_id);
+  if (!data) return res.status(404).json({ message: "This PACE report has not been published by the supervisor." });
   sendSuccess(res, data);
 });
 
 export const getTeacherAnalyticsReport = asyncHandler(async (req, res) => {
-  const quarter = parseInt(req.query.quarter, 10) || 4;
-  const data = await TeacherService.getPaceAnalyticsReportForTeacher(
-    Number(req.params.teacher_id),
-    { quarter, sy_id: req.query.sy_id },
-  );
+  const quarter = parseInt(req.query.quarter, 10) || 1;
+  const teacherId = Number(req.params.teacher_id);
+  const data = await ReportsService.getPublishedReportSnapshot(teacherId, "analytics", quarter, req.query.sy_id);
+  if (!data) return res.status(404).json({ message: "This analytics report has not been published by the supervisor." });
   sendSuccess(res, data);
 });
 

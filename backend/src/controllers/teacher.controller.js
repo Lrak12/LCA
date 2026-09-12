@@ -93,10 +93,11 @@ export const getPaceTestSchedule = asyncHandler(async (req, res) => {
 });
 
 export const getPaceTestScheduling = asyncHandler(async (req, res) => {
-  const { subject, quarter } = req.query;
+  const { subject, quarter, student_id } = req.query;
   const data = await TeacherService.getPaceTestScheduling(req.user.user_id, {
     subject,
     quarter: quarter ? parseInt(quarter, 10) : null,
+    student_id: student_id ? parseInt(student_id, 10) : null,
   });
   sendSuccess(res, data);
 });
@@ -124,10 +125,11 @@ export const cancelPaceTest = asyncHandler(async (req, res) => {
 });
 
 export const getScheduledTests = asyncHandler(async (req, res) => {
-  const { quarter, subject, status, from, to } = req.query;
+  const { quarter, subject, status, from, to, student_id } = req.query;
   const data = await TeacherService.getScheduledTests(req.user.user_id, {
     quarter: quarter ? parseInt(quarter, 10) : null,
     subject, status, from, to,
+    student_id: student_id ? parseInt(student_id, 10) : null,
   });
   sendSuccess(res, data);
 });
@@ -377,6 +379,24 @@ export const getPaceMonitoring = asyncHandler(async (req, res) => {
     student_id: student_id ? parseInt(student_id, 10) : null,
   });
   sendSuccess(res, data);
+});
+
+export const saveStudentScriptures = asyncHandler(async (req, res) => {
+  const { student_id, scripture_1st, scripture_2nd } = req.body;
+  if (!student_id) {
+    return res.status(400).json({ message: "student_id is required" });
+  }
+  if (typeof scripture_1st !== "string" || typeof scripture_2nd !== "string") {
+    return res.status(400).json({ message: "Both Scripture entries must be text" });
+  }
+  const teacher = await resolveTeacherId(req.user.user_id);
+  if (!teacher) return res.status(404).json({ message: "Teacher profile not found" });
+  const data = await ReportsService.saveStudentScriptures(
+    teacher.teacher_id,
+    Number(student_id),
+    { scripture_1st, scripture_2nd },
+  );
+  sendSuccess(res, data, "Scripture record saved");
 });
 
 const resolveTeacherId = async (user_id) => {

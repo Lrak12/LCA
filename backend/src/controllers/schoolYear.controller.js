@@ -43,7 +43,7 @@ export const activate = asyncHandler(async (req, res) => {
     action: "UPDATE",
     entity_affected: "School Year",
     entity_id: sy_id,
-    details: `Set school year ${data.year_label} as active`,
+    details: `Set school year ${data.year_label} as active; restored ${data.restored_students ?? 0} historical student assignment(s); cleared ${data.cleared_students ?? 0} closed assignment(s)`,
   });
   sendSuccess(res, data, "Active school year updated");
 });

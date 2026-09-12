@@ -8,11 +8,8 @@
 // reports.service.js > computeAcademicMetrics (~line 186), which for the quarter derives:
 //   paces = # PACEs completed, cum/ave = average score, h100/cum100 = count of 100s (quarter
 //   + cumulative), hr = honor-roll grade, tard/abs = tardies/absences, days = homework days.
-//   (dmts demerits + s1/s2 scriptures are hardcoded 0/false for now - not yet tracked.)
 import { useState, useEffect } from "react";
 import { fetchAcademicReport } from "../../api/reports.js";
-
-const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
 const TH = ({ children, rowSpan, colSpan, className = "" }) => (
   <th
@@ -32,7 +29,7 @@ const TD = ({ children, className = "" }) => (
 
 const SkeletonRow = () => (
   <tr>
-    {Array.from({ length: 13 }).map((_, i) => (
+    {Array.from({ length: 12 }).map((_, i) => (
       <td key={i} className="border border-slate-200 px-2 py-3">
         <div className="h-3 bg-slate-100 rounded animate-pulse" />
       </td>
@@ -51,6 +48,8 @@ export function ClassAcademicRecordContent({ teacher, quarter, schoolYearId }) {
   // fetch this teacher's academic report for the quarter (re-runs if either changes)
   useEffect(() => {
     if (!teacher?.teacher_id) return;
+    // This effect owns the report request lifecycle for the selected quarter.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     fetchAcademicReport(teacher.teacher_id, quarter, schoolYearId)
       .then((res) => setReport(res.data))
@@ -100,8 +99,7 @@ export function ClassAcademicRecordContent({ teacher, quarter, schoolYearId }) {
                   <TH rowSpan={2} className="bg-red-50 text-red-700 min-w-[40px]">HR</TH>
                   <TH rowSpan={2} className="bg-amber-50 text-amber-700 min-w-[44px]">Tard.</TH>
                   <TH rowSpan={2} className="bg-orange-50 text-orange-700 min-w-[40px]">Abs.</TH>
-                  <TH rowSpan={2} className="bg-pink-50 text-pink-700 min-w-[46px]">Dmts.</TH>
-                  <TH rowSpan={2} className="bg-purple-50 text-purple-700 min-w-[56px]"># Days</TH>
+                  <TH rowSpan={2} className="bg-purple-50 text-purple-700 min-w-[72px]">No. of Days</TH>
                   <TH colSpan={2} className="bg-green-50 text-green-700">1st to Recite Monthly Scriptures</TH>
                 </tr>
                 <tr>
@@ -110,8 +108,8 @@ export function ClassAcademicRecordContent({ teacher, quarter, schoolYearId }) {
                   <TH className="bg-slate-50 text-on-surface-variant">100's</TH>
                   <TH className="bg-slate-50 text-on-surface-variant">Cum.</TH>
                   <TH className="bg-slate-50 text-on-surface-variant">Ave.</TH>
-                  <TH className="bg-green-50 text-green-700">1st Script.</TH>
-                  <TH className="bg-green-50 text-green-700">2nd Script.</TH>
+                  <TH className="bg-green-50 text-green-700 min-w-[160px]">1st Script.</TH>
+                  <TH className="bg-green-50 text-green-700 min-w-[160px]">2nd Script.</TH>
                 </tr>
                 <tr>
                   {[...Array(5)].map((_, i) => (
@@ -120,8 +118,7 @@ export function ClassAcademicRecordContent({ teacher, quarter, schoolYearId }) {
                   <TH className="bg-red-50 text-red-500 text-[9px]">A/B</TH>
                   <TH className="bg-amber-50 text-amber-500 text-[9px]">#</TH>
                   <TH className="bg-orange-50 text-orange-500 text-[9px]">#</TH>
-                  <TH className="bg-pink-50 text-pink-500 text-[9px]">#</TH>
-                  <TH className="bg-purple-50 text-purple-500 text-[9px]">HW</TH>
+                  <TH className="bg-purple-50 text-purple-500 text-[9px]">No Homework</TH>
                   <td className="border border-slate-200 bg-green-50 py-1" />
                   <td className="border border-slate-200 bg-green-50 py-1" />
                 </tr>
@@ -131,7 +128,7 @@ export function ClassAcademicRecordContent({ teacher, quarter, schoolYearId }) {
                   Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)
                 ) : students.length === 0 ? (
                   <tr>
-                    <td colSpan={13} className="px-4 py-10 text-center text-sm text-on-surface-variant border border-slate-200">
+                    <td colSpan={12} className="px-4 py-10 text-center text-sm text-on-surface-variant border border-slate-200">
                       No students found for this teacher's sections.
                     </td>
                   </tr>
@@ -147,13 +144,16 @@ export function ClassAcademicRecordContent({ teacher, quarter, schoolYearId }) {
                       <TD className="font-bold text-on-surface">{s.hr || "—"}</TD>
                       <TD className={s.tard > 0 ? "font-bold text-orange-500" : "text-on-surface"}>{s.tard}</TD>
                       <TD className={s.abs  > 0 ? "font-bold text-orange-500" : "text-on-surface"}>{s.abs}</TD>
-                      <TD className="font-extrabold text-pink-600">{s.dmts}</TD>
                       <TD className="font-extrabold text-purple-600">{s.days}</TD>
                       <TD>
-                        {s.s1 && <span className="material-symbols-outlined text-green-500 text-base" style={fillStyle}>check</span>}
+                        <span className="block max-w-[170px] whitespace-pre-wrap break-words text-left text-[11px] font-semibold text-green-800">
+                          {s.s1 || "—"}
+                        </span>
                       </TD>
                       <TD>
-                        {s.s2 && <span className="material-symbols-outlined text-green-500 text-base" style={fillStyle}>check</span>}
+                        <span className="block max-w-[170px] whitespace-pre-wrap break-words text-left text-[11px] font-semibold text-green-800">
+                          {s.s2 || "—"}
+                        </span>
                       </TD>
                     </tr>
                   ))

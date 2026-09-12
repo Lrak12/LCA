@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { fetchMyAcademicReport } from "../../api/teacher.js";
 import { submitReport } from "../../api/reports.js";
+import { exportReportPdf, printReport, showReportActionError } from "../../utils/reportDocument.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
@@ -22,7 +23,7 @@ const TD = ({ children, className = "" }) => (
 
 const SkeletonRow = () => (
   <tr>
-    {Array.from({ length: 13 }).map((_, i) => (
+    {Array.from({ length: 12 }).map((_, i) => (
       <td key={i} className="border border-slate-200 px-2 py-3">
         <div className="animate-pulse bg-slate-200 rounded h-3 w-full" />
       </td>
@@ -31,6 +32,7 @@ const SkeletonRow = () => (
 );
 
 export default function ClassAcademicRecordModal({ onClose }) {
+  const reportRef = useRef(null);
   const [quarter,     setQuarter]     = useState(1);
   const [search,      setSearch]      = useState("");
   const [data,        setData]        = useState(null);
@@ -75,6 +77,28 @@ export default function ClassAcademicRecordModal({ onClose }) {
   const students = (data?.students ?? []).filter((s) =>
     !search || s.name.toLowerCase().includes(search.toLowerCase())
   );
+  const reportTitle = "Class Academic Record";
+  const reportSubtitle = `${quarterLabel} · School Year ${schoolYear} · Prepared by ${teacherName}`;
+
+  const handleExport = () => {
+    try {
+      exportReportPdf(reportRef.current, {
+        title: reportTitle,
+        subtitle: reportSubtitle,
+        fileName: `class-academic-record-q${quarter}-${schoolYear}`,
+      });
+    } catch (err) {
+      showReportActionError(err);
+    }
+  };
+
+  const handlePrint = () => {
+    try {
+      printReport(reportRef.current, { title: reportTitle });
+    } catch (err) {
+      showReportActionError(err);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 overflow-y-auto">
@@ -110,7 +134,7 @@ export default function ClassAcademicRecordModal({ onClose }) {
           </div>
 
           <div className="flex items-center gap-2 ml-auto">
-            <button className="flex items-center gap-1.5 text-sm font-bold text-white bg-red-500 hover:bg-red-600 transition-colors rounded-lg px-3 py-2">
+            <button onClick={handleExport} disabled={loading || !!error} className="flex items-center gap-1.5 text-sm font-bold text-white bg-red-500 hover:bg-red-600 transition-colors rounded-lg px-3 py-2 disabled:cursor-not-allowed disabled:opacity-50">
               <span className="material-symbols-outlined" style={{ fontSize: 16 }}>upload_file</span>
               Export PDF
             </button>
@@ -126,7 +150,7 @@ export default function ClassAcademicRecordModal({ onClose }) {
         {published && (
           <div className="mx-6 mt-4 px-4 py-3 rounded-xl bg-green-50 border border-green-200 text-green-700 text-sm flex items-center gap-2">
             <span className="material-symbols-outlined text-base">check_circle</span>
-            Academic record submitted for all four quarters. The principal can now view it.
+            Academic record for {quarterLabel} was published to the principal.
           </div>
         )}
         {publishErr && (
@@ -137,7 +161,7 @@ export default function ClassAcademicRecordModal({ onClose }) {
         )}
 
         {/* ── Body ─────────────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-auto px-6 py-5">
+        <div ref={reportRef} className="flex-1 overflow-auto px-6 py-5">
 
           {/* Report info */}
           <div className="flex flex-wrap items-end justify-between mb-5 text-xs gap-4">
@@ -189,8 +213,7 @@ export default function ClassAcademicRecordModal({ onClose }) {
                   <TH rowSpan={2} className="bg-red-50 text-red-700 min-w-[40px]">HR</TH>
                   <TH rowSpan={2} className="bg-amber-50 text-amber-700 min-w-[44px]">Tard.</TH>
                   <TH rowSpan={2} className="bg-orange-50 text-orange-700 min-w-[40px]">Abs.</TH>
-                  <TH rowSpan={2} className="bg-pink-50 text-pink-700 min-w-[46px]">Dmts.</TH>
-                  <TH rowSpan={2} className="bg-purple-50 text-purple-700 min-w-[56px]"># Days</TH>
+                  <TH rowSpan={2} className="bg-purple-50 text-purple-700 min-w-[72px]">No. of Days</TH>
                   <TH colSpan={2} className="bg-green-50 text-green-700">1st to Recite Monthly Scriptures</TH>
                 </tr>
                 <tr>
@@ -199,8 +222,8 @@ export default function ClassAcademicRecordModal({ onClose }) {
                   <TH className="bg-slate-50 text-on-surface-variant">100's</TH>
                   <TH className="bg-slate-50 text-on-surface-variant">Cum.</TH>
                   <TH className="bg-slate-50 text-on-surface-variant">Ave.</TH>
-                  <TH className="bg-green-50 text-green-700">1st Script.</TH>
-                  <TH className="bg-green-50 text-green-700">2nd Script.</TH>
+                  <TH className="bg-green-50 text-green-700 min-w-[160px]">1st Script.</TH>
+                  <TH className="bg-green-50 text-green-700 min-w-[160px]">2nd Script.</TH>
                 </tr>
                 <tr>
                   {[...Array(5)].map((_, i) => (
@@ -209,8 +232,7 @@ export default function ClassAcademicRecordModal({ onClose }) {
                   <TH className="bg-red-50 text-red-500 text-[9px]">A/B</TH>
                   <TH className="bg-amber-50 text-amber-500 text-[9px]">#</TH>
                   <TH className="bg-orange-50 text-orange-500 text-[9px]">#</TH>
-                  <TH className="bg-pink-50 text-pink-500 text-[9px]">#</TH>
-                  <TH className="bg-purple-50 text-purple-500 text-[9px]">No Hmwrk</TH>
+                  <TH className="bg-purple-50 text-purple-500 text-[9px]">No Homework</TH>
                   <td className="border border-slate-200 bg-green-50 py-1" />
                   <td className="border border-slate-200 bg-green-50 py-1" />
                 </tr>
@@ -221,7 +243,7 @@ export default function ClassAcademicRecordModal({ onClose }) {
                   Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)
                 ) : students.length === 0 ? (
                   <tr>
-                    <td colSpan={13} className="px-4 py-10 text-center text-sm text-on-surface-variant border border-slate-200">
+                    <td colSpan={12} className="px-4 py-10 text-center text-sm text-on-surface-variant border border-slate-200">
                       {data?.students?.length === 0 ? "No academic data found for this quarter." : "No students match the search."}
                     </td>
                   </tr>
@@ -237,13 +259,16 @@ export default function ClassAcademicRecordModal({ onClose }) {
                       <TD className="font-bold text-on-surface">{s.hr ?? "—"}</TD>
                       <TD className={s.tard > 0 ? "font-bold text-orange-500" : "text-on-surface"}>{s.tard ?? 0}</TD>
                       <TD className={s.abs > 0 ? "font-bold text-orange-500" : "text-on-surface"}>{s.abs ?? 0}</TD>
-                      <TD className="font-extrabold text-pink-600">{s.dmts ?? 0}</TD>
                       <TD className="font-extrabold text-purple-600">{s.days ?? 0}</TD>
                       <TD>
-                        {s.s1 && <span className="material-symbols-outlined text-green-500 text-base" style={fillStyle}>check</span>}
+                        <span className="block max-w-[170px] whitespace-pre-wrap break-words text-left text-[11px] font-semibold text-green-800">
+                          {s.s1 || "—"}
+                        </span>
                       </TD>
                       <TD>
-                        {s.s2 && <span className="material-symbols-outlined text-green-500 text-base" style={fillStyle}>check</span>}
+                        <span className="block max-w-[170px] whitespace-pre-wrap break-words text-left text-[11px] font-semibold text-green-800">
+                          {s.s2 || "—"}
+                        </span>
                       </TD>
                     </tr>
                   ))
@@ -266,7 +291,7 @@ export default function ClassAcademicRecordModal({ onClose }) {
             </span>
             {publishing ? "Publishing…" : published ? "Publish Again" : "Publish to Principal"}
           </button>
-          <button className="flex items-center gap-2 text-sm font-bold text-on-surface border border-outline-variant/30 rounded-xl px-5 py-2.5 hover:bg-surface-container-low transition-colors">
+          <button onClick={handlePrint} disabled={loading || !!error} className="flex items-center gap-2 text-sm font-bold text-on-surface border border-outline-variant/30 rounded-xl px-5 py-2.5 hover:bg-surface-container-low transition-colors disabled:cursor-not-allowed disabled:opacity-50">
             <span className="material-symbols-outlined text-base">print</span>
             Print
           </button>

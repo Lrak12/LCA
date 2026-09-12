@@ -1,8 +1,18 @@
 import * as ReportsModel from "../models/reports.model.js";
+import * as TeacherService from "./teacher.service.js";
+import * as NotificationService from "./notification.service.js";
 import { supabaseAdmin } from "../config/supabase.js";
 import { getEligibleUserIds, getSchoolYear } from "./schoolYearStatus.service.js";
+import { addAttendanceCredits, attendanceCredits } from "../helpers/attendanceCredits.js";
 
 const QUARTER_LABELS = ["1st Quarter", "2nd Quarter", "3rd Quarter", "4th Quarter"];
+
+const honorRollGrade = (average) => {
+  const score = Number(average ?? 0);
+  if (score >= 95) return "A";
+  if (score >= 90) return "B";
+  return null;
+};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -263,13 +273,13 @@ async function computeAcademicMetrics(teacher_id, quarter, sy) {
   if (moduleError) throw new Error(moduleError.message);
   const activeModuleIds = (activeModules ?? []).map((module) => module.module_id);
 
-  const [{ data: projRows }, { data: allPaces }, { data: attRows }, { data: hwRows }] = await Promise.all([
+  const [{ data: projRows }, { data: allPaces }, { data: attRows }, { data: savedSummaryRows }] = await Promise.all([
     ReportsModel.findPaceProjectionsForReport(studentIds, quarter, sy.sy_id),
     activeModuleIds.length
       ? ReportsModel.findPacesForStudents(studentIds, activeModuleIds)
       : Promise.resolve({ data: [], error: null }),       // for pace_test_result lookup via sp_id
     ReportsModel.findAttendanceByTeacherAndRange(teacher_id, rangeStart, attEnd),
-    ReportsModel.findPaceStatusesByStudents(studentIds, sy.sy_id),
+    ReportsModel.findAcademicSummaryForTeacher(teacher_id, quarter, sy.sy_id),
   ]);
 
   // PACE counts from pace_quarterly_projection (source of truth)
@@ -329,12 +339,12 @@ async function computeAcademicMetrics(teacher_id, quarter, sy) {
     attByStudent.set(a.student_id, list);
   });
 
-  // Homework = taken-home PACE statuses from pace_quarterly_projection
-  const hwByStudent = new Map();
-  (hwRows ?? []).forEach((p) => {
-    const count = [p.status_r0, p.status_r1, p.status_r2].filter((s) => s === "taken-home").length;
-    hwByStudent.set(p.student_id, (hwByStudent.get(p.student_id) ?? 0) + count);
-  });
+  // "No homework" is its own Class Academic Record metric. Preserve the
+  // value recorded in class_academic_summary; a PACE taken home means the
+  // student HAD homework and must never be used for this field.
+  const noHomeworkByStudent = new Map(
+    (savedSummaryRows ?? []).map((row) => [row.student_id, row.homework_skip_days ?? 0]),
+  );
 
   const metrics = new Map();
   students.forEach((student) => {
@@ -345,9 +355,12 @@ async function computeAcademicMetrics(teacher_id, quarter, sy) {
     const avgScore = qScores.length
       ? Math.round((qScores.reduce((a, b) => a + b, 0) / qScores.length) * 10) / 10
       : 0;
-    const hrGrade = avgScore >= 97 ? "A" : avgScore >= 95 ? "B" : null;
-    const tard = att.filter((a) => ["tardy", "late"].includes((a.status || "").toLowerCase())).length;
-    const abs  = att.filter((a) => (a.status || "").toLowerCase() === "absent").length;
+    // Honor Roll: A = 95–100, B = 90–94.99, below 90 = no honor roll.
+    const hrGrade = honorRollGrade(avgScore);
+    const attendance = att.reduce(
+      (totals, row) => addAttendanceCredits(totals, row.status),
+      { present: 0, absent: 0, tardy: 0 },
+    );
 
     metrics.set(sid, {
       paces:    paceCountByStudent.get(sid) ?? 0,
@@ -355,9 +368,9 @@ async function computeAcademicMetrics(teacher_id, quarter, sy) {
       h100:     h100ByStudent.get(sid) ?? 0,
       cum100:   cum100ByStudent.get(sid) ?? 0,
       hrGrade,
-      tard,
-      abs,
-      hwDays:   hwByStudent.get(sid) ?? 0,
+      tard: attendance.tardy,
+      abs: attendance.absent,
+      noHomeworkDays: noHomeworkByStudent.get(sid) ?? 0,
     });
   });
 
@@ -375,6 +388,12 @@ export const getTeacherAcademicReport = async (teacher_id, quarter = 1, sy_id = 
       ReportsModel.findAcademicSummaryForTeacher(teacher_id, quarter, sy.sy_id),
       getStudentsForTeacher(teacher_id, sy.sy_id),
     ]);
+    const { data: scriptureRows, error: scriptureError } = await ReportsModel.findStudentScriptureRecords(
+      (savedRows ?? []).map((row) => row.student_id),
+      sy.sy_id,
+    );
+    if (scriptureError) throw new Error(scriptureError.message);
+    const scriptureByStudent = new Map((scriptureRows ?? []).map((row) => [row.student_id, row]));
     const students = (savedRows ?? []).map((row) => ({
       name: row.student ? `${row.student.last_name}, ${row.student.first_name}` : `Student ${row.student_id}`,
       paces: row.total_paces ?? 0,
@@ -382,22 +401,28 @@ export const getTeacherAcademicReport = async (teacher_id, quarter = 1, sy_id = 
       h100: row.count_perfect_100s ?? 0,
       cum100: row.cumulative_100s ?? 0,
       ave: row.average_score ?? 0,
-      hr: row.honor_roll_status ?? "None",
+      hr: honorRollGrade(row.average_score),
       tard: row.tardiness_count ?? 0,
       abs: row.absence_count ?? 0,
-      dmts: row.demerit_count ?? 0,
       days: row.homework_skip_days ?? 0,
-      s1: row.scripture_1st_recited ?? false,
-      s2: row.scripture_2nd_recited ?? false,
+      s1: scriptureByStudent.get(row.student_id)?.scripture_1st?.trim() ?? "",
+      s2: scriptureByStudent.get(row.student_id)?.scripture_2nd?.trim() ?? "",
     }));
     return { quarterLabel: qLabel, schoolYear: syLabel, gradeLevels, students };
   }
 
   const { students, gradeLevels, metrics } = await computeAcademicMetrics(teacher_id, quarter, sy);
   if (!students.length) return { quarterLabel: qLabel, schoolYear: syLabel, gradeLevels: [], students: [] };
+  const { data: scriptureRows, error: scriptureError } = await ReportsModel.findStudentScriptureRecords(
+    students.map((student) => student.student_id),
+    sy.sy_id,
+  );
+  if (scriptureError) throw new Error(scriptureError.message);
+  const scriptureByStudent = new Map((scriptureRows ?? []).map((row) => [row.student_id, row]));
 
   const rows = students.map((student) => {
     const m = metrics.get(student.student_id);
+    const scripture = scriptureByStudent.get(student.student_id);
     return {
       name:   formatName(student),
       paces:  m.paces,
@@ -408,10 +433,9 @@ export const getTeacherAcademicReport = async (teacher_id, quarter = 1, sy_id = 
       hr:     m.hrGrade,
       tard:   m.tard,
       abs:    m.abs,
-      dmts:   0,
-      days:   m.hwDays,
-      s1:     false,
-      s2:     false,
+      days:   m.noHomeworkDays,
+      s1:     scripture?.scripture_1st?.trim() ?? "",
+      s2:     scripture?.scripture_2nd?.trim() ?? "",
     };
   });
 
@@ -496,11 +520,9 @@ export const getTeacherAttendanceReport = async (teacher_id, quarter = 4, sy_id 
       const item = rowsByStudent.get(row.student_id) ?? {
         name: row.student ? `${row.student.last_name}, ${row.student.first_name}` : `Student ${row.student_id}`,
         values: new Map(),
-        demerits: 0,
         hw: 0,
       };
       item.values.set(row.month, row);
-      item.demerits += row.demerit_total ?? 0;
       item.hw += row.homework_days ?? 0;
       rowsByStudent.set(row.student_id, item);
     });
@@ -515,7 +537,6 @@ export const getTeacherAttendanceReport = async (teacher_id, quarter = 4, sy_id 
           tardy: row.tardy_count ?? 0,
         };
       }),
-      demerits: item.demerits,
       hw: item.hw,
     }));
     return {
@@ -550,24 +571,26 @@ export const getTeacherAttendanceReport = async (teacher_id, quarter = 4, sy_id 
     const monthMap = attMap.get(a.student_id);
     if (!monthMap.has(monthIdx)) monthMap.set(monthIdx, { p: 0, a: 0, t: 0 });
     const bucket = monthMap.get(monthIdx);
-    const status = (a.status || "").toLowerCase();
-    if      (status === "present")                    bucket.p++;
-    else if (status === "absent")                     bucket.a++;
-    else if (status === "tardy" || status === "late") bucket.t++;
+    const credit = attendanceCredits(a.status);
+    bucket.p += credit.present;
+    bucket.a += credit.absent;
+    bucket.t += credit.tardy;
   });
 
-  // Demerits and homework monitoring are stored in the monthly attendance
-  // summaries. Aggregate only the three months in the selected quarter.
+  // Attendance homework is stored as a per-month number of DAYS. Keep it
+  // separate from PACE taken-home statuses, which count PACEs rather than days.
   const monthNumbers = months.map((month) => month.monthIndex + 1);
-  const { data: summaryRows } = await ReportsModel.findAttendanceSummaryByTeacher(
-    teacher_id, monthNumbers, sy.sy_id,
+  const { data: homeworkRows } = await ReportsModel.findAttendanceSummaryByTeacher(
+    teacher_id,
+    monthNumbers,
+    sy.sy_id,
   );
-  const extrasByStudent = new Map();
-  (summaryRows ?? []).forEach((summary) => {
-    const totals = extrasByStudent.get(summary.student_id) ?? { demerits: 0, hw: 0 };
-    totals.demerits += summary.demerit_total ?? 0;
-    totals.hw += summary.homework_days ?? 0;
-    extrasByStudent.set(summary.student_id, totals);
+  const homeworkByStudent = new Map();
+  (homeworkRows ?? []).forEach((row) => {
+    homeworkByStudent.set(
+      row.student_id,
+      (homeworkByStudent.get(row.student_id) ?? 0) + (row.homework_days ?? 0),
+    );
   });
 
   const rows = resolvedStudents.map((student) => {
@@ -578,8 +601,7 @@ export const getTeacherAttendanceReport = async (teacher_id, quarter = 4, sy_id 
         const b = monthMap.get(m.monthIndex) ?? { p: 0, a: 0, t: 0 };
         return { month: m.label, present: b.p, absent: b.a, tardy: b.t };
       }),
-      demerits: extrasByStudent.get(student.student_id)?.demerits ?? 0,
-      hw:       extrasByStudent.get(student.student_id)?.hw ?? 0,
+      hw:       homeworkByStudent.get(student.student_id) ?? 0,
     };
   });
 
@@ -598,11 +620,17 @@ export const getTeacherAttendanceReport = async (teacher_id, quarter = 4, sy_id 
 
 async function saveAcademicReport(teacher_id, quarter, sy) {
   // Same computation as the preview — what the teacher reviewed is what gets saved
-  const { students, metrics } = await computeAcademicMetrics(teacher_id, quarter, sy);
+  const [{ students, metrics }, { data: savedRows, error: savedError }] = await Promise.all([
+    computeAcademicMetrics(teacher_id, quarter, sy),
+    ReportsModel.findAcademicSummaryForTeacher(teacher_id, quarter, sy.sy_id),
+  ]);
+  if (savedError) throw new Error(savedError.message);
   if (!students.length) return;
+  const savedByStudent = new Map((savedRows ?? []).map((row) => [row.student_id, row]));
 
   const rows = students.map((student) => {
     const m = metrics.get(student.student_id);
+    const saved = savedByStudent.get(student.student_id);
     return {
       student_id:            student.student_id,
       sy_id:                 sy.sy_id,
@@ -613,13 +641,14 @@ async function saveAcademicReport(teacher_id, quarter, sy) {
       count_perfect_100s:    m.h100,
       cumulative_100s:       m.cum100,
       average_score:         m.avgScore,
-      honor_roll_status:     m.hrGrade,
+      // HR is derived from average_score whenever the report is read. Do not
+      // write the legacy honor_roll_status column: its database constraint
+      // may differ between database versions.
       tardiness_count:       m.tard,
       absence_count:         m.abs,
-      demerit_count:         0,
-      homework_skip_days:    m.hwDays,
-      scripture_1st_recited: false,
-      scripture_2nd_recited: false,
+      homework_skip_days:    saved?.homework_skip_days ?? m.noHomeworkDays,
+      scripture_1st_recited: saved?.scripture_1st_recited ?? false,
+      scripture_2nd_recited: saved?.scripture_2nd_recited ?? false,
     };
   });
 
@@ -627,10 +656,64 @@ async function saveAcademicReport(teacher_id, quarter, sy) {
   if (error) throw new Error(error.message);
 }
 
+// Save the two school-year Scripture entries shown in one student's Class
+// Academic Record row.
+export const saveStudentScriptures = async (
+  teacher_id,
+  student_id,
+  { scripture_1st, scripture_2nd },
+) => {
+  const sy = await getSchoolYear();
+  const firstText = String(scripture_1st ?? "").trim();
+  const secondText = String(scripture_2nd ?? "").trim();
+  if (firstText.length > 500 || secondText.length > 500) {
+    throw new Error("Each Scripture entry must be 500 characters or fewer");
+  }
+
+  const { data: student, error: studentError } = await supabaseAdmin
+    .from("student")
+    .select("student_id, grade_level!inner(teacher_id, sy_id)")
+    .eq("student_id", Number(student_id))
+    .eq("grade_level.teacher_id", Number(teacher_id))
+    .eq("grade_level.sy_id", sy.sy_id)
+    .maybeSingle();
+  if (studentError) throw new Error(studentError.message);
+  if (!student) throw new Error("Student not found or not assigned to this supervisor");
+
+  const { data, error } = await ReportsModel.upsertStudentScriptureRecord({
+    student_id: student.student_id,
+    sy_id: sy.sy_id,
+    recorded_by: Number(teacher_id),
+    principal_id: null,
+    quarter: null,
+    month: null,
+    scripture_1st: firstText || null,
+    scripture_2nd: secondText || null,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw new Error(error.message);
+  return {
+    student_id: student.student_id,
+    scripture_1st: firstText,
+    scripture_2nd: secondText,
+    record: data,
+  };
+};
+
 async function saveAttendanceReport(teacher_id, quarter, sy) {
   const { months, rangeStart, rangeEnd } = getQuarterDateRange(sy.start_date, quarter);
   const { students } = await getStudentsForTeacher(teacher_id);
   const { data: attRows } = await ReportsModel.findAttendanceByTeacherAndRange(teacher_id, rangeStart, rangeEnd);
+  const monthNumbers = months.map((month) => month.monthIndex + 1);
+  const { data: existingSummaries, error: summaryError } = await ReportsModel.findAttendanceSummaryByTeacher(
+    teacher_id,
+    monthNumbers,
+    sy.sy_id,
+  );
+  if (summaryError) throw new Error(summaryError.message);
+  const existingHomeworkByStudentMonth = new Map(
+    (existingSummaries ?? []).map((row) => [`${row.student_id}:${row.month}`, row.homework_days ?? 0]),
+  );
 
   let resolvedStudents = students;
   if (!resolvedStudents.length && attRows?.length) {
@@ -649,38 +732,29 @@ async function saveAttendanceReport(teacher_id, quarter, sy) {
     const monthMap = attMap.get(a.student_id);
     if (!monthMap.has(monthIdx)) monthMap.set(monthIdx, { p: 0, a: 0, t: 0 });
     const bucket = monthMap.get(monthIdx);
-    const status = (a.status || "").toLowerCase();
-    if (status === "present")                         bucket.p++;
-    else if (status === "absent")                     bucket.a++;
-    else if (status === "tardy" || status === "late") bucket.t++;
+    const credit = attendanceCredits(a.status);
+    bucket.p += credit.present;
+    bucket.a += credit.absent;
+    bucket.t += credit.tardy;
   });
-
-  // Count homework from pace_quarterly_projection (source of truth)
-  const studentIds = resolvedStudents.map((s) => s.student_id);
-  const hwByStudent = new Map(); // student_id → total taken-home count for the quarter
-  if (studentIds.length) {
-    const { data: paceRows } = await ReportsModel.findPaceStatusesByStudents(studentIds, sy.sy_id);
-    (paceRows ?? []).forEach((p) => {
-      const count = [p.status_r0, p.status_r1, p.status_r2].filter((s) => s === "taken-home").length;
-      hwByStudent.set(p.student_id, (hwByStudent.get(p.student_id) ?? 0) + count);
-    });
-  }
 
   const rows = [];
   resolvedStudents.forEach((student) => {
     const monthMap = attMap.get(student.student_id) ?? new Map();
     months.forEach((m) => {
       const b = monthMap.get(m.monthIndex) ?? { p: 0, a: 0, t: 0 };
+      const monthNumber = m.monthIndex + 1;
       rows.push({
         student_id:    student.student_id,
         sy_id:         sy.sy_id,
         recorded_by:   teacher_id,
-        month:         m.monthIndex + 1,
+        month:         monthNumber,
         present_count: b.p,
         absent_count:  b.a,
         tardy_count:   b.t,
-        demerit_total: 0,
-        homework_days: hwByStudent.get(student.student_id) ?? 0,
+        // Publishing refreshes attendance totals but must not erase the
+        // separately recorded monthly homework-day count.
+        homework_days: existingHomeworkByStudentMonth.get(`${student.student_id}:${monthNumber}`) ?? 0,
       });
     });
   });
@@ -711,27 +785,104 @@ export const submitReport = async (teacher_id, report_type, quarter) => {
   const allowedTypes = new Set(["academic", "attendance", "pace", "analytics"]);
   if (!allowedTypes.has(report_type)) throw new Error(`Unknown report_type: ${report_type}`);
 
-  const quarters = [1, 2, 3, 4];
-  for (const reportQuarter of quarters) {
-    if (report_type === "academic") await saveAcademicReport(teacher_id, reportQuarter, sy);
-    else if (report_type === "attendance") await saveAttendanceReport(teacher_id, reportQuarter, sy);
-    else if (report_type === "pace") await savePaceReport(teacher_id, reportQuarter, sy);
-    // Analytics is calculated from live PACE data, so it needs only a durable
-    // publication record and no duplicate snapshot rows.
+  const reportQuarter = Number(quarter);
+  if (![1, 2, 3, 4].includes(reportQuarter)) throw new Error("Quarter must be between 1 and 4");
+
+  let publishedSnapshot;
+  if (report_type === "academic") {
+    await saveAcademicReport(teacher_id, reportQuarter, sy);
+    publishedSnapshot = await getTeacherAcademicReport(teacher_id, reportQuarter, sy.sy_id);
+  } else if (report_type === "attendance") {
+    await saveAttendanceReport(teacher_id, reportQuarter, sy);
+    publishedSnapshot = await getTeacherAttendanceReport(teacher_id, reportQuarter, sy.sy_id);
+  } else if (report_type === "pace") {
+    await savePaceReport(teacher_id, reportQuarter, sy);
+    publishedSnapshot = await getTeacherPaceReport(teacher_id, reportQuarter, sy.sy_id);
+  } else {
+    publishedSnapshot = await TeacherService.getPaceAnalyticsReportForTeacher(
+      teacher_id,
+      { quarter: reportQuarter, sy_id: sy.sy_id },
+    );
   }
 
   const submittedAt = new Date().toISOString();
-  const rows = quarters.map((reportQuarter) => ({
+  const rows = [{
     teacher_id,
     sy_id: sy.sy_id,
     report_type,
     quarter: reportQuarter,
     submitted_at: submittedAt,
-  }));
+    published_snapshot: publishedSnapshot,
+  }];
   const { data, error } = await ReportsModel.upsertReportSubmissions(rows);
   if (error) throw new Error(error.message);
 
-  return { report_type, quarter, quarters, teacher_id, submitted_at: submittedAt, submissions: data ?? [] };
+  // Publishing succeeded already; notification fan-out is intentionally
+  // non-fatal so a notification permission issue cannot undo the report.
+  try {
+    const [{ data: teacher }, { data: principals }] = await Promise.all([
+      supabaseAdmin
+        .from("teacher")
+        .select("first_name, last_name")
+        .eq("teacher_id", Number(teacher_id))
+        .maybeSingle(),
+      supabaseAdmin
+        .from("users")
+        .select("user_id")
+        .eq("role", "principal")
+        .eq("is_active", true),
+    ]);
+    const teacherName = `${teacher?.first_name ?? ""} ${teacher?.last_name ?? ""}`.trim() || "A supervisor";
+    const reportLabels = {
+      academic: "Class Academic Record",
+      attendance: "Attendance Report",
+      pace: "PACE Progress Report",
+      analytics: "PACE Analytics & Rankings Report",
+    };
+    await NotificationService.createForUsers((principals ?? []).map((principal) => principal.user_id), {
+      title: "Report Published",
+      message_content: `${teacherName} published the ${reportLabels[report_type]} for ${QUARTER_LABELS[reportQuarter - 1]}, ${sy.year_label}.`,
+    });
+  } catch (notificationError) {
+    console.warn("[report publish] principal notification failed:", notificationError.message);
+  }
+
+  return { report_type, quarter: reportQuarter, teacher_id, submitted_at: submittedAt, submissions: data ?? [] };
+};
+
+export const isReportSubmitted = async (teacher_id, report_type, quarter, sy_id = null) => {
+  const sy = await getSchoolYear(sy_id);
+  const { data, error } = await ReportsModel.findReportSubmission(
+    teacher_id,
+    report_type,
+    quarter,
+    sy.sy_id,
+  );
+  if (error) throw new Error(error.message);
+  return Boolean(data?.submitted_at);
+};
+
+export const getPublishedReportSnapshot = async (teacher_id, report_type, quarter, sy_id = null) => {
+  const sy = await getSchoolYear(sy_id);
+  const { data, error } = await ReportsModel.findReportSubmission(
+    teacher_id,
+    report_type,
+    quarter,
+    sy.sy_id,
+  );
+  if (error) throw new Error(error.message);
+  const snapshot = data?.published_snapshot ?? null;
+  if (!snapshot || report_type !== "academic") return snapshot;
+
+  // Apply the current Honor Roll rule to older immutable snapshots too, so
+  // previously published reports do not keep the superseded HR calculation.
+  return {
+    ...snapshot,
+    students: (snapshot.students ?? []).map((student) => ({
+      ...student,
+      hr: honorRollGrade(student.ave),
+    })),
+  };
 };
 
 export const getSubmissionStatuses = async (quarter, report_type, sy_id = null) => {

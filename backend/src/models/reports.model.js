@@ -72,7 +72,7 @@ export const findPaceTestResultsForPaces = (spIds) =>
 export const findAttendanceByTeacherAndRange = (teacher_id, startDate, endDate) =>
   supabaseAdmin
     .from("attendance")
-    .select("student_id, status, date_recorded, student(first_name, last_name)")
+    .select("student_id, session, status, date_recorded, student(first_name, last_name)")
     .eq("teacher_id", teacher_id)
     .gte("date_recorded", startDate)
     .lte("date_recorded", endDate)
@@ -81,7 +81,7 @@ export const findAttendanceByTeacherAndRange = (teacher_id, startDate, endDate) 
 export const findAttendanceSummaryByTeacher = (teacher_id, monthNumbers, sy_id) =>
   supabaseAdmin
     .from("attendance_monthly_summary")
-    .select("student_id, month, present_count, absent_count, tardy_count, demerit_total, homework_days, student(first_name, last_name)")
+    .select("student_id, month, present_count, absent_count, tardy_count, homework_days, student(first_name, last_name)")
     .eq("recorded_by", teacher_id)
     .in("month", monthNumbers)
     .eq("sy_id", sy_id);
@@ -151,6 +151,23 @@ export const upsertClassAcademicSummary = (rows) =>
     .upsert(rows, { onConflict: "student_id,sy_id,quarter" })
     .select();
 
+export const findStudentScriptureRecords = (studentIds, sy_id) => {
+  if (!studentIds?.length) return Promise.resolve({ data: [], error: null });
+  return supabaseAdmin
+    .from("monthly_scripture_assignment")
+    .select("msa_id, student_id, sy_id, recorded_by, scripture_1st, scripture_2nd, updated_at")
+    .in("student_id", studentIds)
+    .eq("sy_id", Number(sy_id))
+    .order("student_id");
+};
+
+export const upsertStudentScriptureRecord = (row) =>
+  supabaseAdmin
+    .from("monthly_scripture_assignment")
+    .upsert(row, { onConflict: "student_id,sy_id" })
+    .select("msa_id, student_id, sy_id, recorded_by, scripture_1st, scripture_2nd, updated_at")
+    .single();
+
 export const upsertAttendanceMonthlySummary = (rows) =>
   supabaseAdmin
     .from("attendance_monthly_summary")
@@ -161,7 +178,7 @@ export const upsertReportSubmissions = (rows) =>
   supabaseAdmin
     .from("report_submission")
     .upsert(rows, { onConflict: "teacher_id,sy_id,report_type,quarter" })
-    .select("submission_id, teacher_id, sy_id, report_type, quarter, submitted_at");
+    .select("submission_id, teacher_id, sy_id, report_type, quarter, submitted_at, published_snapshot");
 
 export const findReportSubmissions = (report_type, quarter, sy_id) =>
   supabaseAdmin
@@ -169,20 +186,34 @@ export const findReportSubmissions = (report_type, quarter, sy_id) =>
     .select("teacher_id, submitted_at")
     .eq("report_type", report_type)
     .eq("quarter", quarter)
-    .eq("sy_id", sy_id);
+    .eq("sy_id", sy_id)
+    .not("published_snapshot", "is", null);
 
 export const findAllReportSubmissions = (sy_id) =>
   supabaseAdmin
     .from("report_submission")
     .select("teacher_id, report_type, quarter, submitted_at")
-    .eq("sy_id", sy_id);
+    .eq("sy_id", sy_id)
+    .not("published_snapshot", "is", null);
 
 export const findReportSubmissionsForTeacher = (teacher_id, sy_id) =>
   supabaseAdmin
     .from("report_submission")
     .select("report_type, quarter, submitted_at")
     .eq("teacher_id", teacher_id)
-    .eq("sy_id", sy_id);
+    .eq("sy_id", sy_id)
+    .not("published_snapshot", "is", null);
+
+export const findReportSubmission = (teacher_id, report_type, quarter, sy_id) =>
+  supabaseAdmin
+    .from("report_submission")
+    .select("submission_id, submitted_at, published_snapshot")
+    .eq("teacher_id", Number(teacher_id))
+    .eq("report_type", report_type)
+    .eq("quarter", Number(quarter))
+    .eq("sy_id", Number(sy_id))
+    .not("published_snapshot", "is", null)
+    .maybeSingle();
 
 // Submit = stamp the teacher's existing projection rows for the quarter.
 // Does NOT touch pace_start/pace_end/pace_count/statuses — the plan stays intact.

@@ -45,20 +45,8 @@ export default function RankingTab({ grade }) {
 
       {/* Controls */}
       <div className="flex items-center gap-5 mb-5 flex-wrap">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-on-surface-variant">Ranking By:</span>
-          <select value={rankBy} onChange={(e) => setRankBy(e.target.value)}
-            className="text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl pl-4 pr-8 py-2.5 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
-            {RANK_BY.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-on-surface-variant">Top:</span>
-          <select value={top} onChange={(e) => setTop(parseInt(e.target.value, 10))}
-            className="text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl pl-4 pr-8 py-2.5 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
-            {TOP_OPTS.map((n) => <option key={n} value={n}>{n} Students</option>)}
-          </select>
-        </div>
+       
+        
       </div>
 
       {error && <div className="mb-4 px-4 py-3 rounded-xl bg-red-50 border border-red-100 text-red-600 text-sm">{error}</div>}

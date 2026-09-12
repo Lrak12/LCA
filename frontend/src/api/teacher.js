@@ -10,6 +10,9 @@ export const fetchTeacherDashboard = () => client.get("/teacher/dashboard");
 export const fetchTeacherPaceMonitoring = (params = {}) =>
   client.get("/teacher/pace-monitoring", { params });
 
+export const saveStudentScriptures = (body) =>
+  client.put("/teacher/pace-monitoring/scriptures", body);
+
 export const fetchTeacherAssessments = () => client.get("/teacher/assessments");
 
 // The teacher's student roster (shared by several pages). Backend: GET /teacher/students > controller.getStudents.

@@ -15,6 +15,7 @@ router.get("/dashboard",        requireRole("teacher"), TeacherController.getDas
 router.get("/students",         requireRole("teacher"), TeacherController.getStudents);
 // GET /teacher/pace-monitoring - PACE Monitoring page data. NEXT > controller.getPaceMonitoring.
 router.get("/pace-monitoring",  requireRole("teacher"), TeacherController.getPaceMonitoring);
+router.put("/pace-monitoring/scriptures", requireRole("teacher"), TeacherController.saveStudentScriptures);
 router.get("/assessments",        requireRole("teacher"), TeacherController.getAssessments);
 router.get("/student-monitoring", requireRole("teacher"), TeacherController.getStudentMonitoring);
 router.get("/student-monitoring-overview", requireRole("teacher"), TeacherController.getStudentMonitoringOverview);

@@ -1,5 +1,5 @@
 // Record Self-Test and PACE-Test scores per student, per PACE. Rules: self-test
-// READY = ANY attempt >= 90; PACE test is locked until READY, and passes at any
+// READY = ANY attempt >= 80; PACE test is locked until READY, and passes at any
 // attempt >= 90. After 3 failed self-test attempts the student needs intervention and
 // the supervisor can Reset to re-record. Backend: teacher.service getStudentAssessments
 // / recordSelfTest / resetSelfTest / recordPaceTest (under /teacher/record-assessments).
@@ -487,7 +487,8 @@ export default function Assessments() {
   useEffect(() => { load(); }, [load]);                // reload whenever the selected student changes
 
   const rows     = data?.rows ?? [];
-  const passMark = data?.passMark ?? 90;               // pass threshold from the backend
+  const selfTestPassMark = data?.selfTestPassMark ?? 80;
+  const paceTestPassMark = data?.paceTestPassMark ?? data?.passMark ?? 90;
   const pagination = data?.pagination ?? { page: 1, pageSize, total: rows.length, totalPages: 1, hasPrevious: false, hasNext: false };
   const recRow   = rec ? rows.find((r) => r.sp_id === rec.sp_id) ?? null : null; // the PACE being recorded, if any
 
@@ -502,7 +503,7 @@ export default function Assessments() {
           <SelfTestRecordingView
             row={recRow}
             student={data?.student}
-            passMark={passMark}
+            passMark={selfTestPassMark}
             onBack={() => setRec(null)}
             onRecorded={load}
           />
@@ -510,7 +511,7 @@ export default function Assessments() {
           <PaceTestRecordingView
             row={recRow}
             student={data?.student}
-            passMark={passMark}
+            passMark={paceTestPassMark}
             onBack={() => setRec(null)}
             onRecorded={load}
           />
@@ -521,7 +522,7 @@ export default function Assessments() {
           <div>
             <h2 className="font-headline text-4xl font-extrabold tracking-tight text-primary uppercase">Record Assessments</h2>
             <p className="text-on-surface-variant mt-1 text-sm">Record and manage scores for Self-Tests and PACE Tests.</p>
-            <p className="text-on-surface-variant text-sm">Grading basis for PACE Test: {passMark}% and above is Passed.</p>
+            <p className="text-on-surface-variant text-sm">Self-Test passing score: {selfTestPassMark}%. PACE Test passing score: {paceTestPassMark}%.</p>
           </div>
           <div className="flex items-center gap-2 bg-white border border-outline-variant/20 rounded-xl px-4 py-2.5 shadow-sm shrink-0">
             <span className="material-symbols-outlined text-secondary text-base" style={fillStyle}>calendar_month</span>

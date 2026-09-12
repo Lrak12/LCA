@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   fetchNotifications,
   markNotificationRead,
   markAllNotificationsRead,
 } from "../api/notifications.js";
+import { useAuth } from "../context/AuthContext.jsx";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
@@ -13,12 +15,47 @@ const formatDate = (iso) => {
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 };
 
+// Notifications predate source metadata in the database, so route the known
+// system-generated titles to the page that owns the underlying action. Any
+// other title is an announcement and goes to that role's announcement feed.
+const notificationDestination = (notification, role) => {
+  const title = String(notification?.title ?? "");
+
+  if (title === "New Password Reset Request" || title === "New Support Request") {
+    return role === "administrator" ? "/sysadmin/support" : role === "principal" ? "/admin/help" : null;
+  }
+  if (title.startsWith("Response to your request")) {
+    return {
+      administrator: "/sysadmin/support",
+      principal: "/admin/help",
+      teacher: "/teacher/help",
+      student: "/student/help",
+    }[role] ?? null;
+  }
+  if (title === "New PACE Test Request") return role === "teacher" ? "/teacher/pace/schedule-test" : null;
+  if (["PACE Test Scheduled", "PACE Test Rescheduled", "Missed PACE Test", "New PACE Assigned"].includes(title)) {
+    return role === "student" ? "/student/pace" : null;
+  }
+  if (title === "PACE Test Result Available") return role === "student" ? "/student/assessments" : null;
+  if (title === "Report Published") return role === "principal" ? "/admin/reports" : null;
+
+  return {
+    principal: "/admin/announcements",
+    teacher: "/teacher/announcements",
+    student: "/student/announcements",
+    administrator: "/sysadmin/dashboard",
+    parent: "/parent/dashboard",
+  }[role] ?? null;
+};
+
 // Shared notification bell + dropdown used across all dashboard layouts (principal + admin).
 // Backend chain (frontend api/notifications.js -> routes/notification.routes.js):
 //   list:     GET   /notifications          -> controllers/notification.controller.js > getMine (~line 5)     -> services/notification.service.js > getMyNotifications (~line 5)
 //   mark 1:   PATCH /notifications/:id/read  -> controllers/notification.controller.js > markRead (~line 10)   -> services/notification.service.js > markRead (~line 18)
 //   mark all: PATCH /notifications/read-all  -> controllers/notification.controller.js > markAllRead (~line 15) -> services/notification.service.js > markAllRead (~line 23)
 export default function NotificationBell() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [open, setOpen]       = useState(false);   // dropdown open?
   const [items, setItems]     = useState([]);       // notification rows
   const [unread, setUnread]   = useState(0);        // unread badge count
@@ -42,7 +79,13 @@ export default function NotificationBell() {
       }
     };
     load();
-    return () => { cancelled = true; };
+    const refreshTimer = window.setInterval(load, 15000);
+    window.addEventListener("focus", load);
+    return () => {
+      cancelled = true;
+      window.clearInterval(refreshTimer);
+      window.removeEventListener("focus", load);
+    };
   }, []);
 
   // Close on outside click
@@ -52,11 +95,16 @@ export default function NotificationBell() {
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
 
-  const handleItemClick = async (n) => {
-    if (n.is_read) return;
-    setItems((prev) => prev.map((x) => (x.notification_id === n.notification_id ? { ...x, is_read: true } : x)));
-    setUnread((u) => Math.max(0, u - 1));
-    try { await markNotificationRead(n.notification_id); } catch { /* optimistic */ }
+  const handleItemClick = (n) => {
+    if (!n.is_read) {
+      setItems((prev) => prev.map((x) => (x.notification_id === n.notification_id ? { ...x, is_read: true } : x)));
+      setUnread((u) => Math.max(0, u - 1));
+      markNotificationRead(n.notification_id).catch(() => { /* optimistic */ });
+    }
+
+    setOpen(false);
+    const destination = notificationDestination(n, user?.role);
+    if (destination) navigate(destination);
   };
 
   const handleMarkAll = async () => {

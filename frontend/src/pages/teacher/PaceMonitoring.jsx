@@ -29,7 +29,13 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import TeacherLayout from "../../components/TeacherLayout.jsx";
 import AssignManagePaceModal from "./AssignManagePaceModal.jsx";
-import {fetchTeacherPaceMonitoring,updatePaceCell,updatePaceCellStatus,assignStudentPace,} from "../../api/teacher.js";
+import {
+  fetchTeacherPaceMonitoring,
+  updatePaceCell,
+  updatePaceCellStatus,
+  assignStudentPace,
+  saveStudentScriptures,
+} from "../../api/teacher.js";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
@@ -109,16 +115,19 @@ const TERMINAL_STATUSES = new Set(["completed", "failed"]);
 
 // ─── Status Indicator ─────────────────────────────────────────────────────────
 // the clickable status icon in a cell; onClick opens the status picker
-const StatusIndicator = ({ status, onClick }) => {
+const StatusIndicator = ({ status, onClick, disabled = false }) => {
   const cfg = STATUS_OPTIONS.find((o) => o.value === status) ?? STATUS_OPTIONS.find((o) => o.value === "not-started");
-  const locked = TERMINAL_STATUSES.has(status);
+  const locked = TERMINAL_STATUSES.has(status) || disabled;
+  const title = disabled && !TERMINAL_STATUSES.has(status)
+    ? "Unavailable after an earlier failed PACE — resume next school year"
+    : locked ? `${cfg.label} — locked` : cfg.label;
   return (
     <button
       onClick={(e) => { e.stopPropagation(); onClick?.(); }}
       disabled={locked}
-      className={`shrink-0 leading-none flex items-center justify-center transition-transform ${locked ? "cursor-not-allowed" : "hover:scale-125"}`}
-      title={locked ? `${cfg.label} — locked` : cfg.label}
-      aria-label={locked ? `${cfg.label}, locked` : cfg.label}
+      className={`shrink-0 leading-none flex items-center justify-center transition-transform ${locked ? "cursor-not-allowed" : "hover:scale-125"} ${disabled ? "opacity-35" : ""}`}
+      title={title}
+      aria-label={disabled ? `${cfg.label}, unavailable after an earlier failed PACE` : locked ? `${cfg.label}, locked` : cfg.label}
     >
       <span
         className={`material-symbols-outlined ${cfg.color}`}
@@ -135,10 +144,10 @@ const StatusIndicator = ({ status, onClick }) => {
 // a PaceCellStack — three of these stack vertically in one table cell.
 // `editable` (Individual View only) turns the PACE number into an inline input
 // on click; committing calls onCommit(newNumber).
-const PaceLine = ({ pace, editable = false, onCommit, onStatusClick }) => {
+const PaceLine = ({ pace, editable = false, disabled = false, onCommit, onStatusClick }) => {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState("");
-  const locked = TERMINAL_STATUSES.has(pace.status);
+  const locked = TERMINAL_STATUSES.has(pace.status) || disabled;
 
   const startEdit = () => {
     if (!editable || locked) return;
@@ -152,7 +161,7 @@ const PaceLine = ({ pace, editable = false, onCommit, onStatusClick }) => {
   };
 
   return (
-    <div className="flex items-center justify-center gap-0.5 flex-nowrap">
+    <div className={`flex items-center justify-center gap-0.5 flex-nowrap ${disabled ? "opacity-55" : ""}`}>
       {editing ? (
         <input
           type="number"
@@ -172,12 +181,12 @@ const PaceLine = ({ pace, editable = false, onCommit, onStatusClick }) => {
         <span
           className={`text-[11px] font-bold whitespace-nowrap ${pace.status === "failed" ? "text-red-700" : "text-slate-700"} ${editable && !locked ? "cursor-pointer hover:text-primary transition-colors" : locked ? "cursor-not-allowed" : ""}`}
           onClick={startEdit}
-          title={locked ? "Locked after a completed or failed PACE test" : editable ? "Click to edit PACE number" : undefined}
+          title={disabled ? "Unavailable after an earlier failed PACE — resume next school year" : locked ? "Locked after a completed or failed PACE test" : editable ? "Click to edit PACE number" : undefined}
         >
           {pace.num !== "—" ? `- ${pace.num}` : "—"}
         </span>
       )}
-      <StatusIndicator status={pace.status} onClick={onStatusClick} />
+      <StatusIndicator status={pace.status} onClick={onStatusClick} disabled={disabled} />
     </div>
   );
 };
@@ -189,7 +198,7 @@ const PaceLine = ({ pace, editable = false, onCommit, onStatusClick }) => {
 // `onStatusClick` are called with the PACE's index (0-2) so the caller can tell
 // which of the 3 was edited/clicked.
 const PLACEHOLDER_PACE = { num: "—", status: "not-started" };
-const PaceCellStack = ({ paces, compact = false, editable = false, onCommit, onStatusClick }) => {
+const PaceCellStack = ({ paces, compact = false, editable = false, isDisabled, onCommit, onStatusClick }) => {
   // Re-basing one number changes the whole three-PACE block, so freeze all numbers
   // in that subject/quarter as soon as any cell has a terminal test outcome.
   const blockLocked = paces.some((pace) => TERMINAL_STATUSES.has(pace?.status));
@@ -198,13 +207,15 @@ const PaceCellStack = ({ paces, compact = false, editable = false, onCommit, onS
       <div className="flex flex-col items-center gap-1">
         {paces.map((pace, i) => {
           const p = pace ?? PLACEHOLDER_PACE;
+          const disabled = isDisabled?.(p, i) ?? false;
           return (
             <PaceLine
               key={i}
               pace={p}
-              editable={editable && !blockLocked}
+              editable={editable && !blockLocked && !disabled}
+              disabled={disabled}
               onCommit={(newNum) => onCommit?.(i, newNum)}
-              onStatusClick={() => onStatusClick?.(i, p.status)}
+              onStatusClick={() => { if (!disabled) onStatusClick?.(i, p.status); }}
             />
           );
         })}
@@ -433,12 +444,45 @@ function AssignInitialModal({ studentName, onSave, onClose, saving, error }) {
 // one student's plan: profile card + the editable grid. All actions come in as
 // props (onPaceEdit / onStatusClick / onAssignClick / onManageClick /
 // onScheduleTest / onViewScheduled).
-function IndividualView({ student, quarters, onPaceEdit, onStatusClick, onAssignClick, onManageClick, onScheduleTest, onViewScheduled }) {
+function IndividualView({
+  student,
+  quarters,
+  onPaceEdit,
+  onStatusClick,
+  onAssignClick,
+  onManageClick,
+  onScheduleTest,
+  onViewScheduled,
+  onSaveScriptures,
+  scriptureSaving,
+  scriptureError,
+}) {
   // onStatusClick(subjectLabel, quarterNum, rowIndex, currentStatus)
   // onPaceEdit(subjectLabel, quarterNum, rowIndex, newNum, count)
+  const [scriptures, setScriptures] = useState(() => ({
+    first: student?.scriptures?.first ?? "",
+    second: student?.scriptures?.second ?? "",
+  }));
+  const [scriptureSaved, setScriptureSaved] = useState(false);
+
   if (!student) return <EmptyState />;
 
   const hasProjection = quarters.some((q) => q.paces[0].some((p) => p.num !== "—"));
+  // A terminal failure blocks every higher PACE number in that subject for the
+  // remainder of the school year. These cells stay visible, but their number and
+  // status circle are disabled so no legend/status can be applied.
+  const failedPaceBySubject = new Map();
+  quarters.forEach((quarter) => {
+    SUBJECT_LABELS.forEach((label, subjectIndex) => {
+      [0, 1, 2].forEach((rowIndex) => {
+        const pace = quarter.paces[rowIndex]?.[subjectIndex];
+        if (pace?.status !== "failed" || pace.num === "—") return;
+        const previous = failedPaceBySubject.get(label);
+        const paceNumber = Number(pace.num);
+        if (previous == null || paceNumber < previous) failedPaceBySubject.set(label, paceNumber);
+      });
+    });
+  });
 
   return (
     <>
@@ -498,7 +542,7 @@ function IndividualView({ student, quarters, onPaceEdit, onStatusClick, onAssign
           </div>
         </div>
 
-        {/* Schedule PACE Test actions */}
+        {/* These actions are scoped to the student shown in this card. */}
         <div className="flex justify-end gap-3 mt-4">
           <button onClick={onScheduleTest}
             className="flex items-center gap-2 px-5 py-2.5 bg-[#0d1b2e] text-white text-xs font-bold rounded-xl hover:opacity-90 transition-opacity whitespace-nowrap">
@@ -570,6 +614,10 @@ function IndividualView({ student, quarters, onPaceEdit, onStatusClick, onAssign
                       key={si}
                       paces={[0, 1, 2].map((ri) => quarter.paces[ri]?.[si])}
                       editable
+                      isDisabled={(pace) => {
+                        const failedPace = failedPaceBySubject.get(label);
+                        return failedPace != null && pace.num !== "—" && Number(pace.num) > failedPace;
+                      }}
                       onCommit={(ri, newNum) => onPaceEdit(
                         label,
                         quarter.num,
@@ -623,6 +671,74 @@ function IndividualView({ student, quarters, onPaceEdit, onStatusClick, onAssign
           </button>
         </div>
       </div>
+
+      {/* These quarterly text entries feed the matching columns in the Class
+          Academic Record for this selected student. */}
+      <section className="mt-6 bg-white rounded-2xl shadow-sm border border-outline-variant/25 overflow-hidden">
+        <div className="px-6 py-4 border-b border-outline-variant/20 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h3 className="font-headline text-lg font-extrabold text-primary uppercase tracking-widest">
+              Student Scripture Record
+            </h3>
+            <p className="mt-1 text-xs text-on-surface-variant">
+              Enter {student.name}&apos;s two Scriptures. Saved entries appear in this student&apos;s Class Academic Record row.
+            </p>
+          </div>
+        </div>
+
+        <div className="p-6">
+          <div className="grid sm:grid-cols-2 gap-4">
+            {[
+              { key: "first", label: "1st Scripture", placeholder: "Example: John 3:16" },
+              { key: "second", label: "2nd Scripture", placeholder: "Example: Philippians 4:13" },
+            ].map((item) => (
+              <label key={item.key} className="block">
+                <span className="mb-2 block text-sm font-extrabold text-on-surface">{item.label}</span>
+                <textarea
+                  value={scriptures[item.key]}
+                  onChange={(event) => {
+                    setScriptures((value) => ({ ...value, [item.key]: event.target.value }));
+                    setScriptureSaved(false);
+                  }}
+                  maxLength={500}
+                  rows={3}
+                  placeholder={item.placeholder}
+                  className="w-full resize-y rounded-xl border border-outline-variant/30 bg-white px-4 py-3 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+                <span className="mt-1 block text-right text-[10px] text-on-surface-variant">
+                  {scriptures[item.key].length}/500
+                </span>
+              </label>
+            ))}
+          </div>
+
+          {scriptureError && (
+            <p className="mt-4 text-sm font-semibold text-red-600">{scriptureError}</p>
+          )}
+          {scriptureSaved && !scriptureError && (
+            <p className="mt-4 text-sm font-semibold text-green-700">
+              Scripture record saved to {student.name}&apos;s Class Academic Record.
+            </p>
+          )}
+
+          <div className="mt-5 flex justify-end">
+            <button
+              type="button"
+              disabled={scriptureSaving}
+              onClick={async () => {
+                const saved = await onSaveScriptures(scriptures);
+                setScriptureSaved(saved === true);
+              }}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#0d1b2e] text-white text-xs font-bold rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span className="material-symbols-outlined text-base" style={fillStyle}>
+                {scriptureSaving ? "progress_activity" : "save"}
+              </span>
+              {scriptureSaving ? "Saving…" : "Save Scripture Record"}
+            </button>
+          </div>
+        </div>
+      </section>
     </>
   );
 }
@@ -736,6 +852,8 @@ export default function PaceMonitoring() {
 
   // Assign / Manage Student PACE modal
   const [manageOpen,   setManageOpen]   = useState(false);
+  const [scriptureSaving, setScriptureSaving] = useState(false);
+  const [scriptureError, setScriptureError] = useState("");
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
   // loadData - load pace data (optionally for one student). On the first load with
@@ -758,6 +876,8 @@ export default function PaceMonitoring() {
 
   // Reload when the selected student changes OR refreshKey is bumped (after a save).
   useEffect(() => {
+    // The request helper owns the loading/error state for this selection.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData(selectedStudentId);
   }, [selectedStudentId, refreshKey, loadData]);
 
@@ -834,6 +954,26 @@ export default function PaceMonitoring() {
       setAssignError(err.response?.data?.message ?? err.message ?? "Failed to save.");
     } finally {
       setAssignSaving(false);
+    }
+  };
+
+  const handleSaveScriptures = async (values) => {
+    if (!selectedStudentId) return false;
+    setScriptureSaving(true);
+    setScriptureError("");
+    try {
+      await saveStudentScriptures({
+        student_id: selectedStudentId,
+        scripture_1st: values.first,
+        scripture_2nd: values.second,
+      });
+      setRefreshKey((key) => key + 1);
+      return true;
+    } catch (err) {
+      setScriptureError(err.response?.data?.message ?? err.message ?? "Failed to save Scripture record.");
+      return false;
+    } finally {
+      setScriptureSaving(false);
     }
   };
 
@@ -973,8 +1113,11 @@ export default function PaceMonitoring() {
             onStatusClick={handleStatusClick}
             onAssignClick={() => { setAssignError(""); setAssignOpen(true); }}
             onManageClick={() => setManageOpen(true)}
-            onScheduleTest={() => navigate("/teacher/pace/schedule-test")}
-            onViewScheduled={() => navigate("/teacher/pace/scheduled-tests")}
+            onScheduleTest={() => navigate(`/teacher/pace/schedule-test?student_id=${selectedStudentId}`)}
+            onViewScheduled={() => navigate(`/teacher/pace/scheduled-tests?student_id=${selectedStudentId}`)}
+            onSaveScriptures={handleSaveScriptures}
+            scriptureSaving={scriptureSaving}
+            scriptureError={scriptureError}
           />
         ) : (
           <ClassView students={classStudents} quarter={quarter} />

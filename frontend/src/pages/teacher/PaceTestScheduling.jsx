@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import TeacherLayout from "../../components/TeacherLayout.jsx";
+import Pagination from "../../components/Pagination.jsx";
 import { fetchPaceTestScheduling, updatePaceTestSchedule } from "../../api/teacher.js";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
 
@@ -8,6 +9,7 @@ const fillStyle = { fontVariationSettings: '"FILL" 1' };
 const PAGE_SIZE = 6;
 
 const QUARTER_OPTS = [
+  { value: "", label: "All Quarters" },
   { value: "1", label: "1st Quarter" },
   { value: "2", label: "2nd Quarter" },
   { value: "3", label: "3rd Quarter" },
@@ -107,13 +109,15 @@ const ReadOnly = ({ value }) => (
 export default function PaceTestScheduling() {
   const schoolYearLabel = useSchoolYear();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const selectedStudentId = Number(searchParams.get("student_id")) || null;
 
   const [data,     setData]     = useState(null);
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState("");
   const [search,   setSearch]   = useState("");
   const [subject,  setSubject]  = useState("all");
-  const [quarter,  setQuarter]  = useState("1");
+  const [quarter,  setQuarter]  = useState("");
   const [page,     setPage]     = useState(1);
   const [refresh,  setRefresh]  = useState(0);
 
@@ -125,11 +129,11 @@ export default function PaceTestScheduling() {
   const load = useCallback(() => {
     setLoading(true);
     setError("");
-    fetchPaceTestScheduling({ subject, quarter })
+    fetchPaceTestScheduling({ subject, quarter, student_id: selectedStudentId })
       .then((res) => setData(res.data ?? null))
       .catch((err) => setError(err.response?.data?.message ?? err.message ?? "Failed to load."))
       .finally(() => setLoading(false));
-  }, [subject, quarter]);
+  }, [subject, quarter, selectedStudentId]);
 
   useEffect(() => { load(); }, [load, refresh]);
   useEffect(() => { setPage(1); }, [search, subject, quarter]);
@@ -140,9 +144,10 @@ export default function PaceTestScheduling() {
     r.name.toLowerCase().includes(search.toLowerCase())
   );
   const totalPages = Math.max(1, Math.ceil(allRows.length / PAGE_SIZE));
-  const pageRows   = allRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const startIdx   = allRows.length ? (page - 1) * PAGE_SIZE + 1 : 0;
-  const endIdx     = Math.min(page * PAGE_SIZE, allRows.length);
+  const currentPage = Math.min(page, totalPages);
+  const pageRows   = allRows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const startIdx   = allRows.length ? (currentPage - 1) * PAGE_SIZE + 1 : 0;
+  const endIdx     = Math.min(currentPage * PAGE_SIZE, allRows.length);
 
   const handleSubmit = async ({ scheduled_date, scheduled_time }) => {
     if (!formRow) return;
@@ -256,7 +261,11 @@ export default function PaceTestScheduling() {
             <div className="text-center py-16">
               <span className="material-symbols-outlined text-5xl text-on-surface-variant/40 mb-3 block" style={fillStyle}>event_available</span>
               <p className="text-base font-bold text-on-surface">No pending PACE test requests</p>
-              <p className="text-sm text-on-surface-variant mt-1">Requests appear here when a student who passed the self-test (≥ 90) requests to take the PACE test.</p>
+              <p className="text-sm text-on-surface-variant mt-1">
+                {selectedStudentId
+                  ? "The selected student has no pending PACE test requests matching these filters."
+                  : "Requests appear here when a student who passed the self-test (≥ 80) requests to take the PACE test."}
+              </p>
             </div>
           ) : (
             <>
@@ -304,24 +313,7 @@ export default function PaceTestScheduling() {
                 <p className="text-xs text-on-surface-variant">
                   Showing {startIdx} to {endIdx} of {allRows.length} entries
                 </p>
-                <div className="flex items-center gap-1">
-                  <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-on-surface-variant hover:bg-gray-50 disabled:opacity-40">
-                    <span className="material-symbols-outlined text-base">chevron_left</span>
-                  </button>
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                    <button key={p} onClick={() => setPage(p)}
-                      className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm font-bold transition-colors ${
-                        p === page ? "bg-primary text-white" : "border border-gray-200 text-on-surface-variant hover:bg-gray-50"
-                      }`}>
-                      {p}
-                    </button>
-                  ))}
-                  <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-on-surface-variant hover:bg-gray-50 disabled:opacity-40">
-                    <span className="material-symbols-outlined text-base">chevron_right</span>
-                  </button>
-                </div>
+                <Pagination page={currentPage} totalPages={totalPages} onPageChange={setPage} />
               </div>
             </>
           )}

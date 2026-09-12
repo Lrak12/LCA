@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { fetchPaceAnalyticsReport } from "../../api/teacher.js";
 import { submitReport } from "../../api/reports.js";
+import { exportReportPdf, printReport, showReportActionError } from "../../utils/reportDocument.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 const QUARTERS = ["1st Quarter", "2nd Quarter", "3rd Quarter", "4th Quarter"];
@@ -32,8 +33,9 @@ const Td = ({ children, className = "" }) => (
 );
 
 export default function PaceAnalyticsRankingsModal({ onClose }) {
+  const reportRef = useRef(null);
   const grade = "all";
-  const quarter = 4;
+  const [quarter, setQuarter] = useState(1);
   const [data,      setData]      = useState(null);
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState("");
@@ -43,7 +45,7 @@ export default function PaceAnalyticsRankingsModal({ onClose }) {
   const [publishErr, setPublishErr] = useState("");
 
   useEffect(() => {
-    // This effect owns the initial request lifecycle for the fixed whole-year report.
+    // Reload the analytics preview whenever the selected quarter changes.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setError("");
@@ -81,6 +83,28 @@ export default function PaceAnalyticsRankingsModal({ onClose }) {
 
   const today = new Date().toLocaleDateString("en-US", { month: "numeric", day: "numeric", year: "numeric" });
   const schoolYear  = data?.schoolYear  ?? "—";
+  const reportTitle = "PACE Analytics & Rankings Report";
+  const reportSubtitle = `${QUARTERS[quarter - 1]} · School Year ${schoolYear} · Prepared by ${data?.teacherName ?? "—"}`;
+
+  const handleExport = () => {
+    try {
+      exportReportPdf(reportRef.current, {
+        title: reportTitle,
+        subtitle: reportSubtitle,
+        fileName: `pace-analytics-rankings-${schoolYear}`,
+      });
+    } catch (err) {
+      showReportActionError(err);
+    }
+  };
+
+  const handlePrint = () => {
+    try {
+      printReport(reportRef.current, { title: reportTitle });
+    } catch (err) {
+      showReportActionError(err);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 overflow-y-auto">
@@ -108,6 +132,25 @@ export default function PaceAnalyticsRankingsModal({ onClose }) {
           </div>
         </div>
 
+        <div className="flex items-center gap-1 border-b border-outline-variant/10 px-6 py-3">
+          <span className="mr-2 text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant">Quarter</span>
+          {[1, 2, 3, 4].map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setQuarter(value)}
+              aria-pressed={quarter === value}
+              className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${
+                quarter === value
+                  ? "bg-primary text-white"
+                  : "bg-surface-container-low text-on-surface-variant hover:text-on-surface"
+              }`}
+            >
+              Q{value}
+            </button>
+          ))}
+        </div>
+
         {error && (
           <div className="mx-6 mt-4 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-center gap-2">
             <span className="material-symbols-outlined text-base">error</span>{error}
@@ -116,7 +159,7 @@ export default function PaceAnalyticsRankingsModal({ onClose }) {
         {status === "Published" && (
           <div className="mx-6 mt-4 px-4 py-3 rounded-xl bg-green-50 border border-green-200 text-green-700 text-sm flex items-center gap-2">
             <span className="material-symbols-outlined text-base">check_circle</span>
-            PACE analytics and rankings report submitted for all four quarters. The principal can now view it.
+            PACE analytics and rankings report for {QUARTERS[quarter - 1]} was published to the principal.
           </div>
         )}
         {publishErr && (
@@ -127,7 +170,7 @@ export default function PaceAnalyticsRankingsModal({ onClose }) {
         )}
 
         {/* ── Body ─────────────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-auto px-6 py-5">
+        <div ref={reportRef} className="flex-1 overflow-auto px-6 py-5">
           {loading ? (
             <div className="py-20 text-center text-sm text-on-surface-variant">
               <span className="w-5 h-5 inline-block border-2 border-primary/30 border-t-primary rounded-full animate-spin align-middle" />
@@ -318,8 +361,17 @@ export default function PaceAnalyticsRankingsModal({ onClose }) {
             {busy === "publish" ? "Publishing…" : status === "Published" ? "Publish Again" : "Publish to Principal"}
           </button>
           <button
-            onClick={() => window.print()}
-            className="flex items-center gap-2 text-sm font-bold text-on-surface border border-outline-variant/30 rounded-xl px-5 py-2.5 hover:bg-surface-container-low transition-colors"
+            onClick={handleExport}
+            disabled={loading || !!error}
+            className="flex items-center gap-2 text-sm font-bold text-white bg-red-500 rounded-xl px-5 py-2.5 hover:bg-red-600 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <span className="material-symbols-outlined text-base">upload_file</span>
+            Export PDF
+          </button>
+          <button
+            onClick={handlePrint}
+            disabled={loading || !!error}
+            className="flex items-center gap-2 text-sm font-bold text-on-surface border border-outline-variant/30 rounded-xl px-5 py-2.5 hover:bg-surface-container-low transition-colors disabled:cursor-not-allowed disabled:opacity-50"
           >
             <span className="material-symbols-outlined text-base">print</span>
             Print

@@ -239,8 +239,8 @@ export default function Grades() {
                         <td className="py-3 px-3 text-sm font-extrabold text-on-surface text-center">
                           {s.quarterAverage ?? "—"}
                         </td>
-                        <td className={`py-3 px-3 text-sm font-extrabold text-center ${s.passed == null ? "text-on-surface-variant" : s.passed ? "text-green-700" : "text-red-600"}`}>
-                          {s.passed == null ? "—" : s.passed ? "Passed" : "Failed"}
+                        <td className={`py-3 px-3 text-sm font-extrabold text-center ${s.status == null ? "text-on-surface-variant" : s.status === "Passed" ? "text-green-700" : "text-red-600"}`}>
+                          {s.status ?? "—"}
                         </td>
                       </tr>
                     ))

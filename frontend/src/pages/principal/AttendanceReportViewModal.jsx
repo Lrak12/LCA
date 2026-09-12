@@ -1,13 +1,12 @@
 // Attendance Report (principal): monthly present/absent/tardy grid per student, plus
-// demerits + homework PACEs. Exports AttendanceReportContent (embedded in
+// homework PACEs. Exports AttendanceReportContent (embedded in
 // SupervisorReportModal) + a standalone modal.
 // Backend chain (frontend api/reports.js fetchAttendanceReport -> routes/reports.routes.js):
 //   GET /reports/teacher/:id/attendance -> controllers/reports.controller.js > getTeacherAttendanceReport (~line 23)
 //                                        -> services/reports.service.js > getTeacherAttendanceReport (~line 384)
 // What the backend computes (this table just renders it): getTeacherAttendanceReport reads the
 // attendance rows for the quarter's date range (only up to today) and, per student per month,
-// tallies Present / Absent / Tardy counts. `months` = the quarter's month headers. Demerits +
-// homework-PACE columns are placeholders (not yet tracked).
+// tallies Present / Absent / Tardy counts. `months` = the quarter's month headers.
 import { useState, useEffect } from "react";
 import { fetchAttendanceReport } from "../../api/reports.js";
 
@@ -49,6 +48,8 @@ export function AttendanceReportContent({ teacher, quarter, schoolYearId }) {
   // fetch this teacher's attendance report for the quarter
   useEffect(() => {
     if (!teacher?.teacher_id) return;
+    // This effect owns the report request lifecycle for the selected quarter.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     fetchAttendanceReport(teacher.teacher_id, quarter, schoolYearId)
       .then((res) => setReport(res.data))
@@ -60,7 +61,7 @@ export function AttendanceReportContent({ teacher, quarter, schoolYearId }) {
     s.name.toLowerCase().includes(search.toLowerCase())
   );
   const months = report?.months ?? [];                  // month column headers (P/A/T each)
-  const totalCols = 3 + months.length * 3;              // name + demerits + hw, plus 3 cols per month
+  const totalCols = 2 + months.length * 3;              // name + hw, plus 3 cols per month
 
   return (
     <>
@@ -99,8 +100,7 @@ export function AttendanceReportContent({ teacher, quarter, schoolYearId }) {
                 <tr>
                   <TH rowSpan={3} className="text-left px-3 min-w-[160px]">Student Name</TH>
                   <TH colSpan={months.length * 3}>Attendance</TH>
-                  <TH rowSpan={3} className="min-w-[70px]">No. of<br />Demerits</TH>
-                  <TH rowSpan={3} className="min-w-[70px]">HW<br />PACEs</TH>
+                  <TH rowSpan={3} className="min-w-[90px]">No. of Days<br />Had Homework</TH>
                 </tr>
                 <tr>
                   {months.map((m) => <TH key={m} colSpan={3}>{m}</TH>)}
@@ -130,7 +130,6 @@ export function AttendanceReportContent({ teacher, quarter, schoolYearId }) {
                         <TD key={`${i}-${mi}-t`} className={m.tardy  > 0 ? "text-orange-500" : "text-on-surface"}>{m.tardy}</TD>
                       </>
                     ))}
-                    <TD className="text-pink-500 font-extrabold">{s.demerits}</TD>
                     <TD className="text-purple-600 font-extrabold">{s.hw}</TD>
                   </tr>
                 ))}

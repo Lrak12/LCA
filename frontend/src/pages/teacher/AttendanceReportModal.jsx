@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { fetchMyAttendanceReport } from "../../api/teacher.js";
 import { submitReport } from "../../api/reports.js";
+import { exportReportPdf, printReport, showReportActionError } from "../../utils/reportDocument.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
@@ -33,6 +34,7 @@ const SkeletonRow = ({ cols }) => (
 );
 
 export default function AttendanceReportModal({ onClose }) {
+  const reportRef = useRef(null);
   const [quarter,     setQuarter]     = useState(1);
   const [search,      setSearch]      = useState("");
   const [data,        setData]        = useState(null);
@@ -77,7 +79,29 @@ export default function AttendanceReportModal({ onClose }) {
   const schoolYear  = data?.schoolYear  ?? "—";
   const today = new Date().toLocaleDateString("en-US", { month: "numeric", day: "numeric", year: "numeric" });
 
-  const totalCols = 1 + months.length * 3 + 2;
+  const totalCols = 1 + months.length * 3 + 1;
+  const reportTitle = "Class Attendance Report";
+  const reportSubtitle = `${QUARTERS[quarter - 1]} · School Year ${schoolYear} · Prepared by ${teacherName}`;
+
+  const handleExport = () => {
+    try {
+      exportReportPdf(reportRef.current, {
+        title: reportTitle,
+        subtitle: reportSubtitle,
+        fileName: `attendance-report-q${quarter}-${schoolYear}`,
+      });
+    } catch (err) {
+      showReportActionError(err);
+    }
+  };
+
+  const handlePrint = () => {
+    try {
+      printReport(reportRef.current, { title: reportTitle });
+    } catch (err) {
+      showReportActionError(err);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 overflow-y-auto">
@@ -88,7 +112,7 @@ export default function AttendanceReportModal({ onClose }) {
           <div>
             <h2 className="text-xl font-extrabold text-on-surface">Attendance Report</h2>
             <p className="text-xs text-on-surface-variant mt-0.5">
-              Monthly attendance tracking with tardiness, absences, demerits and homework monitoring.
+              Monthly attendance tracking with tardiness, absences and homework monitoring.
             </p>
           </div>
           <button
@@ -128,7 +152,7 @@ export default function AttendanceReportModal({ onClose }) {
           </div>
 
           <div className="flex items-center gap-2 ml-auto">
-            <button className="flex items-center gap-1.5 text-sm font-bold text-white bg-red-500 hover:bg-red-600 transition-colors rounded-lg px-3 py-2">
+            <button onClick={handleExport} disabled={loading || !!error} className="flex items-center gap-1.5 text-sm font-bold text-white bg-red-500 hover:bg-red-600 transition-colors rounded-lg px-3 py-2 disabled:cursor-not-allowed disabled:opacity-50">
               <span className="material-symbols-outlined" style={{ fontSize: 16 }}>upload_file</span>
               Export PDF
             </button>
@@ -145,7 +169,7 @@ export default function AttendanceReportModal({ onClose }) {
         {published && (
           <div className="mx-6 mt-4 px-4 py-3 rounded-xl bg-green-50 border border-green-200 text-green-700 text-sm flex items-center gap-2">
             <span className="material-symbols-outlined text-base">check_circle</span>
-            Attendance report submitted for all four quarters. The principal can now view it.
+            Attendance report for {QUARTERS[quarter - 1]} was published to the principal.
           </div>
         )}
         {publishErr && (
@@ -156,7 +180,7 @@ export default function AttendanceReportModal({ onClose }) {
         )}
 
         {/* ── Body ─────────────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-auto px-6 py-4">
+        <div ref={reportRef} className="flex-1 overflow-auto px-6 py-4">
 
           {/* Report info */}
           <div className="flex items-start justify-between mb-5 text-xs">
@@ -181,8 +205,7 @@ export default function AttendanceReportModal({ onClose }) {
                 <tr>
                   <TH rowSpan={3} className="text-left px-3 min-w-[160px]">Student Name</TH>
                   <TH colSpan={months.length * 3}>Attendance</TH>
-                  <TH rowSpan={3} className="min-w-[70px]">No. of<br />Demerits</TH>
-                  <TH rowSpan={3} className="min-w-[70px]">No. of<br />Days HW</TH>
+                  <TH rowSpan={3} className="min-w-[90px]">No. of Days<br />Had Homework</TH>
                 </tr>
                 <tr>
                   {months.map((m) => <TH key={m} colSpan={3}>{m}</TH>)}
@@ -216,7 +239,6 @@ export default function AttendanceReportModal({ onClose }) {
                         </>
                       ))}
 
-                      <TD className="text-pink-500 font-extrabold">{s.demerits ?? 0}</TD>
                       <TD className="text-purple-600 font-extrabold">{s.hw ?? 0}</TD>
                     </tr>
                   ))
@@ -239,7 +261,7 @@ export default function AttendanceReportModal({ onClose }) {
             </span>
             {publishing ? "Publishing…" : published ? "Publish Again" : "Publish to Principal"}
           </button>
-          <button className="flex items-center gap-2 text-sm font-bold text-on-surface border border-outline-variant/30 rounded-xl px-5 py-2.5 hover:bg-surface-container-low transition-colors">
+          <button onClick={handlePrint} disabled={loading || !!error} className="flex items-center gap-2 text-sm font-bold text-on-surface border border-outline-variant/30 rounded-xl px-5 py-2.5 hover:bg-surface-container-low transition-colors disabled:cursor-not-allowed disabled:opacity-50">
             <span className="material-symbols-outlined text-base">print</span>
             Print
           </button>

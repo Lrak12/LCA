@@ -52,8 +52,6 @@ export default function Attendance() {
   const [month, setMonth]     = useState(""); // "" = backend default (current month)
 
   useEffect(() => {
-    setLoading(true);
-    setError("");
     fetchStudentAttendance(month || undefined)
       .then((res) => setData(res.data))
       .catch((err) => setError(err.response?.data?.message ?? err.message))
@@ -144,7 +142,11 @@ export default function Attendance() {
               <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1 text-on-surface-variant text-base pointer-events-none">calendar_month</span>
               <select
                 value={selected}
-                onChange={(e) => setMonth(e.target.value)}
+                onChange={(e) => {
+                  setLoading(true);
+                  setError("");
+                  setMonth(e.target.value);
+                }}
                 className="pl-9 pr-8 py-2 rounded-lg border border-outline-variant/30 bg-white text-sm font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/30 appearance-none min-w-[180px]"
               >
                 {months.length === 0 && selected && (
@@ -183,14 +185,15 @@ export default function Attendance() {
                   <tr className="bg-surface-container-lowest border-b border-outline-variant/20">
                     <th className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant px-7 py-3.5 text-left">Date</th>
                     <th className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant px-4 py-3.5 text-left">Day</th>
-                    <th className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant px-4 py-3.5 text-left">Status</th>
+                    <th className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant px-4 py-3.5 text-left">AM Status</th>
+                    <th className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant px-4 py-3.5 text-left">PM Status</th>
                     <th className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant px-7 py-3.5 text-right">Remarks</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-outline-variant/10">
                   {records.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="px-7 py-10 text-center text-sm text-on-surface-variant">
+                      <td colSpan={5} className="px-7 py-10 text-center text-sm text-on-surface-variant">
                         No attendance records for this month yet.
                       </td>
                     </tr>
@@ -203,7 +206,10 @@ export default function Attendance() {
                         {r.day}
                       </td>
                       <td className="px-4 py-3.5">
-                        <StatusBadge status={r.status} />
+                        <StatusBadge status={r.am_status} />
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <StatusBadge status={r.pm_status} />
                       </td>
                       <td className={`px-7 py-3.5 text-sm text-right ${r.noClass ? "text-on-surface-variant/60" : "text-on-surface-variant"}`}>
                         {r.remarks || "—"}

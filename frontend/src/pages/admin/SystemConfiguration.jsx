@@ -266,8 +266,16 @@ function SchoolYearTab({ setBanner }) {
   const onActivate = async (sy) => {
     setBusyId(sy.sy_id);
     try {
-      await activateSchoolYear(sy.sy_id, isHistoricalYear(sy));
-      setBanner(`${syLabel(sy.year_label)} is now active.`);
+      const response = await activateSchoolYear(sy.sy_id, isHistoricalYear(sy));
+      const restored = Number(response?.data?.restored_students ?? 0);
+      const cleared = Number(response?.data?.cleared_students ?? 0);
+      setBanner(
+        `${syLabel(sy.year_label)} is now active.${restored > 0
+          ? ` Restored ${restored} student assignment${restored === 1 ? "" : "s"}.`
+          : ""}${cleared > 0
+          ? ` Kept ${cleared} closed enrollment${cleared === 1 ? "" : "s"} unassigned.`
+          : ""}`,
+      );
       reload();
     } catch (err) {
       setError(err.response?.data?.message ?? err.message);

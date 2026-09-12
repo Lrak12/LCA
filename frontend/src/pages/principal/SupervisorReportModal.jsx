@@ -5,11 +5,12 @@
 //   Academic  -> ClassAcademicRecordViewModal.jsx  (GET /reports/teacher/:id/academic)
 //   Attendance-> AttendanceReportViewModal.jsx      (GET /reports/teacher/:id/attendance)
 //   PACE      -> PaceProgressViewModal.jsx          (GET /reports/teacher/:id/pace)
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ClassAcademicRecordContent } from "./ClassAcademicRecordViewModal.jsx";
 import { AttendanceReportContent } from "./AttendanceReportViewModal.jsx";
 import { PaceProgressContent } from "./PaceProgressViewModal.jsx";
 import PaceAnalyticsRankingsView from "./PaceAnalyticsRankingsView.jsx";
+import { exportReportPdf, printReport, showReportActionError } from "../../utils/reportDocument.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
@@ -50,12 +51,34 @@ export default function SupervisorReportModal({
   schoolYearId,
   onClose,
 }) {
+  const reportRef = useRef(null);
   const [activeTab, setActiveTab] = useState(initialTab); // which report tab is showing
   const [activeQuarter, setActiveQuarter] = useState(quarter);
   const teacherName  = teacher ? `${teacher.firstName} ${teacher.lastName}` : "—";
   const quarterLabel = QUARTER_LABELS[activeQuarter] ?? `Quarter ${activeQuarter}`;
   const submittedAt = submissionMatrix[activeTab]?.[activeQuarter] ?? null;
   const currentStatus = submittedAt ? "Submitted" : "Not Submitted";
+  const activeReportLabel = TABS.find((tab) => tab.key === activeTab)?.label ?? "Supervisor Academic Report";
+
+  const handleExport = () => {
+    try {
+      exportReportPdf(reportRef.current, {
+        title: activeReportLabel,
+        subtitle: `${quarterLabel} · Supervisor: ${teacherName}`,
+        fileName: `${activeReportLabel}-q${activeQuarter}-${teacherName}`,
+      });
+    } catch (err) {
+      showReportActionError(err);
+    }
+  };
+
+  const handlePrint = () => {
+    try {
+      printReport(reportRef.current, { title: activeReportLabel });
+    } catch (err) {
+      showReportActionError(err);
+    }
+  };
 
   return (
     <div
@@ -149,7 +172,7 @@ export default function SupervisorReportModal({
         </div>
 
         {/* Active report body — only published report/quarter combinations are viewable. */}
-        <div className="flex-1 overflow-auto px-7 py-5 border-t border-outline-variant/15">
+        <div ref={reportRef} className="flex-1 overflow-auto px-7 py-5 border-t border-outline-variant/15">
           {!submittedAt ? (
             <div className="flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed border-outline-variant/30 bg-surface-container-lowest px-6 text-center">
               <span className="material-symbols-outlined mb-2 text-3xl text-on-surface-variant/50">draft</span>
@@ -170,13 +193,21 @@ export default function SupervisorReportModal({
 
         {/* Footer */}
         <div className="flex items-center justify-end gap-3 px-7 py-4 border-t border-outline-variant/20 bg-surface-container-lowest shrink-0">
-          {/* Download PDF -> window.print() (browser print-to-PDF; no backend) */}
           <button
-            onClick={() => window.print()}
+            onClick={handlePrint}
+            disabled={!submittedAt}
             className="flex items-center gap-2 text-sm font-bold text-on-surface border border-outline-variant/30 rounded-xl px-5 py-2.5 hover:bg-surface-container-low transition-colors"
           >
+            <span className="material-symbols-outlined text-base">print</span>
+            Print
+          </button>
+          <button
+            onClick={handleExport}
+            disabled={!submittedAt}
+            className="flex items-center gap-2 text-sm font-bold text-white bg-red-500 border border-red-500 rounded-xl px-5 py-2.5 hover:bg-red-600 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+          >
             <span className="material-symbols-outlined text-base">download</span>
-            Download PDF
+            Export PDF
           </button>
           <button
             onClick={onClose}

@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { fetchMyPaceProgressReport } from "../../api/teacher.js";
 import { submitReport } from "../../api/reports.js";
+import { exportReportPdf, printReport, showReportActionError } from "../../utils/reportDocument.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
@@ -47,6 +48,7 @@ const SkeletonRow = ({ cols }) => (
 );
 
 export default function PaceProgressModal({ onClose }) {
+  const reportRef = useRef(null);
   const [quarter,   setQuarter]   = useState(1);
   const [search,    setSearch]    = useState("");
   const [data,      setData]      = useState(null);
@@ -94,6 +96,28 @@ export default function PaceProgressModal({ onClose }) {
   );
 
   const totalCols = 1 + subjects.length * 2 + 1;
+  const reportTitle = "PACE Progress Track Report";
+  const reportSubtitle = `${quarterLabel} · School Year ${schoolYear} · Prepared by ${teacherName}`;
+
+  const handleExport = () => {
+    try {
+      exportReportPdf(reportRef.current, {
+        title: reportTitle,
+        subtitle: reportSubtitle,
+        fileName: `pace-progress-report-q${quarter}-${schoolYear}`,
+      });
+    } catch (err) {
+      showReportActionError(err);
+    }
+  };
+
+  const handlePrint = () => {
+    try {
+      printReport(reportRef.current, { title: reportTitle });
+    } catch (err) {
+      showReportActionError(err);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 overflow-y-auto">
@@ -143,7 +167,7 @@ export default function PaceProgressModal({ onClose }) {
           </div>
 
           <div className="flex items-center gap-2 ml-auto">
-            <button className="flex items-center gap-1.5 text-sm font-bold text-white bg-red-500 hover:bg-red-600 transition-colors rounded-lg px-3 py-2">
+            <button onClick={handleExport} disabled={loading || !!error} className="flex items-center gap-1.5 text-sm font-bold text-white bg-red-500 hover:bg-red-600 transition-colors rounded-lg px-3 py-2 disabled:cursor-not-allowed disabled:opacity-50">
               <span className="material-symbols-outlined" style={{ fontSize: 16 }}>upload_file</span>
               Export PDF
             </button>
@@ -160,7 +184,7 @@ export default function PaceProgressModal({ onClose }) {
         {published && (
           <div className="mx-6 mt-4 px-4 py-3 rounded-xl bg-green-50 border border-green-200 text-green-700 text-sm flex items-center gap-2">
             <span className="material-symbols-outlined text-base">check_circle</span>
-            PACE progress report submitted for all four quarters. The principal can now view it.
+            PACE progress report for {quarterLabel} was published to the principal.
           </div>
         )}
         {publishErr && (
@@ -171,7 +195,7 @@ export default function PaceProgressModal({ onClose }) {
         )}
 
         {/* ── Body ─────────────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-auto px-6 py-4">
+        <div ref={reportRef} className="flex-1 overflow-auto px-6 py-4">
 
           {/* Report info */}
           <div className="flex items-start justify-between mb-4 text-xs">
@@ -275,7 +299,7 @@ export default function PaceProgressModal({ onClose }) {
             </span>
             {publishing ? "Publishing…" : published ? "Publish Again" : "Publish to Principal"}
           </button>
-          <button className="flex items-center gap-2 text-sm font-bold text-on-surface border border-outline-variant/30 rounded-xl px-5 py-2.5 hover:bg-surface-container-low transition-colors">
+          <button onClick={handlePrint} disabled={loading || !!error} className="flex items-center gap-2 text-sm font-bold text-on-surface border border-outline-variant/30 rounded-xl px-5 py-2.5 hover:bg-surface-container-low transition-colors disabled:cursor-not-allowed disabled:opacity-50">
             <span className="material-symbols-outlined text-base">print</span>
             Print
           </button>
