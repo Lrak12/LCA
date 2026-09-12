@@ -85,8 +85,8 @@ export const submitTeacherAttendance = (body) =>
 
 // Initial PACE assignment (the 4-quarter projected plan). Backend: POST /teacher/assign-pace
 //   > ReportsController.assignPace > reports.service.generatePaceProjection (~611).
-export const assignStudentPace = (student_id, paces) =>
-  client.post("/teacher/assign-pace", { student_id, paces });
+export const assignStudentPace = (student_id, paces, placement = {}) =>
+  client.post("/teacher/assign-pace", { student_id, paces, ...placement });
 
 // A student's saved 4-quarter projection (+ locked quarters). UI: teacher/AssignPace.jsx.
 // Backend: GET /teacher/pace-projection > controller.getPaceProjection > service.getStudentPaceProjection (~127).
@@ -94,8 +94,10 @@ export const fetchStudentPaceProjection = (student_id) =>
   client.get("/teacher/pace-projection", { params: { student_id } });
 
 // Last completed PACE number per subject (seeds the "basis" on AssignPace / Returning placement).
-export const fetchLastCompletedPaces = (student_id) =>
-  client.get("/teacher/last-completed-paces", { params: { student_id } });
+export const fetchLastCompletedPaces = (student_id, options = {}) =>
+  client.get("/teacher/last-completed-paces", {
+    params: { student_id, ...(options.previousYear ? { previous_year: true } : {}) },
+  });
 
 // Re-base one quarter's PACE numbers. Backend: PATCH /teacher/pace-projection/cell
 //   > controller.updatePaceCell > service.updatePaceProjectionCell (~1392).

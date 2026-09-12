@@ -932,11 +932,21 @@ export const generatePaceProjection = async (teacher_id, student_id, paces) => {
   // Ownership: the student must belong to one of this teacher's grade levels
   const { data: ownedStudent } = await supabaseAdmin
     .from("student")
-    .select("student_id, grade_level!inner(teacher_id)")
+    .select("student_id, gl_id, grade_level!inner(teacher_id)")
     .eq("student_id", Number(student_id))
     .eq("grade_level.teacher_id", teacher_id)
     .maybeSingle();
   if (!ownedStudent) throw new Error("Student not found or not assigned to this teacher");
+
+  // student_pace has no sy_id; its year is inherited from pace_module.gl_id.
+  // Restrict locking and cleanup to the student's active-year grade so prior
+  // school-year assessments cannot lock or delete the new projection.
+  const { data: activeModules, error: activeModulesError } = await supabaseAdmin
+    .from("pace_module")
+    .select("module_id")
+    .eq("gl_id", ownedStudent.gl_id);
+  if (activeModulesError) throw new Error(activeModulesError.message);
+  const activeModuleIds = (activeModules ?? []).map((module) => module.module_id);
 
   // 3 PACEs per quarter — matches the monitoring grid, scoring UIs, and grades
   const DEFAULT_PER_QUARTER = 3;
@@ -990,10 +1000,13 @@ export const generatePaceProjection = async (teacher_id, student_id, paces) => {
 
   // ── Locked quarters: a quarter with any recorded official PACE test score
   //    cannot be re-planned (the plan must not drift away from real grades)
-  const { data: spRows } = await supabaseAdmin
-    .from("student_pace")
-    .select("sp_id")
-    .eq("student_id", Number(student_id));
+  const { data: spRows } = activeModuleIds.length
+    ? await supabaseAdmin
+        .from("student_pace")
+        .select("sp_id")
+        .eq("student_id", Number(student_id))
+        .in("module_id", activeModuleIds)
+    : { data: [] };
   const allSpIds = (spRows ?? []).map((r) => r.sp_id);
 
   let lockedQuarters = [];
@@ -1041,12 +1054,15 @@ export const generatePaceProjection = async (teacher_id, student_id, paces) => {
     const obsolete = [...oldNums].filter((n) => !newNums.has(n));
     if (!obsolete.length) continue;
 
-    const { data: obsoleteSps } = await supabaseAdmin
-      .from("student_pace")
-      .select("sp_id, pace_module!inner(subject, module_number)")
-      .eq("student_id", Number(student_id))
-      .eq("pace_module.subject", subject)
-      .in("pace_module.module_number", obsolete);
+    const { data: obsoleteSps } = activeModuleIds.length
+      ? await supabaseAdmin
+          .from("student_pace")
+          .select("sp_id, pace_module!inner(subject, module_number)")
+          .eq("student_id", Number(student_id))
+          .in("module_id", activeModuleIds)
+          .eq("pace_module.subject", subject)
+          .in("pace_module.module_number", obsolete)
+      : { data: [] };
     (obsoleteSps ?? []).forEach((sp) => candidateSpIds.push(sp.sp_id));
   }
 

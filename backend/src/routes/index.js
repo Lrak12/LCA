@@ -18,6 +18,7 @@ import rolloverRoutes      from "./rollover.routes.js";
 import adminRoutes         from "./admin.routes.js";
 import notificationRoutes  from "./notification.routes.js";
 import accountRoutes        from "./account.routes.js";
+import parentRoutes         from "./parent.routes.js";
 
 const router = Router();
 
@@ -41,4 +42,5 @@ router.use("/account",       accountRoutes);
 
 router.use("/student", studentPortalRoutes);
 router.use("/teacher", teacherPortalRoutes);
+router.use("/parent", parentRoutes);
 export default router;

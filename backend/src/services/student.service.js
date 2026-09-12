@@ -158,7 +158,63 @@ export const getAllStudents = async () => {
   const eligible = await getEligibleUserIds(activeSy.sy_id, "student");
   const { data, error } = await StudentModel.findAll();
   if (error) throw new Error(error.message);
-  return (data ?? []).filter((student) => eligible.has(student.user_id ?? student.users?.user_id));
+  const students = (data ?? []).filter((student) => eligible.has(student.user_id ?? student.users?.user_id));
+  if (!students.length) return [];
+
+  // The Enroll Students modal needs the last grade as historical context after
+  // rollover. Prefer the student's still-linked older grade; otherwise use the
+  // latest assignment snapshot from a school year before the active one.
+  const studentIds = students.map((student) => student.student_id);
+  const [{ data: schoolYears, error: yearsError }, { data: assignmentHistory, error: historyError }] = await Promise.all([
+    supabaseAdmin
+      .from("school_year")
+      .select("sy_id, year_label, start_date")
+      .order("start_date", { ascending: false }),
+    supabaseAdmin
+      .from("student_supervisor_history")
+      .select("student_id, sy_id, grade_level_name, assigned_at")
+      .in("student_id", studentIds)
+      .neq("sy_id", activeSy.sy_id),
+  ]);
+  if (yearsError) throw new Error(yearsError.message);
+  if (historyError) throw new Error(historyError.message);
+
+  const yearsById = new Map((schoolYears ?? []).map((year) => [Number(year.sy_id), year]));
+  const historyByStudent = new Map();
+  (assignmentHistory ?? []).forEach((row) => {
+    const rows = historyByStudent.get(row.student_id) ?? [];
+    rows.push(row);
+    historyByStudent.set(row.student_id, rows);
+  });
+
+  return students.map((student) => {
+    const linkedGradeIsHistorical = student.grade_level?.sy_id != null
+      && Number(student.grade_level.sy_id) !== Number(activeSy.sy_id);
+    let previous = linkedGradeIsHistorical
+      ? {
+          level_name: student.grade_level.level_name,
+          sy_id: Number(student.grade_level.sy_id),
+        }
+      : null;
+
+    if (!previous) {
+      const history = [...(historyByStudent.get(student.student_id) ?? [])].sort((a, b) => {
+        const yearA = yearsById.get(Number(a.sy_id))?.start_date ?? "";
+        const yearB = yearsById.get(Number(b.sy_id))?.start_date ?? "";
+        return yearB.localeCompare(yearA) || String(b.assigned_at ?? "").localeCompare(String(a.assigned_at ?? ""));
+      });
+      if (history[0]?.grade_level_name) {
+        previous = { level_name: history[0].grade_level_name, sy_id: Number(history[0].sy_id) };
+      }
+    }
+
+    const previousYear = previous ? yearsById.get(previous.sy_id) : null;
+    return {
+      ...student,
+      previous_grade_level: previous?.level_name ?? null,
+      previous_school_year: previousYear?.year_label ?? null,
+    };
+  });
 };
 
 export const getStudentById = async (student_id) => {
@@ -635,25 +691,48 @@ export const getStudentAttendance = async (user_id, monthParam) => {
   };
 };
 
-export const getStudentGrades = async (user_id, quarter) => {
-  const [{ data: student, error: studentErr }, { data: schoolYear, error: schoolYearError }] = await Promise.all([
-    supabaseAdmin
-      .from("student")
-      .select("student_id, first_name, last_name, gl_id, grade_level(level_name)")
-      .eq("user_id", user_id)
-      .single(),
-    supabaseAdmin
-      .from("school_year")
-      .select("sy_id, year_label, start_date")
-      .eq("is_active", true)
-      .maybeSingle(),
-  ]);
+export const getStudentGrades = async (user_id, quarter, requestedSchoolYearId = null) => {
+  const { data: student, error: studentErr } = await supabaseAdmin
+    .from("student")
+    .select("student_id, first_name, last_name, gl_id, grade_level(level_name)")
+    .eq("user_id", user_id)
+    .single();
   if (studentErr) throw new Error(studentErr.message);
-  if (schoolYearError) throw new Error(schoolYearError.message);
 
   const student_id = student.student_id;
+  const [{ data: activeYear, error: activeYearError }, { data: projectionYears, error: projectionYearsError }] = await Promise.all([
+    supabaseAdmin
+      .from("school_year")
+      .select("sy_id, year_label, start_date, is_active")
+      .eq("is_active", true)
+      .maybeSingle(),
+    supabaseAdmin
+      .from("pace_quarterly_projection")
+      .select("sy_id")
+      .eq("student_id", student_id),
+  ]);
+  if (activeYearError) throw new Error(activeYearError.message);
+  if (projectionYearsError) throw new Error(projectionYearsError.message);
+
+  const yearIds = [...new Set([
+    ...(projectionYears ?? []).map((row) => row.sy_id),
+    ...(activeYear?.sy_id != null ? [activeYear.sy_id] : []),
+  ])];
+  const { data: schoolYears, error: schoolYearsError } = yearIds.length
+    ? await supabaseAdmin
+        .from("school_year")
+        .select("sy_id, year_label, start_date, is_active")
+        .in("sy_id", yearIds)
+        .order("start_date", { ascending: false })
+    : { data: [], error: null };
+  if (schoolYearsError) throw new Error(schoolYearsError.message);
+
+  const requestedSyId = Number(requestedSchoolYearId);
+  const schoolYear = (schoolYears ?? []).find((year) => year.sy_id === requestedSyId)
+    ?? (schoolYears ?? []).find((year) => year.is_active)
+    ?? (schoolYears ?? [])[0]
+    ?? null;
   const sy_id = schoolYear?.sy_id ?? null;
-  const gradeLevel = student.grade_level ?? null;
   const requestedQuarter = Number(quarter);
   const q = [1, 2, 3, 4].includes(requestedQuarter)
     ? requestedQuarter
@@ -662,13 +741,28 @@ export const getStudentGrades = async (user_id, quarter) => {
   // Load all independent grade inputs together. The previous implementation
   // fetched each of these serially, which made a quarter change wait on several
   // network round trips before score processing could begin.
+  const { data: yearGradeLevels, error: yearGradeLevelsError } = sy_id
+    ? await supabaseAdmin.from("grade_level").select("gl_id, level_name").eq("sy_id", sy_id)
+    : { data: [], error: null };
+  if (yearGradeLevelsError) throw new Error(yearGradeLevelsError.message);
+  const yearGlIds = (yearGradeLevels ?? []).map((row) => row.gl_id);
+  const { data: yearModules, error: yearModulesError } = yearGlIds.length
+    ? await supabaseAdmin.from("pace_module").select("module_id, gl_id").in("gl_id", yearGlIds)
+    : { data: [], error: null };
+  if (yearModulesError) throw new Error(yearModulesError.message);
+  const yearModuleIds = (yearModules ?? []).map((row) => row.module_id);
+  const isActiveYear = schoolYear?.is_active === true;
+
   const [projectionRows, studentPaceResult, peerResult, remarkResult] = await Promise.all([
     sy_id ? getPaceProjectionRows(student_id, sy_id) : Promise.resolve([]),
-    supabaseAdmin
-      .from("student_pace")
-      .select("sp_id, points_earned, status, pace_module(subject, module_number)")
-      .eq("student_id", student_id),
-    student.gl_id
+    yearModuleIds.length
+      ? supabaseAdmin
+          .from("student_pace")
+          .select("sp_id, points_earned, status, pace_module(subject, module_number, gl_id, grade_level(level_name))")
+          .eq("student_id", student_id)
+          .in("module_id", yearModuleIds)
+      : Promise.resolve({ data: [], error: null }),
+    isActiveYear && student.gl_id
       ? supabaseAdmin.from("student").select("student_id").eq("gl_id", student.gl_id)
       : Promise.resolve({ data: [], error: null }),
     sy_id
@@ -687,6 +781,10 @@ export const getStudentGrades = async (user_id, quarter) => {
   const studentPaces = studentPaceResult.data ?? [];
   const peers = peerResult.data ?? [];
   const remarks = remarkResult.data ?? [];
+  const historicalGradeName = studentPaces.find((pace) => pace.pace_module?.grade_level?.level_name)?.pace_module?.grade_level?.level_name;
+  const gradeLevelName = isActiveYear
+    ? student.grade_level?.level_name ?? historicalGradeName ?? null
+    : historicalGradeName ?? null;
 
   // Score lookups: subject::moduleNumber → sp_id → [scores]
 
@@ -812,7 +910,7 @@ export const getStudentGrades = async (user_id, quarter) => {
 
   // Rank (by performance points) + PACE-completion percentile among grade peers
   let currentRank = null, totalInGrade = 0, completionPercentile = null, completionRankLabel = "—";
-  if (student.gl_id) {
+  if (isActiveYear && student.gl_id) {
     totalInGrade = peerIds.length;
     if (peerIds.length) {
       const ptsBy = new Map(peerIds.map((id) => [id, 0]));
@@ -854,8 +952,10 @@ export const getStudentGrades = async (user_id, quarter) => {
       last_name:  student.last_name,
       lrn:        null,
     },
-    gradeLevel:         gradeLevel?.level_name ?? null,
+    gradeLevel:         gradeLevelName,
     schoolYear:         schoolYear?.year_label ?? null,
+    schoolYearId:       schoolYear?.sy_id ?? null,
+    schoolYears:        (schoolYears ?? []).map(({ sy_id: id, year_label: label, is_active }) => ({ id, label, isActive: is_active })),
     quarter:            q,
     subjects,
     generalAverage,

@@ -244,7 +244,7 @@ export const getStudentPaceProjection = async (user_id, student_id) => {
 // For a returning student: the highest PACE number they actually finished —
 // only a passed official PACE test counts as completed.
 // Returns { subject: maxPaceNumber }. Empty when no history exists.
-export const getLastCompletedPaces = async (user_id, student_id) => {
+export const getLastCompletedPaces = async (user_id, student_id, { previousYear = false } = {}) => {
   const { data: teacher } = await supabaseAdmin
     .from("teacher")
     .select("teacher_id")
@@ -261,11 +261,54 @@ export const getLastCompletedPaces = async (user_id, student_id) => {
     .maybeSingle();
   if (!owned) return {};
 
-  const { data: sps } = await supabaseAdmin
+  let previousSchoolYear = null;
+  let previousModuleIds = null;
+  if (previousYear) {
+    const { data: activeYear, error: activeYearError } = await supabaseAdmin
+      .from("school_year")
+      .select("sy_id, start_date")
+      .eq("is_active", true)
+      .maybeSingle();
+    if (activeYearError) throw new Error(activeYearError.message);
+
+    if (activeYear?.start_date) {
+      const { data: priorYear, error: priorYearError } = await supabaseAdmin
+        .from("school_year")
+        .select("sy_id, year_label, start_date")
+        .lt("start_date", activeYear.start_date)
+        .order("start_date", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (priorYearError) throw new Error(priorYearError.message);
+      previousSchoolYear = priorYear;
+    }
+
+    if (!previousSchoolYear) {
+      return { basis: {}, recommendation: {}, retakes: {}, previousSchoolYear: null };
+    }
+    const { data: priorGrades, error: priorGradesError } = await supabaseAdmin
+      .from("grade_level")
+      .select("gl_id")
+      .eq("sy_id", previousSchoolYear.sy_id);
+    if (priorGradesError) throw new Error(priorGradesError.message);
+    previousModuleIds = await findPaceModuleIdsForGradeLevels((priorGrades ?? []).map((row) => row.gl_id));
+    if (!previousModuleIds.length) {
+      return { basis: {}, recommendation: {}, retakes: {}, previousSchoolYear: previousSchoolYear.year_label };
+    }
+  }
+
+  let paceQuery = supabaseAdmin
     .from("student_pace")
     .select("sp_id, status, pace_module!inner(subject, module_number)")
     .eq("student_id", student_id);
-  if (!sps?.length) return {};
+  if (previousModuleIds) paceQuery = paceQuery.in("module_id", previousModuleIds);
+  const { data: sps, error: paceError } = await paceQuery;
+  if (paceError) throw new Error(paceError.message);
+  if (!sps?.length) {
+    return previousYear
+      ? { basis: {}, recommendation: {}, retakes: {}, previousSchoolYear: previousSchoolYear?.year_label ?? null }
+      : {};
+  }
 
   // Which sp_ids have a passing official PACE test
   const spIds = sps.map((s) => s.sp_id);
@@ -277,6 +320,14 @@ export const getLastCompletedPaces = async (user_id, student_id) => {
     (results ?? []).filter((r) => r.passed === true || (r.score != null && r.score >= 90)).map((r) => r.sp_id)
   );
 
+  const attemptsBySp = new Map();
+  (results ?? []).forEach((result) => {
+    if (result.score == null) return;
+    const attempts = attemptsBySp.get(result.sp_id) ?? [];
+    attempts.push(result);
+    attemptsBySp.set(result.sp_id, attempts);
+  });
+
   const maxBySubject = {};
   sps.forEach((sp) => {
     const subject = sp.pace_module?.subject;
@@ -287,7 +338,30 @@ export const getLastCompletedPaces = async (user_id, student_id) => {
     if (maxBySubject[subject] == null || num > maxBySubject[subject]) maxBySubject[subject] = num;
   });
 
-  return maxBySubject;
+  if (!previousYear) return maxBySubject;
+
+  // A PACE failed on all three official attempts must be repeated. It takes
+  // precedence over the ordinary "last completed + 1" recommendation.
+  const retakes = {};
+  sps.forEach((sp) => {
+    const subject = sp.pace_module?.subject;
+    const num = sp.pace_module?.module_number;
+    const attempts = attemptsBySp.get(sp.sp_id) ?? [];
+    if (!subject || num == null || passedSp.has(sp.sp_id) || attempts.length < MAX_ATTEMPTS) return;
+    if (retakes[subject] == null || num < retakes[subject]) retakes[subject] = num;
+  });
+
+  const recommendation = {};
+  new Set([...Object.keys(maxBySubject), ...Object.keys(retakes)]).forEach((subject) => {
+    recommendation[subject] = retakes[subject] ?? (maxBySubject[subject] + 1);
+  });
+
+  return {
+    basis: maxBySubject,
+    recommendation,
+    retakes,
+    previousSchoolYear: previousSchoolYear?.year_label ?? null,
+  };
 };
 
 // Builds the supervisor dashboard data (4 stat cards, today's attendance tallies,
@@ -2759,12 +2833,34 @@ export const getReturningStudents = async (user_id) => {
     .maybeSingle();
   const schoolYear = sy?.year_label ?? "—";
 
-  // Returning = has any completed PACE history
-  const { data: completedSp } = await supabaseAdmin
+  // Returning = has PACE history in the school year immediately before the
+  // active one. Current-year activity alone must never classify a new student
+  // as a returnee.
+  const { data: activeYear } = await supabaseAdmin
+    .from("school_year")
+    .select("start_date")
+    .eq("is_active", true)
+    .maybeSingle();
+  const { data: priorYear } = activeYear?.start_date
+    ? await supabaseAdmin
+        .from("school_year")
+        .select("sy_id")
+        .lt("start_date", activeYear.start_date)
+        .order("start_date", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    : { data: null };
+  const { data: priorGrades } = priorYear
+    ? await supabaseAdmin.from("grade_level").select("gl_id").eq("sy_id", priorYear.sy_id)
+    : { data: [] };
+  const priorModuleIds = await findPaceModuleIdsForGradeLevels((priorGrades ?? []).map((row) => row.gl_id));
+  const { data: completedSp } = priorModuleIds.length
+    ? await supabaseAdmin
     .from("student_pace")
     .select("student_id")
     .in("student_id", studentIds)
-    .eq("status", "Completed");
+    .in("module_id", priorModuleIds)
+    : { data: [] };
   const returningSet = new Set((completedSp ?? []).map((r) => r.student_id));
 
   const list = students

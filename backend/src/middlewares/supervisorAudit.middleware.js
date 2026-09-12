@@ -64,7 +64,12 @@ const describeMutation = (req, supervisorLabel) => {
   if (req.method === "POST" && path === "/student-pace-manage")
     return { action: "UPDATE", entity: "PACE Assignment", entityId: studentId, details: `${supervisorLabel} updated a PACE assignment for ${student}` };
   if (req.method === "POST" && path === "/assign-pace")
-    return { action: "CREATE", entity: "PACE Projection", entityId: studentId, details: `${supervisorLabel} assigned a PACE projection to ${student}` };
+    return {
+      action: "CREATE",
+      entity: "PACE Projection",
+      entityId: studentId,
+      details: `${supervisorLabel} assigned a PACE projection to ${student}${body.placement_decision === "modify" ? `; recommendation modified: ${String(body.placement_reason ?? "").trim()}` : "; system recommendation accepted"}`,
+    };
   if (req.method === "PATCH" && path === "/pace-projection/cell")
     return { action: "UPDATE", entity: "PACE Projection", entityId: studentId, details: `${supervisorLabel} updated ${student}'s ${body.subject || "subject"} quarter ${body.quarter ?? "—"} PACE projection` };
   if (req.method === "PATCH" && path === "/pace-projection/status")

@@ -87,7 +87,7 @@ export const getAttendance = asyncHandler(async (req, res) => {
 });
 
 export const getGrades = asyncHandler(async (req, res) => {
-  const data = await StudentService.getStudentGrades(req.user.user_id, req.query.quarter);
+  const data = await StudentService.getStudentGrades(req.user.user_id, req.query.quarter, req.query.sy_id);
   sendSuccess(res, data);
 });
 

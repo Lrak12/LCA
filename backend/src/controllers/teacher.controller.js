@@ -348,7 +348,11 @@ export const bulkSaveSelfTest = asyncHandler(async (req, res) => {
 export const getLastCompletedPaces = asyncHandler(async (req, res) => {
   const { student_id } = req.query;
   if (!student_id) return res.status(400).json({ message: "student_id is required" });
-  const data = await TeacherService.getLastCompletedPaces(req.user.user_id, parseInt(student_id, 10));
+  const data = await TeacherService.getLastCompletedPaces(
+    req.user.user_id,
+    parseInt(student_id, 10),
+    { previousYear: req.query.previous_year === "true" },
+  );
   sendSuccess(res, data);
 });
 

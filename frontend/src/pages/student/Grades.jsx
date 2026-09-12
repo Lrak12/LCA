@@ -61,19 +61,26 @@ export default function Grades() {
   const [loading, setLoading]  = useState(true);
   const [error, setError]      = useState("");
   const [quarter, setQuarter]  = useState(1);
+  const [schoolYearId, setSchoolYearId] = useState(null);
 
   useEffect(() => {
-    fetchStudentGrades(quarter)
-      .then((res) => setData(res.data))
-      .catch((err) => setError(err.message))
+    fetchStudentGrades(quarter, schoolYearId)
+      .then((res) => {
+        setData(res.data);
+        if (schoolYearId == null && res.data?.schoolYearId != null) {
+          setSchoolYearId(res.data.schoolYearId);
+        }
+      })
+      .catch((err) => setError(err.response?.data?.message ?? err.message))
       .finally(() => setLoading(false));
-  }, [quarter]);
+  }, [quarter, schoolYearId]);
 
   const student = data?.student ?? { first_name: "Student", last_name: "" };
   const studentName = `${(student.last_name ?? "").toUpperCase()}, ${(student.first_name ?? "").toUpperCase()}`.replace(/^,\s*/, "");
 
   const gradeLevel = data?.gradeLevel ?? "—";
   const syLabel    = data?.schoolYear ?? schoolYearLabel ?? "—";
+  const schoolYears = data?.schoolYears ?? [];
 
   const subjects = data?.subjects ?? [];
 
@@ -111,8 +118,7 @@ export default function Grades() {
               Grades
             </h2>
             <p className="text-on-surface-variant mt-1 max-w-lg">
-              View your current marks, overall GPA, and specific assessment scores
-              to stay on top of your performance.
+              View your current marks and review report cards from previous school years.
             </p>
           </div>
           <div className="flex items-center gap-2 bg-white border border-outline-variant/20 rounded-xl px-4 py-2.5 shadow-sm shrink-0">
@@ -170,13 +176,23 @@ export default function Grades() {
             </div>
             <div>
               <p className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1">School Year</p>
-              <p className="text-sm font-extrabold text-on-surface">{syLabel}</p>
+              {schoolYears.length > 1 ? (
+                <select value={schoolYearId ?? data?.schoolYearId ?? ""}
+                  onChange={(event) => { setLoading(true); setError(""); setSchoolYearId(Number(event.target.value)); }}
+                  className="min-w-[150px] text-sm font-bold text-on-surface bg-white border border-outline-variant/30 rounded-lg pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30">
+                  {schoolYears.map((year) => (
+                    <option key={year.id} value={year.id}>{year.label}{year.isActive ? " (Current)" : ""}</option>
+                  ))}
+                </select>
+              ) : (
+                <p className="text-sm font-extrabold text-on-surface">{syLabel}</p>
+              )}
             </div>
             <div className="ml-auto min-w-[180px]">
               <label className="block text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1">Quarter</label>
               <select
                 value={selectedQuarter}
-                onChange={(e) => setQuarter(Number(e.target.value))}
+                onChange={(e) => { setLoading(true); setError(""); setQuarter(Number(e.target.value)); }}
                 className="w-full text-sm font-bold text-on-surface bg-white border border-outline-variant/30 rounded-lg pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30"
               >
                 {QUARTER_LABELS.map((label, i) => (

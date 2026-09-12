@@ -44,6 +44,7 @@ import TeacherReports           from "../pages/teacher/Reports.jsx";
 import TeacherAnnouncements     from "../pages/teacher/Announcements.jsx";
 import TeacherAccountSettings   from "../pages/teacher/AccountSettings.jsx";
 import TeacherHelpCenter        from "../pages/teacher/HelpCenter.jsx";
+import ParentDashboard          from "../pages/parent/ParentDashboard.jsx";
 
 
 const Placeholder = ({ role }) => (
@@ -200,7 +201,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/parent/dashboard",
-    element: <ProtectedRoute allowedRoles={["parent"]}><Placeholder role="Parent Portal" /></ProtectedRoute>,
+    element: <ProtectedRoute allowedRoles={["parent"]}><ParentDashboard /></ProtectedRoute>,
   },
   {
     path: "/student/pace",
@@ -231,4 +232,3 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute allowedRoles={["student"]}><StudentHelpCenter /></ProtectedRoute>,
   },
 ]);
-

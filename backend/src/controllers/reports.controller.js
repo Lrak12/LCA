@@ -54,9 +54,12 @@ export const getTeacherAnalyticsReport = asyncHandler(async (req, res) => {
 
 // Teacher: assign PACE projection for a student
 export const assignPace = asyncHandler(async (req, res) => {
-  const { student_id, paces } = req.body;
+  const { student_id, paces, placement_decision, placement_reason } = req.body;
   if (!student_id || !paces || typeof paces !== "object")
     return res.status(400).json({ message: "student_id and paces object are required" });
+  if (placement_decision === "modify" && !String(placement_reason ?? "").trim()) {
+    return res.status(400).json({ message: "A reason is required when modifying the recommended PACE placement." });
+  }
   const { data: teacher } = await TeacherModel.findByUserId(req.user.user_id);
   if (!teacher) return res.status(404).json({ message: "Teacher profile not found" });
   const data = await ReportsService.generatePaceProjection(teacher.teacher_id, student_id, paces);

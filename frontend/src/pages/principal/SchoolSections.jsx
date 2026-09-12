@@ -137,11 +137,31 @@ function EnrollStudentsModal({ level, onClose, onConfirm }) {
   // Only students assigned in the active school year are excluded. A student's
   // gl_id may still point to a previous-year grade and must remain enrollable in
   // the newly active year.
-  const filtered = students.filter((s) => {
-    if (Number(s.grade_level?.sy_id) === Number(level.sy_id)) return false;
-    const name = `${s.first_name} ${s.last_name}`.toLowerCase();
-    return name.includes(search.toLowerCase()) || String(s.student_id).includes(search);
-  });
+  const previousGradeFor = (student) => student.previous_grade_level ?? (
+    Number(student.grade_level?.sy_id) !== Number(level.sy_id)
+      ? student.grade_level?.level_name
+      : null
+  );
+  const gradeOrder = (student) => {
+    const label = previousGradeFor(student);
+    if (!label) return Number.MAX_SAFE_INTEGER;
+    const match = String(label).match(/\d+/);
+    return match ? Number(match[0]) : Number.MAX_SAFE_INTEGER - 1;
+  };
+
+  const filtered = students
+    .filter((s) => {
+      if (Number(s.grade_level?.sy_id) === Number(level.sy_id)) return false;
+      const name = `${s.first_name} ${s.last_name}`.toLowerCase();
+      return name.includes(search.toLowerCase()) || String(s.student_id).includes(search);
+    })
+    .sort((a, b) => {
+      const byGrade = gradeOrder(a) - gradeOrder(b);
+      if (byGrade) return byGrade;
+      const nameA = `${a.last_name ?? ""}, ${a.first_name ?? ""}`;
+      const nameB = `${b.last_name ?? ""}, ${b.first_name ?? ""}`;
+      return nameA.localeCompare(nameB);
+    });
 
   // add/remove one student from the selection
   const toggle = (id) =>
@@ -248,7 +268,8 @@ function EnrollStudentsModal({ level, onClose, onConfirm }) {
                 const id       = s.student_id;
                 const checked  = selected.has(id);
                 const name     = `${s.first_name} ${s.last_name}`;
-                const glLabel  = s.grade_level?.level_name ?? null;
+                const previousGrade = previousGradeFor(s);
+                const previousYear = s.previous_school_year ?? null;
                 return (
                   <label
                     key={id}
@@ -269,11 +290,11 @@ function EnrollStudentsModal({ level, onClose, onConfirm }) {
                       <p className="text-sm font-bold text-on-surface truncate">{name}</p>
                       <p className="text-[11px] text-on-surface-variant">
                         ID: {id}
-                        {glLabel && (
-                          <span className="ml-2 px-1.5 py-0.5 rounded-full bg-surface-container-high text-[10px] font-extrabold">
-                            {glLabel}
-                          </span>
-                        )}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-on-surface-variant">
+                        <span className="font-bold">Previous Grade Level:</span>{" "}
+                        {previousGrade ?? "No previous grade record"}
+                        {previousYear ? ` · SY ${String(previousYear).replace(/^SY\s*/i, "")}` : ""}
                       </p>
                     </div>
                     {checked && (

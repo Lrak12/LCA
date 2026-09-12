@@ -89,6 +89,7 @@ export const logout = asyncHandler(async (req, res) => {
 
 const ROLE_PROFILE = {
   student:       { table: "student",       pk: "student_id"   },
+  parent:        { table: "parent",        pk: "parent_id"    },
   teacher:       { table: "teacher",       pk: "teacher_id"   },
   principal:     { table: "principal",     pk: "principal_id" },
   administrator: { table: "administrator", pk: "admin_id"     },

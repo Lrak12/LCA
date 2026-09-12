@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import TeacherLayout from "../../components/TeacherLayout.jsx";
 import {
@@ -53,24 +53,22 @@ export default function ReturningStudentPlacement() {
   const [search,   setSearch]   = useState("");
   const [selId,    setSelId]    = useState(null);
 
-  const [basis,     setBasis]     = useState(emptyMap);   // last completed PACE per subject (editable)
+  const [basis,     setBasis]     = useState(emptyMap);   // read-only prior-year completed PACE per subject
+  const [recommended, setRecommended] = useState(emptyMap);
+  const [retakes, setRetakes] = useState({});
+  const [previousSchoolYear, setPreviousSchoolYear] = useState(null);
   const [basisLoad, setBasisLoad] = useState(false);
   const [decision,  setDecision]  = useState("accept");   // "accept" | "modify"
   const [overrides, setOverrides] = useState(emptyMap);   // modify values per subject
+  const [reason, setReason] = useState("");
 
   const [generating, setGenerating] = useState(false);
   const [genError,    setGenError]   = useState("");
   const [okMsg,       setOkMsg]      = useState("");
 
-  // Recommendation = last completed + 1 per subject
-  const recommendation = useMemo(() => {
-    const r = {};
-    SUBJECT_LABELS.forEach((l) => {
-      const n = Number(basis[l]);
-      r[l] = n > 0 ? n + 1 : "";
-    });
-    return r;
-  }, [basis]);
+  // The backend normally recommends last completed + 1, but keeps a failed
+  // three-attempt PACE unchanged so it can be retaken this school year.
+  const recommendation = recommended;
 
   // Load returning students
   useEffect(() => {
@@ -91,21 +89,31 @@ export default function ReturningStudentPlacement() {
     setBasisLoad(true);
     setOkMsg("");
     setGenError("");
-    fetchLastCompletedPaces(studentId)
+    setDecision("accept");
+    setReason("");
+    fetchLastCompletedPaces(studentId, { previousYear: true })
       .then((res) => {
-        const last = res.data ?? {};
+        const placement = res.data ?? {};
+        const last = placement.basis ?? {};
+        const next = placement.recommendation ?? {};
         setBasis(Object.fromEntries(SUBJECT_LABELS.map((l) => [l, last[l] != null ? String(last[l]) : ""])));
+        const recommendationMap = Object.fromEntries(SUBJECT_LABELS.map((l) => [l, next[l] != null ? String(next[l]) : ""]));
+        setRecommended(recommendationMap);
+        setOverrides(recommendationMap);
+        setRetakes(placement.retakes ?? {});
+        setPreviousSchoolYear(placement.previousSchoolYear ?? null);
       })
-      .catch(() => setBasis(emptyMap()))
+      .catch(() => {
+        setBasis(emptyMap());
+        setRecommended(emptyMap());
+        setOverrides(emptyMap());
+        setRetakes({});
+        setPreviousSchoolYear(null);
+      })
       .finally(() => setBasisLoad(false));
   }, []);
 
   useEffect(() => { loadBasis(selId); }, [selId, loadBasis]);
-
-  // When recommendation changes, default the modify overrides to it
-  useEffect(() => {
-    setOverrides(Object.fromEntries(SUBJECT_LABELS.map((l) => [l, recommendation[l] !== "" ? String(recommendation[l]) : ""])));
-  }, [recommendation]);
 
   const filtered = students.filter((s) =>
     s.name.toLowerCase().includes(search.toLowerCase()) || s.idNumber.includes(search.trim())
@@ -124,10 +132,17 @@ export default function ReturningStudentPlacement() {
       setGenError("No valid starting PACEs to generate. Enter a basis or recommendation first.");
       return;
     }
+    if (decision === "modify" && !reason.trim()) {
+      setGenError("Please provide a reason for modifying the recommended placement.");
+      return;
+    }
     setGenerating(true);
     setGenError("");
     try {
-      await assignStudentPace(selId, paces);
+      await assignStudentPace(selId, paces, {
+        placement_decision: decision,
+        placement_reason: decision === "modify" ? reason.trim() : null,
+      });
       setOkMsg(`Projection generated for ${selected?.name ?? "student"}.`);
     } catch (err) {
       setGenError(err.response?.data?.message ?? err.message ?? "Failed to generate projection.");
@@ -220,7 +235,7 @@ export default function ReturningStudentPlacement() {
           <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 p-12 text-center">
             <span className="material-symbols-outlined text-5xl text-on-surface-variant/40 mb-3 block" style={fillStyle}>history_edu</span>
             <p className="text-base font-bold text-on-surface">No returning students</p>
-            <p className="text-sm text-on-surface-variant mt-1">Students appear here once they have completed PACE history.</p>
+            <p className="text-sm text-on-surface-variant mt-1">Students appear here when they have PACE history from the previous school year.</p>
           </div>
         ) : selected && (
           <>
@@ -257,14 +272,13 @@ export default function ReturningStudentPlacement() {
             {/* Basis table */}
             <SubjectTable
               title="Basis for New Projected PACE"
-              caption={`These are the last completed PACEs per subject and will be used as basis for generating the new projection.`}
+              caption={`These are the last completed PACEs from ${previousSchoolYear ?? "the previous school year"} and are used as the placement basis.`}
               rowLabel="Last Completed PACE"
               loading={basisLoad}
               render={(label) => (
-                <input type="number" min="1001" max="9999" value={basis[label]}
-                  onChange={(e) => setBasis((p) => ({ ...p, [label]: e.target.value }))}
-                  placeholder="—"
-                  className="w-20 text-center border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                <span className="inline-block w-20 text-center border border-gray-200 bg-gray-50 rounded-lg px-2 py-1.5 text-sm font-bold">
+                  {basis[label] || "—"}
+                </span>
               )}
             />
 
@@ -274,9 +288,14 @@ export default function ReturningStudentPlacement() {
               caption="Recommended starting PACEs for each subject."
               rowLabel="Recommended Starting PACE"
               render={(label) => (
-                <span className="inline-block w-20 text-center bg-gray-100 text-on-surface rounded-lg px-2 py-1.5 text-sm font-bold">
-                  {recommendation[label] !== "" ? recommendation[label] : "—"}
-                </span>
+                <>
+                  <span className="inline-block w-20 text-center bg-gray-100 text-on-surface rounded-lg px-2 py-1.5 text-sm font-bold">
+                    {recommendation[label] !== "" ? recommendation[label] : "—"}
+                  </span>
+                  {retakes[label] != null && (
+                    <span className="block mt-1 text-[9px] font-extrabold uppercase tracking-wide text-amber-700">Retake required</span>
+                  )}
+                </>
               )}
             />
 
@@ -295,16 +314,24 @@ export default function ReturningStudentPlacement() {
               </div>
 
               {decision === "modify" && (
-                <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-                  {SUBJECT_LABELS.map((label) => (
-                    <div key={label}>
-                      <label className="block text-[9px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-1 leading-tight">{SUBJECT_HEAD[label]}</label>
-                      <input type="number" min="1001" max="9999" value={overrides[label]}
-                        onChange={(e) => setOverrides((p) => ({ ...p, [label]: e.target.value }))}
-                        placeholder="—"
-                        className="w-full text-center border border-gray-200 rounded-lg px-2 py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20" />
-                    </div>
-                  ))}
+                <div className="mt-5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+                    {SUBJECT_LABELS.map((label) => (
+                      <div key={label}>
+                        <label className="block text-[9px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-1 leading-tight">{SUBJECT_HEAD[label]}</label>
+                        <input type="number" min="1001" max="9999" value={overrides[label]}
+                          onChange={(e) => setOverrides((p) => ({ ...p, [label]: e.target.value }))}
+                          placeholder="—"
+                          className="w-full text-center border border-gray-200 rounded-lg px-2 py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                      </div>
+                    ))}
+                  </div>
+                  <label className="block mt-4 text-xs font-bold text-on-surface-variant">
+                    Reason for modification <span className="text-red-600">*</span>
+                  </label>
+                  <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3}
+                    placeholder="Example: The student failed this PACE and needs to take it again."
+                    className="mt-1.5 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
                 </div>
               )}
             </div>

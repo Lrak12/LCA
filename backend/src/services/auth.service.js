@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 // (IDs are seeded into distinct ranges, so collisions shouldn't occur in practice.)
 const ROLE_TABLES = [
   { table: "student",       role: "student",       pk: "student_id"   },
+  { table: "parent",        role: "parent",        pk: "parent_id"    },
   { table: "teacher",       role: "teacher",       pk: "teacher_id"   },
   { table: "principal",     role: "principal",     pk: "principal_id" },
   { table: "administrator", role: "administrator", pk: "admin_id"     },

@@ -25,6 +25,7 @@ const ROLE_DASHBOARDS = {
   administrator: "/sysadmin/dashboard",
   teacher:       "/teacher/dashboard",
   student:       "/student/dashboard",
+  parent:        "/parent/dashboard",
 };
 
 export default function Login() {
