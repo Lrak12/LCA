@@ -70,6 +70,10 @@ const assertAttendanceDateInActiveYear = (date, bounds) => {
   if (date < bounds.startDate || date > bounds.endDate) {
     throw new Error(`Attendance dates must be within the active school year (${bounds.startDate} to ${bounds.endDate}).`);
   }
+  const day = new Date(`${date}T00:00:00`).getDay();
+  if (day === 0 || day === 6) {
+    throw new Error("Attendance cannot be recorded on Saturdays or Sundays.");
+  }
 };
 
 export const getAllTeachers = async () => {
@@ -1474,7 +1478,7 @@ export const getPaceAnalyticsReport = async (user_id, { grade, quarter, sy_id } 
   // 2. Performance points distribution
   const total = rows.length || 1;
   const ptsBuckets = [
-    { label: "100 — 129", test: (p) => p >= 100 },
+    { label: "100 and above", test: (p) => p >= 100 },
     { label: "80 — 99",   test: (p) => p >= 80 && p < 100 },
     { label: "60 — 79",   test: (p) => p >= 60 && p < 80 },
     { label: "Below 60",  test: (p) => p < 60 },
@@ -3048,7 +3052,7 @@ export const getStudentPaceManage = async (user_id, student_id) => {
     return i === -1 ? 999 : i;
   };
   const subjects = [...subjectSet]
-    .filter((s) => currentBySubject.has(s) || projectedStart[s] != null)
+    .filter((s) => PACE_SUBJECT_ORDER.includes(s) && (currentBySubject.has(s) || projectedStart[s] != null))
     .sort((a, b) => orderIndex(a) - orderIndex(b) || a.localeCompare(b));
 
   // Projected PACE numbers per subject — 3 PACEs per quarter starting at pace_start
@@ -3132,12 +3136,15 @@ export const getStudentPaceManage = async (user_id, student_id) => {
   const onPlanQuarters = rows.map((r) => r.currentQuarter).filter((q) => q != null);
   const defaultQuarter = onPlanQuarters.length ? Math.min(...onPlanQuarters) : 1;
 
-  const all = paces ?? [];
+  // Use the same projected slots rendered by PACE Monitoring as the source of
+  // truth. Counting only student_pace execution rows made an untouched plan
+  // incorrectly report zero remaining PACEs in this modal.
+  const all = rows.flatMap((row) => row.paces);
   const stats = {
-    completed:         all.filter((p) => p.status === "Completed").length,
-    ongoing:           all.filter((p) => p.status === "In Progress").length,
-    remaining:         all.filter((p) => p.status === "Assigned").length,
-    performancePoints: all.reduce((sum, p) => sum + (p.points_earned ?? 0), 0),
+    completed:         all.filter((p) => p.displayStatus === "Passed" || p.displayStatus === "Completed").length,
+    ongoing:           all.filter((p) => ["Ongoing", "Overdue"].includes(p.displayStatus)).length,
+    remaining:         all.filter((p) => !["Passed", "Completed", "Failed"].includes(p.displayStatus)).length,
+    performancePoints: all.reduce((sum, p) => sum + (p.points ?? 0), 0),
   };
 
   return {

@@ -92,7 +92,7 @@ export const getGrades = asyncHandler(async (req, res) => {
 });
 
 export const getAssessments = asyncHandler(async (req, res) => {
-  const data = await StudentService.getStudentAssessments(req.user.user_id);
+  const data = await StudentService.getStudentAssessments(req.user.user_id, req.query.sy_id);
   sendSuccess(res, data);
 });
 

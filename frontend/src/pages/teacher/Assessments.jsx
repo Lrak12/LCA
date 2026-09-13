@@ -76,9 +76,9 @@ function SelfTestRecordingView({ row, student, passMark, onBack, onRecorded }) {
     setError("");
     try {
       await recordSelfTest({ sp_id: row.sp_id, score: sc, date_taken: date }); // POST .../self-test
+      await onRecorded();                               // refresh before rendering the summary again
       setOpen(false);
       setScore("");
-      onRecorded();                                     // parent reloads the assessments
     } catch (err) {
       setError(err.response?.data?.message ?? err.message ?? "Failed to record.");
     } finally {
@@ -92,10 +92,10 @@ function SelfTestRecordingView({ row, student, passMark, onBack, onRecorded }) {
     setError("");
     try {
       await resetSelfTest({ sp_id: row.sp_id });        // POST .../self-test/reset
+      await onRecorded();                               // refresh before rendering the summary again
       setConfirmReset(false);
       setOpen(false);
       setScore("");
-      onRecorded();                                     // parent reloads the assessments
     } catch (err) {
       setError(err.response?.data?.message ?? err.message ?? "Failed to reset.");
     } finally {
@@ -296,9 +296,9 @@ function PaceTestRecordingView({ row, student, passMark, onBack, onRecorded }) {
     setError("");
     try {
       await recordPaceTest({ sp_id: row.sp_id, score: sc, date_taken: date }); // POST .../pace-test
+      await onRecorded();
       setOpen(false);
       setScore("");
-      onRecorded();
     } catch (err) {
       setError(err.response?.data?.message ?? err.message ?? "Failed to record.");
     } finally {
@@ -469,10 +469,10 @@ export default function Assessments() {
   // load - fetch the selected student's assessments. useCallback so the effect below
   //   re-runs only when selId changes; also reused as onRecorded() after each save.
   const load = useCallback(() => {
-    if (!selId) return;
+    if (!selId) return Promise.resolve();
     setLoading(true);
     setError("");
-    fetchStudentAssessments(selId, { page, pageSize })
+    return fetchStudentAssessments(selId, { page, pageSize })
       .then((res) => {
         const payload = res.data ?? null;
         setData(payload);

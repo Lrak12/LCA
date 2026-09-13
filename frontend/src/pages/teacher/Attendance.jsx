@@ -469,6 +469,10 @@ export default function Attendance() {
 
   // handleSubmit - save the day's attendance to the backend.
   const handleSubmit = async (session) => {
+    if ([0, 6].includes(selectedDate.getDay())) {
+      setSubmitError("Attendance cannot be recorded on Saturdays or Sundays.");
+      return;
+    }
     setSubmitting(session);
     setSubmitError("");
     const field = session === "PM" ? "pmStatus" : "amStatus";
@@ -513,6 +517,7 @@ export default function Attendance() {
     s.name.toLowerCase().includes(search.toLowerCase()) ||
     String(s.student_id).includes(search)
   );
+  const selectedIsWeekend = [0, 6].includes(selectedDate.getDay());
 
   return (
     <TeacherLayout schoolYearLabel={schoolYearLabel}>
@@ -643,6 +648,12 @@ export default function Attendance() {
                 {submitError}
               </div>
             )}
+            {selectedIsWeekend && (
+              <div className="mx-5 mt-3 flex items-center gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-4 py-2.5">
+                <span className="material-symbols-outlined text-base">event_busy</span>
+                Weekends are non-school days. Attendance entry is disabled.
+              </div>
+            )}
 
             {/* Table */}
             <div className="overflow-x-auto">
@@ -709,9 +720,10 @@ export default function Attendance() {
                                       key={key}
                                       title={`${session} ${cfg.db}`}
                                       onClick={() => setStatus(s.student_id, session, key)}
+                                      disabled={selectedIsWeekend}
                                       className={`w-8 h-8 rounded-full text-xs font-extrabold transition-all flex items-center justify-center ${
                                         current === key ? cfg.activeClass : INACTIVE_BTN
-                                      }`}
+                                      } ${selectedIsWeekend ? "opacity-40 cursor-not-allowed" : ""}`}
                                     >
                                       {key}
                                     </button>
@@ -751,7 +763,7 @@ export default function Attendance() {
                             <button
                               type="button"
                               onClick={() => handleSubmit(session)}
-                              disabled={submitting != null}
+                              disabled={submitting != null || selectedIsWeekend}
                               className="inline-flex items-center gap-2 bg-primary text-white text-xs font-bold px-3 py-2 rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors shadow-sm shadow-primary/20 whitespace-nowrap"
                             >
                               {submitting === session

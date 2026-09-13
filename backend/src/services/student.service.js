@@ -134,7 +134,7 @@ function effectiveSlotStatus(subject, paceNo, rawStatus, completedKeys) {
 /** Count individual PACE slots (status_r0/r1/r2 across all rows) by bucket */
 function summarizePaceSlots(rows, completedKeys = new Set()) {
   let completed = 0, ongoing = 0, remaining = 0;
-  rows.forEach((r) => {
+  rows.filter((r) => PACE_SUBJECT_ORDER.includes(r.subject)).forEach((r) => {
     [r.status_r0, r.status_r1, r.status_r2].forEach((s, i) => {
       const paceNo = r.pace_start != null ? r.pace_start + i : null;
       const status = effectiveSlotStatus(r.subject, paceNo, s, completedKeys);
@@ -977,7 +977,7 @@ export const getStudentGrades = async (user_id, quarter, requestedSchoolYearId =
   };
 };
 
-export const getStudentAssessments = async (user_id) => {
+export const getStudentAssessments = async (user_id, requestedSchoolYearId = null) => {
   const { data: student, error: studentErr } = await supabaseAdmin
     .from("student")
     .select("student_id, first_name, last_name")
@@ -987,16 +987,57 @@ export const getStudentAssessments = async (user_id) => {
 
   const { data: paces, error: pacesErr } = await supabaseAdmin
     .from("student_pace")
-    .select("sp_id, pace_module(subject, module_number)")
+    .select("sp_id, pace_module(subject, module_number, grade_level(sy_id))")
     .eq("student_id", student.student_id);
   if (pacesErr) throw new Error(pacesErr.message);
 
-  const spIds = (paces ?? []).map((p) => p.sp_id);
+  const { data: activeYear, error: activeYearErr } = await supabaseAdmin
+    .from("school_year")
+    .select("sy_id, year_label, start_date, is_active")
+    .eq("is_active", true)
+    .maybeSingle();
+  if (activeYearErr) throw new Error(activeYearErr.message);
+
+  const paceYearIds = (paces ?? [])
+    .map((pace) => pace.pace_module?.grade_level?.sy_id)
+    .filter((id) => id != null);
+  const yearIds = [...new Set([
+    ...paceYearIds,
+    ...(activeYear?.sy_id != null ? [activeYear.sy_id] : []),
+  ])];
+  const { data: schoolYears, error: schoolYearsErr } = yearIds.length
+    ? await supabaseAdmin
+        .from("school_year")
+        .select("sy_id, year_label, start_date, is_active")
+        .in("sy_id", yearIds)
+        .order("start_date", { ascending: false })
+    : { data: [], error: null };
+  if (schoolYearsErr) throw new Error(schoolYearsErr.message);
+
+  const requestedSyId = Number(requestedSchoolYearId);
+  const schoolYear = (schoolYears ?? []).find((year) => Number(year.sy_id) === requestedSyId)
+    ?? (schoolYears ?? []).find((year) => year.is_active)
+    ?? (schoolYears ?? [])[0]
+    ?? null;
+  const selectedPaces = (paces ?? []).filter(
+    (pace) => Number(pace.pace_module?.grade_level?.sy_id) === Number(schoolYear?.sy_id),
+  );
+  const projectionRows = await getPaceProjectionRows(student.student_id, schoolYear?.sy_id);
+  const spIds = selectedPaces.map((p) => p.sp_id);
   const subjectBySpId  = {};
   const paceNoBySpId   = {};
-  (paces ?? []).forEach((p) => {
-    subjectBySpId[p.sp_id] = p.pace_module?.subject ?? "—";
-    paceNoBySpId[p.sp_id]  = p.pace_module?.module_number ?? null;
+  const quarterBySpId  = {};
+  selectedPaces.forEach((p) => {
+    const subject = p.pace_module?.subject ?? "—";
+    const paceNo = p.pace_module?.module_number ?? null;
+    const projection = projectionRows.find((row) => {
+      const start = Number(row.pace_start);
+      const end = Number(row.pace_end ?? (start + Math.max(Number(row.pace_count ?? 1) - 1, 0)));
+      return row.subject === subject && paceNo != null && Number(paceNo) >= start && Number(paceNo) <= end;
+    });
+    subjectBySpId[p.sp_id] = subject;
+    paceNoBySpId[p.sp_id]  = paceNo;
+    quarterBySpId[p.sp_id] = projection?.quarter ?? null;
   });
 
   const toDate = (raw) =>
@@ -1004,24 +1045,31 @@ export const getStudentAssessments = async (user_id) => {
       ? new Date(raw).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
       : "—";
 
-  const [checkUps, selfTests, paceTests] = await Promise.all([
-    supabaseAdmin
-      .from("check_up_result")
-      .select("sp_id, attempt_number, score, date_taken")
-      .in("sp_id", spIds)
-      .order("date_taken", { ascending: false }),
-    supabaseAdmin
-      .from("self_test_result")
-      .select("sp_id, score, date_taken, passed, notes")
-      .in("sp_id", spIds)
-      .order("date_taken", { ascending: false }),
-    supabaseAdmin
-      .from("pace_test_result")
-      .select("sp_id, score, date_taken, passed, notes")
-      .in("sp_id", spIds)
-      .not("score", "is", null)   // exclude not-yet-taken request/schedule rows
-      .order("date_taken", { ascending: false }),
-  ]);
+  const emptyResult = { data: [], error: null };
+  const [checkUps, selfTests, paceTests] = spIds.length
+    ? await Promise.all([
+        supabaseAdmin
+          .from("check_up_result")
+          .select("sp_id, attempt_number, score, date_taken")
+          .in("sp_id", spIds)
+          .order("date_taken", { ascending: false }),
+        supabaseAdmin
+          .from("self_test_result")
+          .select("sp_id, score, date_taken, passed, notes")
+          .in("sp_id", spIds)
+          .order("date_taken", { ascending: false }),
+        supabaseAdmin
+          .from("pace_test_result")
+          .select("sp_id, score, date_taken, passed, notes")
+          .in("sp_id", spIds)
+          .not("score", "is", null)   // exclude not-yet-taken request/schedule rows
+          .order("date_taken", { ascending: false }),
+      ])
+    : [emptyResult, emptyResult, emptyResult];
+
+  if (checkUps.error) throw new Error(checkUps.error.message);
+  if (selfTests.error) throw new Error(selfTests.error.message);
+  if (paceTests.error) throw new Error(paceTests.error.message);
 
   // Collapse a PACE's attempts (self-test or PACE-test) into ONE row showing the
   // BEST (highest) attempt's score, not the average. Readiness is "any attempt >=
@@ -1041,6 +1089,7 @@ export const getStudentAssessments = async (user_id) => {
         return {
           subject:      subjectBySpId[sp_id] ?? "—",
           paceNumber:   paceNoBySpId[sp_id] ?? null,
+          quarter:      quarterBySpId[sp_id] ?? null,
           score,
           dateTaken:    toDate(r.date_taken),
           dateTakenRaw: r.date_taken ?? null,
@@ -1053,8 +1102,16 @@ export const getStudentAssessments = async (user_id) => {
 
   return {
     student,
+    schoolYear:   schoolYear?.year_label ?? null,
+    schoolYearId: schoolYear?.sy_id ?? null,
+    schoolYears:  (schoolYears ?? []).map(({ sy_id: id, year_label: label, is_active }) => ({
+      id,
+      label,
+      isActive: is_active,
+    })),
     checkUpResults: (checkUps.data ?? []).map((r) => ({
       subject:   subjectBySpId[r.sp_id] ?? "—",
+      quarter:   quarterBySpId[r.sp_id] ?? null,
       attempt:   r.attempt_number,
       score:     r.score,
       dateTaken: toDate(r.date_taken),
@@ -1153,7 +1210,7 @@ export const getStudentPace = async (user_id) => {
   // Flatten each quarterly row into its 3 individually-tracked PACE slots,
   // grouped by subject (rows already ordered by quarter ascending).
   const slotsBySubject = new Map();
-  rows.forEach((r) => {
+  rows.filter((r) => PACE_SUBJECT_ORDER.includes(r.subject)).forEach((r) => {
     const slots = [r.status_r0, r.status_r1, r.status_r2];
     const list  = slotsBySubject.get(r.subject) ?? [];
     slots.forEach((status, i) => {

@@ -9,7 +9,9 @@ export const updateStudentInfo         = (id, data) => client.put(`/students/${i
 export const fetchStudentDashboard     = () => client.get("/student/dashboard");
 export const fetchStudentPace          = () => client.get("/student/pace");
 export const submitPaceTestRequest     = (sp_id) => client.post("/student/pace/test-request", { sp_id });
-export const fetchStudentAssessments   = () => client.get("/student/assessments");
+export const fetchStudentAssessments   = (schoolYearId = null) => client.get("/student/assessments", {
+  params: schoolYearId == null ? {} : { sy_id: schoolYearId },
+});
 export const fetchStudentGrades        = (quarter, schoolYearId = null) => client.get("/student/grades", {
   params: {
     ...(quarter == null ? {} : { quarter }),

@@ -12,9 +12,6 @@ const Skeleton = ({ className }) => (
 const formatDate = (date = new Date()) =>
   date.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
-const formatShortDate = (raw) =>
-  raw ? new Date(`${raw}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
-
 // ─── Subject icon styles ──────────────────────────────────────────────────────
 const subjectStyles = {
   Mathematics: { bg: "bg-blue-100",  text: "text-blue-600",  icon: "calculate"    },
@@ -148,99 +145,34 @@ const FilterSelect = ({ label, value, onChange, options, formatOption }) => (
   </div>
 );
 
-const DateRangeFilter = ({ from, to, onChange }) => {
-  const [open, setOpen] = useState(false);
-
-  const label = from && to
-    ? `${formatShortDate(from)} - ${formatShortDate(to)}`
-    : "All Dates";
-
-  return (
-    <div className="relative flex flex-col gap-1.5">
-      <label className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant">Date Range</label>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 text-sm font-bold text-on-surface bg-white border border-outline-variant/30 rounded-xl px-3 py-2.5 h-[42px] hover:bg-surface-container-lowest transition-colors"
-      >
-        <span className="material-symbols-outlined text-secondary text-base shrink-0" style={fillStyle}>calendar_month</span>
-        <span className="whitespace-nowrap truncate">{label}</span>
-        <span className="material-symbols-outlined text-base ml-auto shrink-0">expand_more</span>
-      </button>
-
-      {open && (
-        <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute top-full mt-2 right-0 z-20 bg-white border border-outline-variant/20 rounded-xl shadow-lg p-4 flex flex-col gap-3 w-60">
-            <div>
-              <label className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant">From</label>
-              <input
-                type="date"
-                value={from}
-                max={to || undefined}
-                onChange={(e) => onChange({ from: e.target.value, to })}
-                className="w-full mt-1 border border-outline-variant/30 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant">To</label>
-              <input
-                type="date"
-                value={to}
-                min={from || undefined}
-                onChange={(e) => onChange({ from, to: e.target.value })}
-                className="w-full mt-1 border border-outline-variant/30 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-              />
-            </div>
-            {(from || to) && (
-              <button
-                type="button"
-                onClick={() => onChange({ from: "", to: "" })}
-                className="text-xs font-bold text-primary hover:underline self-start"
-              >
-                Clear dates
-              </button>
-            )}
-          </div>
-        </>
-      )}
-    </div>
-  );
-};
-
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function AssessmentResults() {
   const schoolYearLabel       = useSchoolYear();
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState("");
+  const [schoolYearId, setSchoolYearId] = useState(null);
 
   useEffect(() => {
-    fetchStudentAssessments()
-      .then((res) => setData(res.data))
-      .catch((err) => setError(err.message))
+    fetchStudentAssessments(schoolYearId)
+      .then((res) => {
+        setData(res.data);
+        if (schoolYearId == null && res.data?.schoolYearId != null) {
+          setSchoolYearId(res.data.schoolYearId);
+        }
+      })
+      .catch((err) => setError(err.response?.data?.message ?? err.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [schoolYearId]);
 
-  const selfTestResults = data?.selfTestResults ?? [
-    { subject: "Mathematics", paceNumber: 1012, score: 87, dateTaken: "June 20, 2026", dateTakenRaw: "2026-06-20", passed: true, remarks: "Great job! Keep it up." },
-    { subject: "English",     paceNumber: 1022, score: 90, dateTaken: "June 20, 2026", dateTakenRaw: "2026-06-20", passed: true, remarks: "Excellent performance." },
-    { subject: "Science",     paceNumber: 1112, score: 84, dateTaken: "June 19, 2026", dateTakenRaw: "2026-06-19", passed: true, remarks: "Good work!" },
-  ];
-
-  const paceTestResults = data?.paceTestResults ?? [
-    { subject: "Mathematics", paceNumber: 1114, score: 90, dateTaken: "June 22, 2026", dateTakenRaw: "2026-06-22", passed: true, remarks: "Great job! Keep it up." },
-    { subject: "English",     paceNumber: 1014, score: 92, dateTaken: "June 22, 2026", dateTakenRaw: "2026-06-22", passed: true, remarks: "Excellent performance." },
-    { subject: "Science",     paceNumber: 1034, score: 87, dateTaken: "June 21, 2026", dateTakenRaw: "2026-06-21", passed: true, remarks: "Good work!" },
-  ];
+  const selfTestResults = data?.selfTestResults ?? [];
+  const paceTestResults = data?.paceTestResults ?? [];
+  const schoolYears = data?.schoolYears ?? [];
 
   // ── Filters ───────────────────────────────────────────────────────────────
-  const [typeFilter,    setTypeFilter]    = useState("All");
+  const [quarterFilter, setQuarterFilter] = useState("All Quarters");
   const [paceFilter,    setPaceFilter]    = useState("All PACE");
   const [subjectFilter, setSubjectFilter] = useState("All Subjects");
-  const [dateRange,     setDateRange]     = useState({ from: "", to: "" });
-
-  const [applied, setApplied] = useState({ type: "All", pace: "All PACE", subject: "All Subjects", from: "", to: "" });
 
   const allResults = useMemo(
     () => [...selfTestResults, ...paceTestResults],
@@ -259,27 +191,22 @@ export default function AssessmentResults() {
   }, [allResults]);
 
   const matchesFilters = (r) => {
-    if (applied.subject !== "All Subjects" && r.subject !== applied.subject) return false;
-    if (applied.pace !== "All PACE" && String(r.paceNumber) !== applied.pace) return false;
-    if (applied.from && (!r.dateTakenRaw || r.dateTakenRaw < applied.from)) return false;
-    if (applied.to && (!r.dateTakenRaw || r.dateTakenRaw > applied.to)) return false;
+    if (quarterFilter !== "All Quarters" && Number(r.quarter) !== Number(quarterFilter)) return false;
+    if (subjectFilter !== "All Subjects" && r.subject !== subjectFilter) return false;
+    if (paceFilter !== "All PACE" && String(r.paceNumber) !== paceFilter) return false;
     return true;
   };
 
   const filteredSelfTests = selfTestResults.filter(matchesFilters);
   const filteredPaceTests = paceTestResults.filter(matchesFilters);
 
-  const showSelfTest = applied.type !== "PACE Test";
-  const showPaceTest = applied.type !== "Self-Test";
-
-  const handleApplyFilters = () => {
-    setApplied({
-      type:    typeFilter,
-      pace:    paceFilter,
-      subject: subjectFilter,
-      from:    dateRange.from,
-      to:      dateRange.to,
-    });
+  const handleSchoolYearChange = (value) => {
+    setLoading(true);
+    setError("");
+    setSchoolYearId(Number(value));
+    setQuarterFilter("All Quarters");
+    setPaceFilter("All PACE");
+    setSubjectFilter("All Subjects");
   };
 
   return (
@@ -312,12 +239,28 @@ export default function AssessmentResults() {
 
         {/* ── Filters ─────────────────────────────────────────────── */}
         <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 p-6 mb-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 lg:items-end">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:items-end">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant">School Year</label>
+              <select
+                value={schoolYearId ?? data?.schoolYearId ?? ""}
+                onChange={(event) => handleSchoolYearChange(event.target.value)}
+                disabled={loading || schoolYears.length === 0}
+                className="text-sm font-bold text-on-surface bg-white border border-outline-variant/30 rounded-xl px-3 py-2.5 h-[42px] focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
+              >
+                {schoolYears.map((year) => (
+                  <option key={year.id} value={year.id}>
+                    {year.label}{year.isActive ? " (Current)" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
             <FilterSelect
-              label="Assessment Type"
-              value={typeFilter}
-              onChange={setTypeFilter}
-              options={["All", "Self-Test", "PACE Test"]}
+              label="Quarter"
+              value={quarterFilter}
+              onChange={setQuarterFilter}
+              options={["All Quarters", "1", "2", "3", "4"]}
+              formatOption={(opt) => (opt === "All Quarters" ? opt : `Quarter ${opt}`)}
             />
             <FilterSelect
               label="Pace Number"
@@ -332,34 +275,18 @@ export default function AssessmentResults() {
               onChange={setSubjectFilter}
               options={subjectOptions}
             />
-            <DateRangeFilter
-              from={dateRange.from}
-              to={dateRange.to}
-              onChange={setDateRange}
-            />
-            <button
-              onClick={handleApplyFilters}
-              className="h-[42px] flex items-center justify-center gap-2 bg-primary text-white text-sm font-bold rounded-xl px-4 hover:bg-primary/90 transition-colors"
-            >
-              <span className="material-symbols-outlined text-base">filter_alt</span>
-              Apply Filters
-            </button>
           </div>
         </div>
 
         {/* ── Self-Test Results ─────────────────────────────────────── */}
-        {showSelfTest && (
-          <SectionCard title="Self-Test Results" icon="edit_note" loading={loading} skeletonRows={3}>
-            <ResultsTable rows={filteredSelfTests} />
-          </SectionCard>
-        )}
+        <SectionCard title="Self-Test Results" icon="edit_note" loading={loading} skeletonRows={3}>
+          <ResultsTable rows={filteredSelfTests} />
+        </SectionCard>
 
         {/* ── PACE Test Results ─────────────────────────────────────── */}
-        {showPaceTest && (
-          <SectionCard title="PACE Test Results" icon="school" loading={loading} skeletonRows={3}>
-            <ResultsTable rows={filteredPaceTests} />
-          </SectionCard>
-        )}
+        <SectionCard title="PACE Test Results" icon="school" loading={loading} skeletonRows={3}>
+          <ResultsTable rows={filteredPaceTests} />
+        </SectionCard>
 
       </main>
     </StudentLayout>
