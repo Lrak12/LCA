@@ -17,7 +17,7 @@ const fmtDate = (iso) => {
 };
 const pct = (n) => `${(n ?? 0).toFixed(2)}%`;
 
-const TABS = ["Student Records", "Student Progress", "PACE Analytics", "Ranking"];
+const TABS = ["Student Records", "Student Progress", "PACE Analytics & Ranking"];
 
 const GenderBadge = ({ gender }) => (
   <span className={`text-[11px] font-bold px-3 py-0.5 rounded-full ${gender === "Female" ? "bg-pink-100 text-pink-600" : gender === "Male" ? "bg-blue-100 text-blue-600" : "bg-slate-100 text-slate-500"}`}>{gender}</span>
@@ -41,11 +41,10 @@ const TopStat = ({ label, value, sub, subColor, icon, iconBg, iconColor }) => (
   </div>
 );
 
-// Supervisor Student Monitoring page. 4 tabs: Records / Progress / PACE Analytics /
-// Ranking. Records + Progress share one call (GET /teacher/student-monitoring-overview,
-// teacher.service.getStudentMonitoringOverview); Analytics + Ranking are their own
-// components (PaceAnalyticsTab / RankingTab) that fetch on their own. "View" opens
-// StudentAcademicRecordModal.
+// Supervisor Student Monitoring page. Records + Progress share one call
+// (GET /teacher/student-monitoring-overview, teacher.service.getStudentMonitoringOverview).
+// The combined Analytics & Ranking tab renders both dedicated components, which fetch
+// their own data. "View" opens StudentAcademicRecordModal.
 export default function StudentMonitoring() {
   const schoolYearLabel = useSchoolYear();
 
@@ -315,11 +314,14 @@ export default function StudentMonitoring() {
               </div>
               <Pagination />
             </div>
-          ) : tab === "PACE Analytics" ? (
-            // these two tabs load their own data (getPaceAnalyticsOverview / getStudentRankings)
-            <PaceAnalyticsTab grade={grade} />
           ) : (
-            <RankingTab grade={grade} />
+            // Both sections load independently so analytics and rankings appear together.
+            <div>
+              <PaceAnalyticsTab grade={grade} />
+              <div className="border-t border-outline-variant/20">
+                <RankingTab grade={grade} />
+              </div>
+            </div>
           )}
         </div>
       </main>

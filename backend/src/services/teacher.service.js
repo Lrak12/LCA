@@ -1168,15 +1168,15 @@ export const getStudentRankings = async (user_id, { grade, rankBy = "points", pa
 
 // ─── PACE Analytics tab (charts) ─────────────────────────────────────────────
 // PACE Analytics tab: aggregates for the charts (completion by quarter, on-time vs
-// late donut, completion by subject, points distribution, below-50% list).
+// late donut, completion by subject, points distribution, intervention list).
 export const getPaceAnalyticsOverview = async (user_id, { grade } = {}) => {
   const empty = {
     stats: { avgCompletionRate: 0, avgPerformancePoints: 0, studentsReady: 0, needingIntervention: 0, totalStudents: 0 },
-    completionByQuarter: [0, 0, 0, 0],
+    completionByQuarter: [null, null, null, null],
     onTimeVsLate: { onTime: 0, late: 0, extended: 0, notCompleted: 0, total: 0 },
     completionBySubject: [],
     pointsDistribution: [],
-    below50: [],
+    intervention: [],
   };
 
   const { data: teacher } = await supabaseAdmin
@@ -1201,7 +1201,7 @@ export const getPaceAnalyticsOverview = async (user_id, { grade } = {}) => {
   const { data: paces } = activeModuleIds.length
     ? await supabaseAdmin
         .from("student_pace")
-        .select("student_id, status, completion_status, completion_date, points_earned, ready_for_next, pace_module(subject, module_number)")
+        .select("sp_id, student_id, status, completion_status, completion_date, points_earned, ready_for_next, pace_module(subject, module_number)")
         .in("student_id", studentIds)
         .in("module_id", activeModuleIds)
     : { data: [] };
@@ -1234,16 +1234,49 @@ export const getPaceAnalyticsOverview = async (user_id, { grade } = {}) => {
     if (p.ready_for_next === true) a.ready = true;
   });
 
+  // A student requires intervention when one of their official PACE tests has
+  // reached three scored attempts without a passing score (90 or higher). Keep
+  // this definition aligned with the formal PACE Analytics report.
+  const testOutcomeBySp = new Map();
+  const spIds = spList.map((p) => p.sp_id).filter((id) => id != null);
+  if (spIds.length) {
+    const { data: tests } = await supabaseAdmin
+      .from("pace_test_result")
+      .select("sp_id, score")
+      .in("sp_id", spIds);
+    (tests ?? []).forEach((test) => {
+      if (test.score == null) return;
+      const outcome = testOutcomeBySp.get(test.sp_id) ?? { attempts: 0, passed: false };
+      outcome.attempts += 1;
+      if (Number(test.score) >= 90) outcome.passed = true;
+      testOutcomeBySp.set(test.sp_id, outcome);
+    });
+  }
+
   const completions = [];   // per-student completion %
-  const rowsBelow = [];
+  const intervention = [];
   byStudent.forEach((a, sid) => {
     const total = a.sp.length;
     const done  = a.sp.filter((p) => p.status === "Completed").length;
     const c = total ? Math.round((done / total) * 1000) / 10 : 0;
     completions.push(c);
-    if (c < 50) {
+    const failedPaces = a.sp.filter((p) => {
+      const outcome = testOutcomeBySp.get(p.sp_id);
+      return outcome?.attempts >= 3 && !outcome.passed;
+    });
+    if (failedPaces.length) {
       const s = students.find((x) => x.student_id === sid);
-      rowsBelow.push({ id: sid, name: s ? `${s.first_name} ${s.last_name}`.trim() : `#${sid}`, completion: c });
+      const failedLabels = failedPaces.map((p) => {
+        const subject = p.pace_module?.subject ?? "PACE";
+        const number = p.pace_module?.module_number;
+        return number == null ? subject : `${subject} ${number}`;
+      });
+      intervention.push({
+        id: sid,
+        name: s ? `${s.first_name} ${s.last_name}`.trim() : `#${sid}`,
+        completion: c,
+        concern: `${failedLabels.join(", ")} not passed after 3 attempts`,
+      });
     }
   });
 
@@ -1252,7 +1285,7 @@ export const getPaceAnalyticsOverview = async (user_id, { grade } = {}) => {
   const avgCompletionRate = avg(completions);
   const avgPerformancePoints = avg([...byStudent.values()].map((a) => a.points));
   const studentsReady = [...byStudent.values()].filter((a) => a.ready).length;
-  const needingIntervention = completions.filter((c) => c < 50).length;
+  const needingIntervention = intervention.length;
 
   // Completion by quarter (cumulative completed / cumulative assigned, q1..q4)
   const totalByQ = [0, 0, 0, 0], doneByQ = [0, 0, 0, 0];
@@ -1263,6 +1296,7 @@ export const getPaceAnalyticsOverview = async (user_id, { grade } = {}) => {
     if (p.status === "Completed") doneByQ[q - 1] += 1;
   });
   const completionByQuarter = [0, 0, 0, 0].map((_, i) => {
+    if (totalByQ[i] === 0) return null;
     const t = totalByQ.slice(0, i + 1).reduce((a, b) => a + b, 0);
     const d = doneByQ.slice(0, i + 1).reduce((a, b) => a + b, 0);
     return t ? Math.round((d / t) * 1000) / 10 : 0;
@@ -1314,13 +1348,13 @@ export const getPaceAnalyticsOverview = async (user_id, { grade } = {}) => {
     onTimeVsLate: { ...otl, total: totalStudents },
     completionBySubject,
     pointsDistribution,
-    below50: rowsBelow.sort((a, b) => a.completion - b.completion),
+    intervention: intervention.sort((a, b) => a.completion - b.completion || a.name.localeCompare(b.name)),
   };
 };
 
 // ─── PACE Analytics & Rankings Report (formal report modal) ──────────────────
-// Aggregated, print-ready report: top rankings, points distribution, completion
-// status summary, PACE-test readiness, and an intervention list — scoped to the
+// Aggregated, print-ready report: top rankings, quarterly completion, completion
+// status summary and an intervention list — scoped to the
 // teacher's grade level(s) and (best-effort) the selected quarter.
 export const getPaceAnalyticsReport = async (user_id, { grade, quarter, sy_id } = {}) => {
   const QUARTER_LABELS = ["1st Quarter", "2nd Quarter", "3rd Quarter", "4th Quarter"];
@@ -1335,9 +1369,8 @@ export const getPaceAnalyticsReport = async (user_id, { grade, quarter, sy_id } 
     gradeLevels: [],
     gradeLabel: grade && grade !== "all" ? grade : "All Grades",
     topRankings: [],
-    pointsDistribution: [],
+    completionByQuarter: [null, null, null, null],
     completionStatus: [],
-    readiness: { ready: 0, notReady: 0, total: 0 },
     intervention: [],
     totalStudents: 0,
   };
@@ -1381,23 +1414,23 @@ export const getPaceAnalyticsReport = async (user_id, { grade, quarter, sy_id } 
   if (!students?.length) return base;
   const studentIds = students.map((s) => s.student_id);
 
-  const [{ data: paces }, { data: quarterProjections }] = await Promise.all([
+  const [{ data: paces }, { data: allQuarterProjections }] = await Promise.all([
     activeModuleIds.length
     ? await supabaseAdmin
         .from("student_pace")
-        .select("sp_id, student_id, status, completion_status, points_earned, ready_for_next, pace_module(module_number, subject)")
+        .select("sp_id, student_id, status, completion_status, points_earned, pace_module(module_number, subject)")
         .in("student_id", studentIds)
         .in("module_id", activeModuleIds)
     : Promise.resolve({ data: [] }),
     sy?.sy_id
       ? supabaseAdmin
           .from("pace_quarterly_projection")
-          .select("student_id, subject, pace_start, pace_end")
+          .select("student_id, subject, quarter, pace_start, pace_end")
           .eq("sy_id", sy.sy_id)
-          .eq("quarter", q)
           .in("student_id", studentIds)
       : Promise.resolve({ data: [] }),
   ]);
+  const quarterProjections = (allQuarterProjections ?? []).filter((row) => Number(row.quarter) === q);
   const projectionRanges = new Map();
   (quarterProjections ?? []).forEach((row) => {
     const ranges = projectionRanges.get(row.student_id) ?? [];
@@ -1443,7 +1476,7 @@ export const getPaceAnalyticsReport = async (user_id, { grade, quarter, sy_id } 
   const byStudent = new Map();
   students.forEach((s) => byStudent.set(s.student_id, {
     id: s.student_id, name: `${s.first_name} ${s.last_name}`.trim() || `#${s.student_id}`,
-    points: 0, total: 0, completed: 0, late: 0, ready: false, notPassed: 0,
+    points: 0, total: 0, completed: 0, late: 0, notPassed: 0,
   }));
   spList.forEach((p) => {
     const a = byStudent.get(p.student_id);
@@ -1452,7 +1485,6 @@ export const getPaceAnalyticsReport = async (user_id, { grade, quarter, sy_id } 
     a.points += p.points_earned ?? 0;
     if (p.status === "Completed") a.completed += 1;
     if (p.completion_status === "Late") a.late += 1;
-    if (p.ready_for_next === true) a.ready = true;
     const t = passBySp.get(p.sp_id);
     if (t?.attempts >= 3 && !t.passed) a.notPassed += 1;
   });
@@ -1475,17 +1507,30 @@ export const getPaceAnalyticsReport = async (user_id, { grade, quarter, sy_id } 
       completionRate: r.completionRate, status: statusOf(r.completionRate),
     }));
 
-  // 2. Performance points distribution
-  const total = rows.length || 1;
-  const ptsBuckets = [
-    { label: "100 and above", test: (p) => p >= 100 },
-    { label: "80 — 99",   test: (p) => p >= 80 && p < 100 },
-    { label: "60 — 79",   test: (p) => p >= 60 && p < 80 },
-    { label: "Below 60",  test: (p) => p < 60 },
-  ];
-  base.pointsDistribution = ptsBuckets.map((b) => {
-    const count = rows.filter((r) => b.test(r.points)).length;
-    return { range: b.label, count, percentage: Math.round((count / total) * 100) };
+  // 2. Cumulative PACE completion by quarter
+  const projectionsByStudent = new Map();
+  (allQuarterProjections ?? []).forEach((projection) => {
+    const studentProjections = projectionsByStudent.get(projection.student_id) ?? [];
+    studentProjections.push(projection);
+    projectionsByStudent.set(projection.student_id, studentProjections);
+  });
+  const totalsByQuarter = [0, 0, 0, 0];
+  const completedByQuarter = [0, 0, 0, 0];
+  (paces ?? []).forEach((pace) => {
+    const projection = (projectionsByStudent.get(pace.student_id) ?? []).find((range) =>
+      range.subject === pace.pace_module?.subject
+      && pace.pace_module?.module_number >= range.pace_start
+      && pace.pace_module?.module_number <= range.pace_end);
+    const quarterIndex = Number(projection?.quarter) - 1;
+    if (quarterIndex < 0 || quarterIndex > 3) return;
+    totalsByQuarter[quarterIndex] += 1;
+    if (pace.status === "Completed") completedByQuarter[quarterIndex] += 1;
+  });
+  base.completionByQuarter = totalsByQuarter.map((_, index) => {
+    if (index + 1 > q || totalsByQuarter[index] === 0) return null;
+    const assigned = totalsByQuarter.slice(0, index + 1).reduce((sum, count) => sum + count, 0);
+    const completed = completedByQuarter.slice(0, index + 1).reduce((sum, count) => sum + count, 0);
+    return assigned ? Math.round((completed / assigned) * 1000) / 10 : 0;
   });
 
   // 3. Completion status summary (across all PACEs)
@@ -1501,11 +1546,7 @@ export const getPaceAnalyticsReport = async (user_id, { grade, quarter, sy_id } 
     { label: "PACE Test Not Passed",    dot: "#ef4444", count: notPassedTotal },
   ].map((r) => ({ ...r, percentage: Math.round((r.count / csBase) * 100) }));
 
-  // 4. PACE-test readiness summary
-  const ready = rows.filter((r) => r.ready).length;
-  base.readiness = { ready, notReady: rows.length - ready, total: rows.length };
-
-  // 5. Students requiring intervention: all three official PACE Test attempts
+  // 4. Students requiring intervention: all three official PACE Test attempts
   // were failed and no attempt reached the 90% passing mark.
   base.intervention = rows
     .filter((r) => r.notPassed > 0)

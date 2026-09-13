@@ -872,7 +872,22 @@ export const getPublishedReportSnapshot = async (teacher_id, report_type, quarte
   );
   if (error) throw new Error(error.message);
   const snapshot = data?.published_snapshot ?? null;
-  if (!snapshot || report_type !== "academic") return snapshot;
+  if (!snapshot) return snapshot;
+
+  // Older analytics snapshots predate the quarterly-completion chart. Supply
+  // that one field on read so already-published reports can use the new view.
+  if (report_type === "analytics" && !Array.isArray(snapshot.completionByQuarter)) {
+    const currentAnalytics = await TeacherService.getPaceAnalyticsReportForTeacher(
+      teacher_id,
+      { quarter, sy_id: sy.sy_id },
+    );
+    return {
+      ...snapshot,
+      completionByQuarter: currentAnalytics.completionByQuarter ?? [0, 0, 0, 0],
+    };
+  }
+
+  if (report_type !== "academic") return snapshot;
 
   // Apply the current Honor Roll rule to older immutable snapshots too, so
   // previously published reports do not keep the superseded HR calculation.

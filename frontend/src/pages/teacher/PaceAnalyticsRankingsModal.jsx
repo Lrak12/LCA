@@ -195,7 +195,7 @@ export default function PaceAnalyticsRankingsModal({ onClose }) {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-7">
 
                 {/* 1. Eligible student rankings */}
-                <section className="lg:row-span-2">
+                <section className="lg:col-start-1 lg:row-start-1">
                   <SectionTitle n={1}>STUDENT RANKINGS</SectionTitle>
                   <div className="overflow-hidden rounded-lg border border-slate-200">
                     <table className="w-full border-collapse">
@@ -225,24 +225,26 @@ export default function PaceAnalyticsRankingsModal({ onClose }) {
                   </div>
                 </section>
 
-                {/* 2. Performance points distribution */}
-                <section>
-                  <SectionTitle n={2}>PERFORMANCE POINTS DISTRIBUTION</SectionTitle>
+                {/* 2. PACE completion by quarter */}
+                <section className="lg:col-start-2 lg:row-start-1">
+                  <SectionTitle n={2}>PACE COMPLETION BY QUARTER</SectionTitle>
                   <div className="overflow-hidden rounded-lg border border-slate-200">
                     <table className="w-full border-collapse">
                       <thead>
                         <tr>
-                          <Th>Points Range</Th>
-                          <Th className="text-center">No. of Students</Th>
-                          <Th className="text-center">Percentage</Th>
+                          <Th>Quarter</Th>
+                          <Th className="text-center">Completion Rate</Th>
                         </tr>
                       </thead>
                       <tbody>
-                        {(data?.pointsDistribution ?? []).map((r) => (
-                          <tr key={r.range}>
-                            <Td>{r.range}</Td>
-                            <Td className="text-center">{r.count}</Td>
-                            <Td className="text-center">{pct(r.percentage)}</Td>
+                        {QUARTERS.map((label, index) => (
+                          <tr key={label}>
+                            <Td>{label}</Td>
+                            <Td className="text-center font-bold">
+                              {index < quarter && data?.completionByQuarter?.[index] != null
+                                ? pct(data.completionByQuarter[index])
+                                : "—"}
+                            </Td>
                           </tr>
                         ))}
                       </tbody>
@@ -251,14 +253,14 @@ export default function PaceAnalyticsRankingsModal({ onClose }) {
                 </section>
 
                 {/* 3. Completion status summary */}
-                <section>
+                <section className="lg:col-start-2 lg:row-start-2">
                   <SectionTitle n={3}>COMPLETION STATUS SUMMARY</SectionTitle>
                   <div className="overflow-hidden rounded-lg border border-slate-200">
                     <table className="w-full border-collapse">
                       <thead>
                         <tr>
                           <Th>Status</Th>
-                          <Th className="text-center">No. of Students</Th>
+                          <Th className="text-center">No. of PACEs</Th>
                           <Th className="text-center">Percentage</Th>
                         </tr>
                       </thead>
@@ -280,38 +282,9 @@ export default function PaceAnalyticsRankingsModal({ onClose }) {
                   </div>
                 </section>
 
-                {/* 4. PACE test readiness summary */}
-                <section>
-                  <SectionTitle n={4}>PACE TEST READINESS SUMMARY</SectionTitle>
-                  <div className="overflow-hidden rounded-lg border border-slate-200">
-                    <table className="w-full border-collapse">
-                      <thead>
-                        <tr>
-                          <Th>Category</Th>
-                          <Th className="text-center">No. of Students</Th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr>
-                          <Td><span className="inline-flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-green-500" />Ready for PACE Test</span></Td>
-                          <Td className="text-center">{data?.readiness?.ready ?? 0}</Td>
-                        </tr>
-                        <tr>
-                          <Td><span className="inline-flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-orange-500" />Not Yet Ready</span></Td>
-                          <Td className="text-center">{data?.readiness?.notReady ?? 0}</Td>
-                        </tr>
-                        <tr className="bg-slate-50">
-                          <Td className="font-extrabold uppercase text-[11px]">Total</Td>
-                          <Td className="text-center font-extrabold">{data?.readiness?.total ?? 0}</Td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
-
-                {/* 5. Students requiring intervention */}
-                <section className="lg:col-span-2">
-                  <SectionTitle n={5}>STUDENTS REQUIRING INTERVENTION</SectionTitle>
+                {/* 4. Students requiring intervention */}
+                <section className="lg:col-start-1 lg:row-start-2">
+                  <SectionTitle n={4}>STUDENTS REQUIRING INTERVENTION</SectionTitle>
                   <div className="overflow-hidden rounded-lg border border-slate-200">
                     <table className="w-full border-collapse">
                       <thead>

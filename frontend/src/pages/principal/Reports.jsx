@@ -302,9 +302,10 @@ export default function Reports() {
                         {/* Actions: View Report -> openReport(teacher, firstSub.key, meta) opens the modal on the first submitted tab */}
                         <td className="px-5 py-5 whitespace-nowrap">
                           <button
+                            type="button"
                             onClick={() => firstSub && openReport(teacher, firstSub.key, { gradeRange: gradeRange(teacher.gradeLevels), status }, teacherSubmissions)}
                             disabled={!firstSub}
-                            className="flex items-center gap-1.5 text-xs font-extrabold text-amber-600 hover:text-amber-700 hover:underline disabled:text-on-surface-variant/40 disabled:no-underline disabled:cursor-not-allowed transition-colors"
+                            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-extrabold text-amber-700 shadow-sm transition-colors hover:border-amber-400 hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-400/40 disabled:border-outline-variant/20 disabled:bg-surface-container-low disabled:text-on-surface-variant/40 disabled:shadow-none disabled:cursor-not-allowed"
                           >
                             <span className="material-symbols-outlined text-base">visibility</span>
                             View Report

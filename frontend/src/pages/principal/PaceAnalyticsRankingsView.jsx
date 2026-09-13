@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { fetchAnalyticsReport } from "../../api/reports.js";
 
+const QUARTERS = ["1st Quarter", "2nd Quarter", "3rd Quarter", "4th Quarter"];
+
 const STATUS_STYLE = {
   "On Track": "text-green-600",
   Ongoing: "text-orange-500",
@@ -97,11 +99,22 @@ export default function PaceAnalyticsRankingsView({ teacher, quarter, schoolYear
           </div>
         </Section>
 
-        <Section title="2. PERFORMANCE POINTS DISTRIBUTION">
+        <Section title="2. PACE COMPLETION BY QUARTER">
           <div className="overflow-hidden rounded-lg border border-slate-200">
             <table className="w-full border-collapse">
-              <thead><tr><Head>Points Range</Head><Head className="text-center">Students</Head><Head className="text-center">Percentage</Head></tr></thead>
-              <tbody>{(data?.pointsDistribution ?? []).map((row) => <tr key={row.range}><Cell>{row.range}</Cell><Cell className="text-center">{row.count}</Cell><Cell className="text-center">{percentage(row.percentage)}</Cell></tr>)}</tbody>
+              <thead><tr><Head>Quarter</Head><Head className="text-center">Completion Rate</Head></tr></thead>
+              <tbody>
+                {QUARTERS.map((label, index) => (
+                  <tr key={label}>
+                    <Cell>{label}</Cell>
+                    <Cell className="text-center font-bold">
+                      {index < Number(quarter) && data?.completionByQuarter?.[index] != null
+                        ? percentage(data.completionByQuarter[index])
+                        : "—"}
+                    </Cell>
+                  </tr>
+                ))}
+              </tbody>
             </table>
           </div>
         </Section>
@@ -109,21 +122,13 @@ export default function PaceAnalyticsRankingsView({ teacher, quarter, schoolYear
         <Section title="3. COMPLETION STATUS SUMMARY">
           <div className="overflow-hidden rounded-lg border border-slate-200">
             <table className="w-full border-collapse">
-              <thead><tr><Head>Status</Head><Head className="text-center">Students</Head><Head className="text-center">Percentage</Head></tr></thead>
+              <thead><tr><Head>Status</Head><Head className="text-center">No. of PACEs</Head><Head className="text-center">Percentage</Head></tr></thead>
               <tbody>{(data?.completionStatus ?? []).map((row) => <tr key={row.label}><Cell>{row.label}</Cell><Cell className="text-center">{row.count}</Cell><Cell className="text-center">{percentage(row.percentage)}</Cell></tr>)}</tbody>
             </table>
           </div>
         </Section>
 
-        <Section title="4. PACE TEST READINESS SUMMARY">
-          <div className="grid grid-cols-3 overflow-hidden rounded-lg border border-slate-200 text-center">
-            <div className="border-r border-slate-200 p-4"><p className="text-xl font-extrabold text-green-600">{data?.readiness?.ready ?? 0}</p><p className="text-[10px] font-bold uppercase text-on-surface-variant">Ready</p></div>
-            <div className="border-r border-slate-200 p-4"><p className="text-xl font-extrabold text-orange-500">{data?.readiness?.notReady ?? 0}</p><p className="text-[10px] font-bold uppercase text-on-surface-variant">Not Ready</p></div>
-            <div className="p-4"><p className="text-xl font-extrabold">{data?.readiness?.total ?? 0}</p><p className="text-[10px] font-bold uppercase text-on-surface-variant">Total</p></div>
-          </div>
-        </Section>
-
-        <Section title="5. STUDENTS REQUIRING INTERVENTION" className="lg:col-span-2">
+        <Section title="4. STUDENTS REQUIRING INTERVENTION" className="lg:col-span-2">
           <div className="overflow-hidden rounded-lg border border-slate-200">
             <table className="w-full border-collapse">
               <thead><tr><Head>Student</Head><Head className="text-center">Completion</Head><Head className="text-center">Points</Head><Head>Main Concern</Head></tr></thead>
