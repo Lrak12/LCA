@@ -220,7 +220,7 @@ export default function AuditLogs() {
                 <input
                   value={draft.search}
                   onChange={onSearchChange}
-                  placeholder="Search name"
+                  placeholder="Search"
                   className="w-full pl-10 pr-10 py-2.5 bg-white border border-outline-variant/30 rounded-lg text-sm text-on-surface placeholder:text-outline focus:ring-2 focus:ring-primary/20 focus:outline-none"
                 />
                 {/* clear (×) -> empty the box, re-apply filters + reset paging */}

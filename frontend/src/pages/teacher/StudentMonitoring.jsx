@@ -187,7 +187,7 @@ export default function StudentMonitoring() {
               <div className="flex items-center gap-3 mb-5 flex-wrap">
                 <div className="relative flex-1 min-w-[220px]">
                   <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1 text-base text-on-surface-variant pointer-events-none">search</span>
-                  <input type="text" placeholder="Search students by name or ID..." value={search} onChange={(e) => setSearch(e.target.value)}
+                  <input type="text" placeholder="Search " value={search} onChange={(e) => setSearch(e.target.value)}
                     className="w-full pl-9 pr-9 py-2.5 text-sm bg-white border border-outline-variant/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30" />
                   {/* clear (×) -> empty the box */}
                   {search && (
@@ -265,7 +265,7 @@ export default function StudentMonitoring() {
               <div className="flex items-center gap-3 mb-5 flex-wrap">
                 <div className="relative flex-1 min-w-[220px]">
                   <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1 text-base text-on-surface-variant pointer-events-none">search</span>
-                  <input type="text" placeholder="Search students by name or ID..." value={search} onChange={(e) => setSearch(e.target.value)}
+                  <input type="text" placeholder="Search " value={search} onChange={(e) => setSearch(e.target.value)}
                     className="w-full pl-9 pr-9 py-2.5 text-sm bg-white border border-outline-variant/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30" />
                   {/* clear (×) -> empty the box */}
                   {search && (
@@ -278,11 +278,6 @@ export default function StudentMonitoring() {
                   <option value="all">All PACE Status</option>
                   <option value="On Track">On Track</option>
                   <option value="Needs Attention">Needs Attention</option>
-                </select>
-                <select value={subject} onChange={(e) => setSubject(e.target.value)}
-                  className="text-sm font-bold text-on-surface bg-white border border-outline-variant/20 rounded-xl pl-4 pr-8 py-2.5 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
-                  <option value="all">All Subjects/PACE</option>
-                  {subjects.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
 

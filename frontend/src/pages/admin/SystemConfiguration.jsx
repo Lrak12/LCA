@@ -716,7 +716,7 @@ function UserAccessTab({ setBanner, schoolYearLabel }) {
       <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-4 flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[220px]">
           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1 text-outline text-lg">search</span>
-          <input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search by name or email…" className={`${inputCls} pl-10 pr-10`} />
+          <input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search " className={`${inputCls} pl-10 pr-10`} />
           {/* clear (×) -> empty the box + reset paging + refetch */}
           {searchInput && (
             <button

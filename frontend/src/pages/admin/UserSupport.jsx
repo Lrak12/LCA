@@ -263,7 +263,7 @@ export default function UserSupport() {
                   <input
                     value={searchInput}
                     onChange={(e) => setSearchInput(e.target.value)}
-                    placeholder="Search name, role, subject…"
+                    placeholder="Search"
                     className="w-full pl-10 pr-9 py-2 bg-surface-container-high border-none rounded-lg text-sm text-on-surface placeholder:text-outline focus:ring-2 focus:ring-primary/20 focus:outline-none"
                   />
                   {/* clear (×) -> empty the box + reset paging + refetch */}

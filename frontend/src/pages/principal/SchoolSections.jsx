@@ -210,10 +210,10 @@ function EnrollStudentsModal({ level, onClose, onConfirm }) {
         {/* Search */}
         <div className="px-6 pt-4 pb-2 shrink-0">
           <div className="relative">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-base">search</span>
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1 text-on-surface-variant text-base">search</span>
             <input
               type="text"
-              placeholder="Search by name or student ID…"
+              placeholder="Search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-10 pr-10 py-2.5 text-sm border-2 border-outline-variant/30 rounded-xl focus:outline-none focus:border-primary"
@@ -470,14 +470,14 @@ function AssignTeacherModal({ level, levels, onClose, onConfirm, onUnassign }) {
             Select Supervisor <span className="text-error">*</span>
           </label>
           <div className="relative mt-1.5">
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1 text-on-surface-variant text-base">search</span>
             <input
               type="text"
-              placeholder="Search supervisor…"
+              placeholder="Search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-4 pr-10 py-2.5 text-sm border-2 border-outline-variant/30 rounded-xl focus:outline-none focus:border-primary"
+              className="w-full pl-10 pr-10 py-2.5 text-sm border-2 border-outline-variant/30 rounded-xl focus:outline-none focus:border-primary"
             />
-            <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-base pointer-events-none">expand_more</span>
           </div>
         </div>
 

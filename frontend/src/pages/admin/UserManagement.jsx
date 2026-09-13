@@ -583,7 +583,7 @@ export default function UserManagement() {
             <input
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Search by name, email, role, or status…"
+              placeholder="Search "
               className="w-full pl-11 pr-10 py-2.5 bg-surface-container-high border-none rounded-lg focus:ring-2 focus:ring-primary/20 focus:outline-none text-sm text-on-surface placeholder:text-outline"
             />
             {/* clear (×) -> empty the box + reset paging + refetch */}

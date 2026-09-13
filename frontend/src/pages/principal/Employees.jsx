@@ -685,7 +685,7 @@ export default function Employees() {
               type="text"
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-              placeholder="Search by supervisor name or ID..."
+              placeholder="Search"
               className="w-full pl-12 pr-11 py-3 bg-surface-container-lowest border border-outline-variant/20 rounded-xl focus:ring-2 focus:ring-primary/20 focus:outline-none text-sm font-body"
             />
             {/* clear (×) -> empty the box + reset to page 1 */}

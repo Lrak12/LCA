@@ -598,12 +598,12 @@ export default function DiagnosticAssessments() {
         {/* Filter bar */}
         <div className="bg-white rounded-2xl border border-outline-variant/20 shadow-sm p-4 mb-6 flex items-end gap-4 flex-wrap">
           <div className="relative flex-1 min-w-[220px]">
-            <span className="material-symbols-outlined absolute left-3 top-1/2  text-on-surface-variant text-base">search</span>
+            <span className="material-symbols-outlined absolute left-3 top-1/2 text-on-surface-variant text-base">search</span>
             {/* search -> setSearch + page 1 (client-side filter) */}
             <label className="block text-[13px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-1.5">Student Name or ID</label>
             <input
               type="text"
-              placeholder="Search student name or ID…"
+              placeholder="Search"
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(1); }}
               className="w-full pl-10 pr-10 py-2.5 rounded-xl border-2 border-outline-variant/30 text-sm focus:outline-none focus:border-primary"
