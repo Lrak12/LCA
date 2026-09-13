@@ -1,5 +1,9 @@
 import { supabaseAdmin } from "../config/supabase.js";
 import { sendError } from "../helpers/response.js";
+import { getTokenClaims } from "../services/auth.service.js";
+
+const replacedSessionMessage =
+  "Your session ended because this account signed in on another device.";
 
 export const authenticate = async (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -9,11 +13,34 @@ export const authenticate = async (req, res, next) => {
   }
 
   const token = authHeader.split(" ")[1];
+  const tokenClaims = getTokenClaims(token);
 
   const { data, error } = await supabaseAdmin.auth.getUser(token);
 
   if (error || !data?.user) {
+    // Revoking older Supabase sessions can make getUser fail before the normal
+    // metadata comparison below. Look up the protected user metadata by the
+    // already-validated JWT identity so the displaced device still receives the
+    // specific response that triggers its replacement popup. This lookup never
+    // authenticates the request; either outcome below is still a 401 response.
+    if (tokenClaims?.sub && tokenClaims?.session_id) {
+      const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(tokenClaims.sub);
+      const activeSessionId = authUser?.user?.app_metadata?.active_session_id;
+      if (activeSessionId && activeSessionId !== tokenClaims.session_id) {
+        return sendError(res, replacedSessionMessage, 401);
+      }
+    }
     return sendError(res, "Unauthorized: Invalid or expired token", 401);
+  }
+
+  const tokenSessionId = tokenClaims?.session_id;
+  const activeSessionId = data.user.app_metadata?.active_session_id;
+
+  // Accounts without the marker are legacy sessions created before this feature
+  // was deployed. As soon as the account signs in again, only that newest session
+  // ID is accepted and all older devices are rejected on their next request.
+  if (activeSessionId && tokenSessionId !== activeSessionId) {
+    return sendError(res, replacedSessionMessage, 401);
   }
 
   const { data: profile, error: profileError } = await supabaseAdmin

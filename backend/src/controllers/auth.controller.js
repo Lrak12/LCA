@@ -4,6 +4,7 @@ import { sendSuccess, sendError } from "../helpers/response.js";
 import asyncHandler from "../helpers/asyncHandler.js";
 import { supabaseAdmin } from "../config/supabase.js";
 import { writeAudit } from "../services/audit.service.js";
+import * as SessionEvents from "../services/sessionEvents.service.js";
 
 export const login = asyncHandler(async (req, res) => {
   const { id_number, password } = req.body;
@@ -15,6 +16,10 @@ export const login = asyncHandler(async (req, res) => {
     entity_affected: "Authentication",
     details: "User logged in to the system",
   });
+
+  // The new browser has not opened its event stream yet, so every currently
+  // connected stream belongs to an older device and can be ended immediately.
+  SessionEvents.terminateExistingConnections(user_id);
 
   sendSuccess(res, {
     access_token: data.session.access_token,
@@ -86,6 +91,10 @@ export const logout = asyncHandler(async (req, res) => {
   await AuthService.logout(token);
   sendSuccess(res, null, "Logged out successfully");
 });
+
+export const sessionEvents = (req, res) => {
+  SessionEvents.subscribe(req.user.user_id, req, res);
+};
 
 const ROLE_PROFILE = {
   student:       { table: "student",       pk: "student_id"   },

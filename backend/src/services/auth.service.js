@@ -1,5 +1,19 @@
 import { supabase, supabaseAdmin } from "../config/supabase.js";
-import { createClient } from "@supabase/supabase-js";
+
+const ACTIVE_SESSION_KEY = "active_session_id";
+
+const decodeJwtPayload = (token) => {
+  try {
+    const payload = token?.split(".")?.[1];
+    if (!payload) return null;
+    return JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+  } catch {
+    return null;
+  }
+};
+
+export const getTokenClaims = (token) => decodeJwtPayload(token);
+export const getTokenSessionId = (token) => getTokenClaims(token)?.session_id ?? null;
 
 // Role tables searched in priority order — first table containing the ID wins.
 // (IDs are seeded into distinct ranges, so collisions shouldn't occur in practice.)
@@ -76,6 +90,36 @@ export const login = async (school_id, password) => {
     throw new Error("Invalid ID number or password.");
   }
 
+  const accessToken = data.session?.access_token;
+  const sessionId = getTokenSessionId(accessToken);
+  if (!accessToken || !sessionId || !data.user?.id) {
+    throw new Error("Unable to establish a secure session. Please try again.");
+  }
+
+  // Store the newest session in protected app metadata. Every authenticated API
+  // request compares its JWT session_id against this value, so an older access
+  // token stops working immediately instead of remaining usable until JWT expiry.
+  const appMetadata = {
+    ...(data.user.app_metadata ?? {}),
+    [ACTIVE_SESSION_KEY]: sessionId,
+  };
+  const { error: metadataError } = await supabaseAdmin.auth.admin.updateUserById(
+    data.user.id,
+    { app_metadata: appMetadata }
+  );
+  if (metadataError) {
+    await supabaseAdmin.auth.admin.signOut(accessToken, "local");
+    throw new Error("Unable to establish a secure session. Please try again.");
+  }
+
+  // Revoke every older refresh session while retaining the token just issued.
+  // The metadata check above supplies immediate enforcement for already-issued
+  // access tokens, which Supabase revocation alone cannot invalidate early.
+  const { error: revokeError } = await supabaseAdmin.auth.admin.signOut(accessToken, "others");
+  if (revokeError) {
+    console.warn("Unable to revoke older refresh sessions:", revokeError.message);
+  }
+
   return {
     data,
     role:       profile.role,
@@ -129,11 +173,24 @@ export const resetPasswordWithToken = async (access_token, new_password) => {
 };
 
 export const logout = async (token) => {
-  const client = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_ANON_KEY,
-    { global: { headers: { Authorization: `Bearer ${token}` } } }
-  );
-  const { error } = await client.auth.signOut();
+  const claims = decodeJwtPayload(token);
+  if (claims?.sub && claims?.session_id) {
+    const { data } = await supabaseAdmin.auth.admin.getUserById(claims.sub);
+    const currentMetadata = data?.user?.app_metadata ?? {};
+
+    // Clear the marker only when this is still the newest session. This avoids
+    // a delayed logout request from an older device clearing the new login.
+    if (currentMetadata[ACTIVE_SESSION_KEY] === claims.session_id) {
+      const appMetadata = { ...currentMetadata };
+      delete appMetadata[ACTIVE_SESSION_KEY];
+      const { error: metadataError } = await supabaseAdmin.auth.admin.updateUserById(
+        claims.sub,
+        { app_metadata: appMetadata }
+      );
+      if (metadataError) throw new Error(metadataError.message);
+    }
+  }
+
+  const { error } = await supabaseAdmin.auth.admin.signOut(token, "local");
   if (error) throw new Error(error.message);
 };
