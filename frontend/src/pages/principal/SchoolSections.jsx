@@ -105,7 +105,7 @@ function GradeLevelCard({ level, onManageStudents, onAssignSupervisor, onView })
 
       {/* Action footer: Manage -> onManageStudents (Enroll modal); Assign -> onAssignSupervisor; View -> onView (all set page-level state) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 border-t border-outline-variant/100 divide-x divide-outline-variant/100">
-        <CardAction icon="group"      label="Manage" onClick={() => onManageStudents(level)} />
+        <CardAction icon="group"      label="Enroll" onClick={() => onManageStudents(level)} />
         <CardAction icon="group_add"  label="Assign" onClick={() => onAssignSupervisor(level)} />
         <CardAction icon="visibility" label="View"   onClick={() => onView(level)} />
       </div>
