@@ -17,10 +17,6 @@ export const login = asyncHandler(async (req, res) => {
     details: "User logged in to the system",
   });
 
-  // The new browser has not opened its event stream yet, so every currently
-  // connected stream belongs to an older device and can be ended immediately.
-  SessionEvents.terminateExistingConnections(user_id);
-
   sendSuccess(res, {
     access_token: data.session.access_token,
     refresh_token: data.session.refresh_token,

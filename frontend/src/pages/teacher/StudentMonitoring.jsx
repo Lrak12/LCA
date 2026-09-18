@@ -248,7 +248,7 @@ export default function StudentMonitoring() {
                         <td className="px-4 py-4 text-center">
                           <button onClick={() => setSelected({ id: r.id })}
                             className="px-4 py-2 bg-[#0d1b2e] text-white text-xs font-bold rounded-lg hover:opacity-90 transition-opacity whitespace-nowrap">
-                            View Student
+                            View More
                           </button>
                         </td>
                       </tr>

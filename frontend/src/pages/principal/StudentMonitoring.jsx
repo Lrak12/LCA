@@ -1,5 +1,5 @@
 // Principal Student Monitoring page. Tabs: Records / Progress / PACE Analytics.
-// "View Details" opens StudentSummaryModal.
+// "View More" opens StudentSummaryModal.
 // Backend chain (frontend api/studentMonitoring.js -> routes/studentMonitoring.routes.js, mounted at /student-monitoring):
 //   list+tabs: GET /student-monitoring               -> controllers/studentMonitoring.controller.js > getOverview (~line 7)        -> services/studentMonitoring.service.js > getStudentMonitoring (~line 167)
 //   analytics: GET /student-monitoring/pace-analytics -> controllers/studentMonitoring.controller.js > getPaceAnalytics (~line 20)   -> services/studentMonitoring.service.js > getPaceAnalytics (~line 297)
@@ -892,11 +892,11 @@ function RecommendationsTab({ students, loading, onView }) {
                     <td className="px-5 py-5 text-center">
                       <button
                         onClick={() => onView(s)}
-                        title="View details"
+                        title="View more"
                         className="inline-flex items-center gap-1.5 bg-white border border-outline-variant/30 text-on-surface text-xs font-bold px-4 py-2 rounded-lg hover:bg-surface-container-low transition-colors whitespace-nowrap"
                       >
                         <span className="material-symbols-outlined text-sm">visibility</span>
-                        View Details
+                        View More
                       </button>
                     </td>
                   </tr>
@@ -950,36 +950,29 @@ function RecommendationsTab({ students, loading, onView }) {
 
 // ─── PACE Analytics & Rankings tab ────────────────────────────────────────────
 
-// Dual-line SVG chart: this month vs last month cumulative completion %.
-const CompletionTrendChart = ({ trend }) => {
-  const weeks     = trend?.weeks ?? [];
-  const thisMonth = trend?.thisMonth ?? [];
-  const lastMonth = trend?.lastMonth ?? [];
-  const n = weeks.length;
-
-  if (!n || (thisMonth.length === 0 && lastMonth.length === 0)) {
-    return (
-      <div className="h-56 flex items-center justify-center text-sm text-on-surface-variant">
-        No completion data yet for this month.
-      </div>
-    );
-  }
-
-  const W = 600, H = 240, padL = 38, padR = 12, padT = 12, padB = 28;
+// Single-line SVG chart: cumulative PACE completion across the four quarters.
+const QuarterCompletionChart = ({ values = [] }) => {
+  const labels = ["1st Quarter", "2nd Quarter", "3rd Quarter", "4th Quarter"];
+  const W = 600, H = 240, padL = 44, padR = 12, padT = 22, padB = 34;
   const plotW = W - padL - padR;
   const plotH = H - padT - padB;
-  const step  = n > 1 ? plotW / (n - 1) : plotW;
   const yFor  = (v) => padT + plotH - (Math.max(0, Math.min(100, v)) / 100) * plotH;
-  const xFor  = (i) => padL + i * step;
-
-  const toPath = (series) =>
-    series.map((v, i) => `${i === 0 ? "M" : "L"} ${xFor(i)} ${yFor(v)}`).join(" ");
-
+  const xFor  = (i) => padL + i * (plotW / (labels.length - 1));
+  const points = labels.map((_, index) => {
+    const value = Number(values[index]);
+    return values[index] != null && Number.isFinite(value)
+      ? { index, value, x: xFor(index), y: yFor(value) }
+      : null;
+  }).filter(Boolean);
+  const linePath = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
+  const baseline = yFor(0);
+  const areaPath = points.length
+    ? `${linePath} L ${points[points.length - 1].x} ${baseline} L ${points[0].x} ${baseline} Z`
+    : "";
   const gridLines = [0, 25, 50, 75, 100];
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-56 overflow-visible">
-      {/* y gridlines + labels */}
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-56 overflow-visible" role="img" aria-label="PACE completion rates by quarter">
       {gridLines.map((g) => (
         <g key={g}>
           <line x1={padL} y1={yFor(g)} x2={W - padR} y2={yFor(g)} stroke="currentColor" strokeWidth="1" className="text-outline-variant/30" />
@@ -987,17 +980,21 @@ const CompletionTrendChart = ({ trend }) => {
         </g>
       ))}
 
-      {/* last month — dashed grey */}
-      <path d={toPath(lastMonth)} fill="none" stroke="rgb(148 163 184)" strokeWidth="2" strokeDasharray="5 5" strokeLinecap="round" strokeLinejoin="round" />
-      {/* this month — solid blue */}
-      <path d={toPath(thisMonth)} fill="none" stroke="rgb(37 99 235)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-      {thisMonth.map((v, i) => (
-        <circle key={i} cx={xFor(i)} cy={yFor(v)} r="3.5" fill="rgb(37 99 235)" />
+      {points.length > 0 && (
+        <>
+          <path d={areaPath} fill="rgb(37 99 235)" fillOpacity="0.08" />
+          <path d={linePath} fill="none" stroke="rgb(37 99 235)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        </>
+      )}
+      {points.map((point) => (
+        <g key={point.index}>
+          <circle cx={point.x} cy={point.y} r="4" fill="rgb(37 99 235)" stroke="white" strokeWidth="2" />
+          <text x={point.x} y={point.y - 10} textAnchor="middle" fontSize="10" fontWeight="800" fill="rgb(37 99 235)">{point.value}%</text>
+        </g>
       ))}
 
-      {/* week labels */}
-      {weeks.map((w, i) => (
-        <text key={w} x={xFor(i)} y={H - 8} textAnchor="middle" fontSize="10" className="fill-on-surface-variant font-bold uppercase tracking-widest">{w}</text>
+      {labels.map((label, index) => (
+        <text key={label} x={xFor(index)} y={H - 8} textAnchor="middle" fontSize="10" className="fill-on-surface-variant font-bold">{label}</text>
       ))}
     </svg>
   );
@@ -1014,7 +1011,7 @@ const CompletionTrendChart = ({ trend }) => {
 //     (~line 290) = student_pace.points_earned (10 On-Time / 7 Extended / 5 Late-passed / 0
 //     not-passed), stamped at completion by the Assign/Manage Student PACE flow.
 //   - `topCompletion`: Top-10 by completion % against the saved quarterly PACE plan.
-//   - `trend`: this-month-vs-last-month weekly completion counts for the chart.
+//   - `completionByQuarter`: cumulative PACE completion across quarters with activity.
 //   - `stats`: topPerformer, pacesFinished, avgPoints.
 function PaceAnalyticsTab() {
   const [data,    setData]    = useState(null);
@@ -1042,7 +1039,7 @@ function PaceAnalyticsTab() {
   }, [quarter, gradeLevel]);
 
   const topCompletion = data?.topCompletion ?? [];
-  const trend         = data?.trend ?? { weeks: [], thisMonth: [], lastMonth: [] };
+  const completionByQuarter = data?.completionByQuarter ?? [null, null, null, null];
 
   return (
     <>
@@ -1144,24 +1141,14 @@ function PaceAnalyticsTab() {
           )}
         </div>
 
-        {/* Completion performance trend */}
+        {/* Completion by quarter */}
         <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 p-6">
-          <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
-            <h3 className="font-bold text-on-surface">PACE Completion Performance Trend</h3>
-            <div className="flex items-center gap-4 text-xs font-bold">
-              <span className="flex items-center gap-1.5 text-on-surface-variant">
-                <span className="w-4 h-0.5 rounded-full bg-[rgb(37,99,235)]" /> This Month
-              </span>
-              <span className="flex items-center gap-1.5 text-on-surface-variant">
-                <span className="w-4 border-t-2 border-dashed border-[rgb(148,163,184)]" /> Last Month
-              </span>
-            </div>
-          </div>
+          <h3 className="font-bold text-on-surface mb-5">PACE Completion by Quarter</h3>
 
           {loading ? (
             <div className="animate-pulse bg-surface-container-high rounded-xl h-56 w-full" />
           ) : (
-            <CompletionTrendChart trend={trend} />
+            <QuarterCompletionChart values={completionByQuarter} />
           )}
         </div>
       </div>
@@ -1770,14 +1757,14 @@ export default function StudentMonitoring() {
                           <td className="px-5 py-5 text-sm font-bold text-on-surface">{lastFirst(s)}</td>
                           <td className="px-5 py-5 text-sm text-on-surface whitespace-nowrap">{s.grade_level ?? "—"}</td>
                           <td className="px-5 py-5 text-center"><PaceStatusBadge status={paceStatusOf(s)} /></td>
-                          {/* View Details -> setSelectedStudent(s) opens <StudentSummaryModal> */}
+                          {/* View More -> setSelectedStudent(s) opens <StudentSummaryModal> */}
                           <td className="px-5 py-5 text-center">
                             <button
                               onClick={() => setSelectedStudent(s)}
                               className="inline-flex items-center gap-1.5 bg-white border border-outline-variant/30 text-on-surface text-xs font-bold px-4 py-2 rounded-lg hover:bg-surface-container-low transition-colors whitespace-nowrap"
                             >
                               <span className="material-symbols-outlined text-sm">visibility</span>
-                              View Details
+                              View More
                             </button>
                           </td>
                         </tr>

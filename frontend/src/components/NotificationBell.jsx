@@ -15,11 +15,35 @@ const formatDate = (iso) => {
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 };
 
+const SYSTEM_TITLES = new Set([
+  "New Password Reset Request", "New Support Request", "New PACE Test Request",
+  "PACE Test Scheduled", "PACE Test Rescheduled", "Missed PACE Test",
+  "New PACE Assigned", "PACE Test Result Available", "Report Published",
+]);
+const announcementId = (notification) => {
+  const match = /^announcement:(\d+)$/.exec(String(notification?.message_content ?? ""));
+  return match?.[1] ?? null;
+};
+const isAnnouncementNotification = (notification) => {
+  const title = String(notification?.title ?? "");
+  return Boolean(announcementId(notification))
+    || (!SYSTEM_TITLES.has(title) && !title.startsWith("Response to your request"));
+};
+
 // Notifications predate source metadata in the database, so route the known
 // system-generated titles to the page that owns the underlying action. Any
 // other title is an announcement and goes to that role's announcement feed.
 const notificationDestination = (notification, role) => {
   const title = String(notification?.title ?? "");
+  const id = announcementId(notification);
+  if (id) {
+    const route = {
+      principal: "/admin/announcements",
+      teacher: "/teacher/announcements",
+      student: "/student/announcements",
+    }[role];
+    return route ? `${route}?announcement=${id}` : null;
+  }
 
   if (title === "New Password Reset Request" || title === "New Support Request") {
     return role === "administrator" ? "/sysadmin/support" : role === "principal" ? "/admin/help" : null;
@@ -69,8 +93,12 @@ export default function NotificationBell() {
       try {
         const res = await fetchNotifications();
         if (cancelled) return;
-        setItems(res.data?.notifications ?? []);
-        setUnread(res.data?.unreadCount ?? 0);
+        const notifications = res.data?.notifications ?? [];
+        const visible = ["administrator", "principal"].includes(user?.role)
+          ? notifications.filter((notification) => !isAnnouncementNotification(notification))
+          : notifications;
+        setItems(visible);
+        setUnread(visible.filter((notification) => !notification.is_read).length);
       } catch {
         // notifications unavailable (e.g. table grants not applied) — show empty
         if (!cancelled) { setItems([]); setUnread(0); }
@@ -86,7 +114,7 @@ export default function NotificationBell() {
       window.clearInterval(refreshTimer);
       window.removeEventListener("focus", load);
     };
-  }, []);
+  }, [user?.role]);
 
   // Close on outside click
   useEffect(() => {
@@ -159,7 +187,9 @@ export default function NotificationBell() {
                     <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${n.is_read ? "bg-transparent" : "bg-primary"}`} />
                     <div className="min-w-0">
                       <p className="text-sm font-bold text-on-surface leading-snug">{n.title}</p>
-                      <p className="text-xs text-on-surface-variant leading-snug mt-0.5">{n.message_content}</p>
+                      {!isAnnouncementNotification(n) && n.message_content && (
+                        <p className="text-xs text-on-surface-variant leading-snug mt-0.5">{n.message_content}</p>
+                      )}
                       <p className="text-[10px] text-on-surface-variant mt-1">{formatDate(n.created_date)}</p>
                     </div>
                   </button>

@@ -28,3 +28,28 @@ export const unassignTeacher = asyncHandler(async (req, res) => {
   const data = await SectionService.unassignTeacher(req.params.id, req.params.teacherId);
   sendSuccess(res, data, "Supervisor removed from grade level");
 });
+
+export const createSection = asyncHandler(async (req, res) => {
+  const data = await SectionService.createGradeSection(req.params.id, req.body.name);
+  sendSuccess(res, data, "Section created");
+});
+
+export const assignSectionStudents = asyncHandler(async (req, res) => {
+  const data = await SectionService.assignStudentsToGradeSection(req.params.id, req.params.sectionId, req.body.student_ids, req.user?.user_id);
+  sendSuccess(res, data, `${data.assigned} student(s) assigned to section`);
+});
+
+export const removeSectionStudent = asyncHandler(async (req, res) => {
+  const data = await SectionService.removeStudentFromGradeSection(req.params.id, req.params.sectionId, req.params.studentId, req.user?.user_id);
+  sendSuccess(res, data, "Student removed from section");
+});
+
+export const assignSectionTeacher = asyncHandler(async (req, res) => {
+  const data = await SectionService.assignGradeSectionTeacher(req.params.id, req.params.sectionId, req.body.teacher_id, req.user?.user_id);
+  sendSuccess(res, data, "Supervisor assigned to section");
+});
+
+export const unassignSectionTeacher = asyncHandler(async (req, res) => {
+  const data = await SectionService.unassignGradeSectionTeacher(req.params.id, req.params.sectionId, req.user?.user_id);
+  sendSuccess(res, data, "Supervisor removed from section");
+});

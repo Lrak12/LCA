@@ -6,6 +6,8 @@ import { supabase, supabaseAdmin } from "../config/supabase.js";
 import { describeAuthCreateError } from "../helpers/authErrors.js";
 import { getEligibleUserIds, getSchoolYear, setAccountActive } from "./schoolYearStatus.service.js";
 import { addAttendanceCredits } from "../helpers/attendanceCredits.js";
+import { teacherOwnsStudent } from "./teacherScope.service.js";
+import { isSectionSchemaUnavailable } from "../helpers/sectionSchema.js";
 
 // School wall-clock timezone. PACE test schedules are stored as real instants
 // anchored to the school offset (see teacher.service.js SCHOOL_TZ_OFFSET), so
@@ -241,7 +243,7 @@ export const createStudent = async (authPayload, profilePayload, extras = {}, ch
   if (fnNew && lnNew) {
     const { data: sameName } = await supabaseAdmin
       .from("student")
-      .select("student_id, first_name, last_name, grade_level(level_name), users(is_active)")
+      .select("student_id, first_name, last_name, grade_level!student_gl_id_fkey(level_name), users(is_active)")
       .ilike("first_name", profilePayload.first_name.trim())
       .ilike("last_name", profilePayload.last_name.trim());
     const clash = (sameName ?? []).find(
@@ -346,8 +348,28 @@ export const createStudent = async (authPayload, profilePayload, extras = {}, ch
 
 export const updateStudent = async (student_id, payload, changed_by = null) => {
   const { is_active, ...studentFields } = payload;
-  const { data, error } = await StudentModel.update(student_id, studentFields);
+  const { data: previous } = studentFields.gl_id !== undefined
+    ? await supabaseAdmin.from("student").select("gl_id").eq("student_id", student_id).maybeSingle()
+    : { data: null };
+  const gradeChanged = studentFields.gl_id !== undefined && Number(previous?.gl_id) !== Number(studentFields.gl_id);
+  let updateResult = await StudentModel.update(student_id, gradeChanged
+    ? { ...studentFields, section_id: null }
+    : studentFields);
+  if (updateResult.error && gradeChanged && isSectionSchemaUnavailable(updateResult.error)) {
+    updateResult = await StudentModel.update(student_id, studentFields);
+  }
+  const { data, error } = updateResult;
   if (error) throw new Error(error.message);
+  if (gradeChanged && previous?.gl_id) {
+    const activeSyId = await getActiveSchoolYearId();
+    const { data: previousGrade } = await supabaseAdmin.from("grade_level")
+      .select("sy_id").eq("gl_id", previous.gl_id).maybeSingle();
+    if (Number(previousGrade?.sy_id) === Number(activeSyId)) {
+      const { error: placementError } = await supabaseAdmin.from("student_section_assignment")
+        .delete().eq("student_id", Number(student_id)).eq("gl_id", previous.gl_id);
+      if (placementError && !isSectionSchemaUnavailable(placementError)) throw new Error(placementError.message);
+    }
+  }
 
   if (typeof is_active === "boolean") {
     const { data: student, error: findErr } = await supabaseAdmin
@@ -380,13 +402,7 @@ export const patchStudentInfo = async (student_id, payload, requestingUser) => {
       .maybeSingle();
     if (!teacher) throw new Error("Teacher profile not found");
 
-    const { data: owned } = await supabaseAdmin
-      .from("student")
-      .select("student_id, grade_level!inner(teacher_id)")
-      .eq("student_id", student_id)
-      .eq("grade_level.teacher_id", teacher.teacher_id)
-      .maybeSingle();
-    if (!owned) throw new Error("Student not found or not assigned to this teacher");
+    if (!(await teacherOwnsStudent(teacher.teacher_id, student_id))) throw new Error("Student not found or not assigned to this teacher");
   }
 
   const { data, error } = await StudentModel.update(student_id, fields);
@@ -550,7 +566,7 @@ export const getStudentAnnouncements = async (user_id) => {
 export const getStudentAttendance = async (user_id, monthParam) => {
   const { data: student, error: studentErr } = await supabaseAdmin
     .from("student")
-    .select("student_id, first_name, last_name, grade_level(level_name)")
+    .select("student_id, first_name, last_name, grade_level!student_gl_id_fkey(level_name)")
     .eq("user_id", user_id)
     .maybeSingle();
   if (studentErr) throw new Error(studentErr.message);
@@ -694,7 +710,7 @@ export const getStudentAttendance = async (user_id, monthParam) => {
 export const getStudentGrades = async (user_id, quarter, requestedSchoolYearId = null) => {
   const { data: student, error: studentErr } = await supabaseAdmin
     .from("student")
-    .select("student_id, first_name, last_name, gl_id, grade_level(level_name)")
+    .select("student_id, first_name, last_name, gl_id, grade_level!student_gl_id_fkey(level_name)")
     .eq("user_id", user_id)
     .single();
   if (studentErr) throw new Error(studentErr.message);
@@ -1538,11 +1554,17 @@ export const getStudentPace = async (user_id) => {
 // Creates a pace_test_result row with assessment_status = 'Requested' (no score
 // or schedule yet); the supervisor later sets assessment_timestamp + venue.
 export const submitPaceTestRequest = async (user_id, sp_id) => {
-  const { data: student, error: sErr } = await supabaseAdmin
+  let studentResult = await supabaseAdmin
     .from("student")
-    .select("student_id, gl_id, first_name, last_name")
+    .select("student_id, gl_id, section_id, first_name, last_name")
     .eq("user_id", user_id)
     .single();
+  if (studentResult.error && isSectionSchemaUnavailable(studentResult.error)) {
+    studentResult = await supabaseAdmin.from("student")
+      .select("student_id, gl_id, first_name, last_name")
+      .eq("user_id", user_id).single();
+  }
+  const { data: student, error: sErr } = studentResult;
   if (sErr) throw new Error(sErr.message);
 
   const spId = Number(sp_id);
@@ -1551,7 +1573,7 @@ export const submitPaceTestRequest = async (user_id, sp_id) => {
   // Ownership: the PACE must belong to this student
   const { data: sp } = await supabaseAdmin
     .from("student_pace")
-    .select("sp_id, student_id, teacher_id, pace_module(subject, module_number)")
+    .select("sp_id, student_id, pace_module(subject, module_number)")
     .eq("sp_id", spId)
     .maybeSingle();
   if (!sp || sp.student_id !== student.student_id) {
@@ -1581,11 +1603,13 @@ export const submitPaceTestRequest = async (user_id, sp_id) => {
     }
   }
 
-  // recorded_by is NOT NULL — the request belongs to the student's supervisor
-  // (who will schedule + score it). Prefer the PACE's teacher, else the grade
-  // level's teacher.
-  let recorded_by = sp.teacher_id ?? null;
-  if (recorded_by == null && student.gl_id) {
+  // Resolve the student's current supervisor, not the PACE's historical teacher.
+  let recorded_by = null;
+  if (student.section_id) {
+    const { data: section } = await supabaseAdmin.from("grade_section")
+      .select("teacher_id").eq("section_id", student.section_id).maybeSingle();
+    recorded_by = section?.teacher_id ?? null;
+  } else if (student.gl_id) {
     const { data: gl } = await supabaseAdmin
       .from("grade_level")
       .select("teacher_id")
@@ -1594,7 +1618,7 @@ export const submitPaceTestRequest = async (user_id, sp_id) => {
     recorded_by = gl?.teacher_id ?? null;
   }
   if (recorded_by == null) {
-    throw new Error("No supervisor is assigned to your grade level yet. Please contact your supervisor.");
+    throw new Error("No supervisor is assigned to your section or grade level yet. Please contact the principal.");
   }
 
   // A passed or terminally failed PACE cannot enter the request lifecycle again.
@@ -1717,7 +1741,7 @@ export const importStudents = async (rows, { overwrite = false } = {}) => {
     `${String(fn ?? "").toLowerCase().trim()}|${String(ln ?? "").toLowerCase().trim()}|${String(dob ?? "").replace(/\D/g, "")}`;
   const { data: allStudents } = await supabaseAdmin
     .from("student")
-    .select("student_id, user_id, first_name, last_name, date_of_birth");
+    .select("student_id, user_id, first_name, last_name, date_of_birth, gl_id");
   const existingByKey = new Map(
     (allStudents ?? []).map((s) => [dupKey(s.first_name, s.last_name, s.date_of_birth), s])
   );
@@ -1745,7 +1769,7 @@ export const importStudents = async (rows, { overwrite = false } = {}) => {
         }
         // Overwrite confirmed — refresh the existing student's profile in place.
         // student_id / login stay the same; academic history is untouched.
-        const { error: updErr } = await supabaseAdmin
+        let update = await supabaseAdmin
           .from("student")
           .update({
             first_name,
@@ -1755,10 +1779,26 @@ export const importStudents = async (rows, { overwrite = false } = {}) => {
             address,
             contact_number,
             enrollment_date,
-            ...(gl_id ? { gl_id } : {}),
+            ...(gl_id ? { gl_id, ...(Number(existing.gl_id) !== Number(gl_id) ? { section_id: null } : {}) } : {}),
           })
           .eq("student_id", existing.student_id);
+        if (update.error && isSectionSchemaUnavailable(update.error)) {
+          update = await supabaseAdmin.from("student").update({
+            first_name, last_name, date_of_birth, gender, address, contact_number, enrollment_date,
+            ...(gl_id ? { gl_id } : {}),
+          }).eq("student_id", existing.student_id);
+        }
+        const updErr = update.error;
         if (updErr) throw new Error(updErr.message);
+        if (gl_id && Number(existing.gl_id) !== Number(gl_id) && existing.gl_id) {
+          const { data: oldGrade } = await supabaseAdmin.from("grade_level")
+            .select("sy_id").eq("gl_id", existing.gl_id).maybeSingle();
+          if (Number(oldGrade?.sy_id) === Number(activeSY?.sy_id)) {
+            const { error: placementError } = await supabaseAdmin.from("student_section_assignment")
+              .delete().eq("student_id", existing.student_id).eq("gl_id", existing.gl_id);
+            if (placementError && !isSectionSchemaUnavailable(placementError)) throw new Error(placementError.message);
+          }
+        }
         overwritten.push(fullName);
         continue;
       }

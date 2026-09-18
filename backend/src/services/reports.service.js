@@ -2,6 +2,7 @@ import * as ReportsModel from "../models/reports.model.js";
 import * as TeacherService from "./teacher.service.js";
 import * as NotificationService from "./notification.service.js";
 import { supabaseAdmin } from "../config/supabase.js";
+import { getTeacherScopeById, teacherOwnsStudent } from "./teacherScope.service.js";
 import { getEligibleUserIds, getSchoolYear } from "./schoolYearStatus.service.js";
 import { addAttendanceCredits, attendanceCredits } from "../helpers/attendanceCredits.js";
 
@@ -129,20 +130,17 @@ async function getStudentsForTeacher(teacher_id, sy_id = null) {
     }
   }
 
-  const { data: gradeLevels, error } = await ReportsModel.findGradeLevelsByTeacherId(teacher_id, sy.sy_id);
-  if (error) return { students: [], gradeLevels: [] };
-
-  const glIds = (gradeLevels ?? []).map((gl) => gl.gl_id);
-  // Fail closed: a teacher with no assigned grade level has no students
-  if (!glIds.length) return { students: [], gradeLevels: [] };
+  const scope = await getTeacherScopeById(teacher_id, sy.sy_id);
+  const gradeLevels = scope.gradeLevels;
+  if (!scope.studentIds.length) return { students: [], gradeLevels };
 
   const { data: students } = await supabaseAdmin
     .from("student")
     .select("student_id, first_name, last_name, gl_id")
-    .in("gl_id", glIds)
+    .in("student_id", scope.studentIds)
     .order("last_name");
 
-  return { students: students ?? [], gradeLevels: gradeLevels ?? [] };
+  return { students: students ?? [], gradeLevels };
 }
 
 // ── Public service functions ──────────────────────────────────────────────────
@@ -226,7 +224,9 @@ export const getTeachers = async (sy_id = null) => {
   // For each teacher, fetch their assigned grade levels
   const withLevels = await Promise.all(
     selectedTeachers.map(async (t) => {
-      let levels = [...(levelsByTeacher.get(t.teacher_id)?.values() ?? [])];
+      let levels = sy.is_active
+        ? (await getTeacherScopeById(t.teacher_id, sy.sy_id)).gradeLevels
+        : [...(levelsByTeacher.get(t.teacher_id)?.values() ?? [])];
       if (!levels.length) {
         const { data: gradeLevels } = await ReportsModel.findGradeLevelsByTeacherId(t.teacher_id, sy.sy_id);
         levels = gradeLevels ?? [];
@@ -672,13 +672,12 @@ export const saveStudentScriptures = async (
 
   const { data: student, error: studentError } = await supabaseAdmin
     .from("student")
-    .select("student_id, grade_level!inner(teacher_id, sy_id)")
+    .select("student_id, grade_level!student_gl_id_fkey(sy_id)")
     .eq("student_id", Number(student_id))
-    .eq("grade_level.teacher_id", Number(teacher_id))
-    .eq("grade_level.sy_id", sy.sy_id)
     .maybeSingle();
   if (studentError) throw new Error(studentError.message);
-  if (!student) throw new Error("Student not found or not assigned to this supervisor");
+  if (!student || Number(student.grade_level?.sy_id) !== Number(sy.sy_id)
+    || !(await teacherOwnsStudent(teacher_id, student_id))) throw new Error("Student not found or not assigned to this supervisor");
 
   const { data, error } = await ReportsModel.upsertStudentScriptureRecord({
     student_id: student.student_id,
@@ -947,11 +946,10 @@ export const generatePaceProjection = async (teacher_id, student_id, paces) => {
   // Ownership: the student must belong to one of this teacher's grade levels
   const { data: ownedStudent } = await supabaseAdmin
     .from("student")
-    .select("student_id, gl_id, grade_level!inner(teacher_id)")
+    .select("student_id, gl_id")
     .eq("student_id", Number(student_id))
-    .eq("grade_level.teacher_id", teacher_id)
     .maybeSingle();
-  if (!ownedStudent) throw new Error("Student not found or not assigned to this teacher");
+  if (!ownedStudent || !(await teacherOwnsStudent(teacher_id, student_id))) throw new Error("Student not found or not assigned to this teacher");
 
   // student_pace has no sy_id; its year is inherited from pace_module.gl_id.
   // Restrict locking and cleanup to the student's active-year grade so prior
@@ -1171,12 +1169,8 @@ export const getSubmittedReports = async (teacher_id) => {
   const schoolYear = sy?.year_label ?? "—";
 
   // Class = the supervisor's grade level(s)
-  const { data: gls } = await supabaseAdmin
-    .from("grade_level")
-    .select("level_name")
-    .eq("teacher_id", teacher_id)
-    .eq("sy_id", sy?.sy_id ?? -1);
-  const className = (gls ?? []).map((g) => g.level_name).join(", ") || "All Students";
+  const scope = await getTeacherScopeById(teacher_id, sy?.sy_id);
+  const className = [...new Set(scope.gradeLevels.map((grade) => grade.level_name))].join(", ") || "All Students";
 
   const statuses = await getTeacherAllStatuses(teacher_id);
   const TYPE_LABEL = {

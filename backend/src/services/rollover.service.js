@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "../config/supabase.js";
 import { validateSchoolYear } from "../helpers/schoolYearValidation.js";
+import { isSectionSchemaUnavailable } from "../helpers/sectionSchema.js";
 import { activateSchoolYear, createSchoolYear } from "./schoolYear.service.js";
 
 // One school year = 12 PACEs per subject (4 quarters × 3). A student has
@@ -71,7 +72,7 @@ export const previewRollover = async () => {
 
   const { data: students } = await supabaseAdmin
     .from("student")
-    .select("student_id, first_name, last_name, gl_id, grade_level(level_name, level_order)")
+    .select("student_id, first_name, last_name, gl_id, grade_level!student_gl_id_fkey(level_name, level_order)")
     .order("last_name");
   const studentList = students ?? [];
   if (!studentList.length) return { schoolYear: sy, students: [] };
@@ -169,7 +170,13 @@ export const commitRollover = async ({ year_label, start_date, end_date, student
   for (const st of students) {
     const studentId = Number(st.student_id);
     if (st.gl_id != null) {
-      await supabaseAdmin.from("student").update({ gl_id: st.gl_id }).eq("student_id", studentId);
+      let { error } = await supabaseAdmin.from("student")
+        .update({ gl_id: st.gl_id, section_id: null }).eq("student_id", studentId);
+      if (error && isSectionSchemaUnavailable(error)) {
+        ({ error } = await supabaseAdmin.from("student")
+          .update({ gl_id: st.gl_id }).eq("student_id", studentId));
+      }
+      if (error) throw new Error(error.message);
     }
 
     const basis = st.basis ?? {};

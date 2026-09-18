@@ -1,5 +1,6 @@
 import * as SchoolYearModel from "../models/schoolYear.model.js";
 import { getSchoolYearKey, validateSchoolYear } from "../helpers/schoolYearValidation.js";
+import { isSectionSchemaUnavailable } from "../helpers/sectionSchema.js";
 
 const schoolYearEnd = (schoolYear) => new Date(`${schoolYear.end_date}T23:59:59.999Z`);
 
@@ -58,6 +59,20 @@ const applyStudentGradeLevels = async (studentGradeLevels) => {
   }
 };
 
+const applyStudentSections = async (studentSections) => {
+  const groups = new Map();
+  for (const [studentId, sectionId] of studentSections) {
+    if (sectionId == null) continue;
+    const list = groups.get(sectionId) ?? [];
+    list.push(studentId);
+    groups.set(sectionId, list);
+  }
+  for (const [sectionId, studentIds] of groups) {
+    const { error } = await SchoolYearModel.setStudentSection(studentIds, sectionId);
+    if (error) throw new Error(error.message);
+  }
+};
+
 const getHistoricalAssignments = async (schoolYear) => {
   const [gradeLevelsResult, historyResult] = await Promise.all([
     SchoolYearModel.findGradeLevels(schoolYear.sy_id),
@@ -66,11 +81,22 @@ const getHistoricalAssignments = async (schoolYear) => {
   if (gradeLevelsResult.error) throw new Error(gradeLevelsResult.error.message);
   if (historyResult.error) throw new Error(historyResult.error.message);
 
-  return selectHistoricalAssignments(
+  const gradeAssignments = selectHistoricalAssignments(
     schoolYear,
     gradeLevelsResult.data,
     historyResult.data,
   );
+  const gradeIds = (gradeLevelsResult.data ?? []).map((grade) => grade.gl_id);
+  const { data: sectionRows, error: sectionError } = gradeIds.length
+    ? await SchoolYearModel.findStudentSectionAssignments(gradeIds)
+    : { data: [], error: null };
+  if (sectionError && !isSectionSchemaUnavailable(sectionError)) throw new Error(sectionError.message);
+  const sectionAssignments = new Map();
+  for (const row of sectionRows ?? []) {
+    gradeAssignments.set(row.student_id, row.gl_id);
+    sectionAssignments.set(row.student_id, row.section_id);
+  }
+  return { gradeAssignments, sectionAssignments };
 };
 
 const checkDuplicate = async (year_label, start_date, end_date, ignoredId = null) => {
@@ -155,17 +181,19 @@ export const activateSchoolYear = async (sy_id, { allowHistorical = false } = {}
     allowPast: allowHistorical,
   });
 
-  const assignments = await getHistoricalAssignments(schoolYear);
+  const { gradeAssignments: assignments, sectionAssignments } = await getHistoricalAssignments(schoolYear);
   const studentIds = [...assignments.keys()];
   const { data: previousActive, error: activeError } = await SchoolYearModel.findActive();
   if (activeError) throw new Error(activeError.message);
 
   let originalAssignments = new Map();
+  let originalSections = new Map();
   if (studentIds.length > 0) {
     const { data: students, error: studentsError } =
       await SchoolYearModel.findStudentGradeLevels(studentIds);
     if (studentsError) throw new Error(studentsError.message);
     originalAssignments = new Map((students ?? []).map((student) => [student.student_id, student.gl_id]));
+    originalSections = new Map((students ?? []).map((student) => [student.student_id, student.section_id]));
   }
 
   const { data, error } = await SchoolYearModel.setActive(sy_id);
@@ -177,12 +205,18 @@ export const activateSchoolYear = async (sy_id, { allowHistorical = false } = {}
   }
 
   try {
-    if (assignments.size > 0) await applyStudentGradeLevels(assignments);
+    if (assignments.size > 0) {
+      await applyStudentGradeLevels(assignments);
+      await applyStudentSections(sectionAssignments);
+    }
   } catch (restoreError) {
     // Supabase calls are not transactional here, so return both the student
     // pointers and active-year flag to their original state if restoration fails.
     try {
-      if (originalAssignments.size > 0) await applyStudentGradeLevels(originalAssignments);
+      if (originalAssignments.size > 0) {
+        await applyStudentGradeLevels(originalAssignments);
+        await applyStudentSections(originalSections);
+      }
       if (previousActive && Number(previousActive.sy_id) !== Number(sy_id)) {
         const rollback = await SchoolYearModel.setActive(previousActive.sy_id);
         if (rollback.error) throw new Error(rollback.error.message);

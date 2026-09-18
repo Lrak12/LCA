@@ -11,7 +11,10 @@
 //                           ordered by posted_date desc
 //   Returns the list; the page only displays it (no writes from the student side).
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import StudentLayout from "../../components/StudentLayout.jsx";
+import AnnouncementMessageModal from "../../components/AnnouncementMessageModal.jsx";
+import { announcementPreview } from "../../utils/announcementPreview.js";
 import { fetchStudentAnnouncements } from "../../api/student.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
@@ -52,6 +55,8 @@ const CategoryBadge = ({ category }) => {
 const PAGE_SIZE = 5;
 
 export default function Announcements() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedAnnouncementId = Number(searchParams.get("announcement"));
   const { user }                  = useAuth();
   const schoolYearLabel           = useSchoolYear();
   const [data, setData]           = useState(null);
@@ -69,52 +74,35 @@ export default function Announcements() {
 
   const firstName = user?.first_name ?? user?.username ?? "Student";
 
-  const announcements = data?.announcements ?? [
-    {
-      id: 1,
-      title:    "Submission of Incomplete PACEs",
-      postedAt: "June 26, 2026 • 02:45 PM",
-      category: "Achievement",
-      content:  "Students with incomplete PACE modules are encouraged to submit pending activities on or before **July 1, 2026** to avoid delays in assessment scheduling.",
-    },
-    {
-      id: 2,
-      title:    "PACE Test Schedule Released",
-      postedAt: "June 26, 2026 • 02:30 PM",
-      category: "Reminder",
-      content:  "Students are advised to complete all assigned self-tests and check-up activities before the scheduled PACE examination on **July 1, 2026.**",
-    },
-    {
-      id: 3,
-      title:    "Parent Meeting Reminder",
-      postedAt: "June 26, 2026 • 12:15 PM",
-      category: "Reminder",
-      content:  "A parent meeting will be held on **June 28, 2026** at the school conference room to discuss student academic progress and upcoming school activities.",
-    },
-    {
-      id: 4,
-      title:    "No Classes on June 30",
-      postedAt: "June 26, 2026 • 8:00 AM",
-      category: "No Class",
-      content:  "Classes and office operations are suspended on **June 30, 2026** due to scheduled school facility maintenance.",
-    },
-  ];
+  const announcements = data?.announcements ?? [];
 
-  const shown    = announcements.slice(0, visible);
-  const hasMore  = visible < announcements.length;
+  const selectedIndex = announcements.findIndex((announcement) => announcement.id === selectedAnnouncementId);
+  const selectedAnnouncement = selectedIndex >= 0 ? announcements[selectedIndex] : null;
+  const shown    = announcements.slice(0, Math.max(visible, selectedIndex + 1));
+  const hasMore  = shown.length < announcements.length;
 
-  // Render content with **bold** markdown
-  const renderContent = (text) => {
-    const parts = text.split(/\*\*(.*?)\*\*/g);
-    return parts.map((part, i) =>
-      i % 2 === 1
-        ? <strong key={i} className="font-bold text-on-surface">{part}</strong>
-        : <span key={i}>{part}</span>
-    );
+  const openAnnouncement = (id) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("announcement", String(id));
+    setSearchParams(next);
+  };
+
+  const closeAnnouncement = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("announcement");
+    setSearchParams(next, { replace: true });
   };
 
   return (
     <StudentLayout schoolYearLabel={schoolYearLabel}>
+      {selectedAnnouncement && (
+        <AnnouncementMessageModal
+          announcement={selectedAnnouncement}
+          date={selectedAnnouncement.postedAt}
+          audience={selectedAnnouncement.category}
+          onClose={closeAnnouncement}
+        />
+      )}
       <main className="p-4 sm:p-8 max-w-full mx-auto w-full">
 
         {error && (
@@ -162,7 +150,8 @@ export default function Announcements() {
                 {shown.map((ann) => (
                   <article
                     key={ann.id}
-                    className="bg-white rounded-2xl p-6 shadow-sm border border-outline-variant/20 hover:shadow-md transition-shadow"
+                    id={`announcement-${ann.id}`}
+                    className={`bg-white rounded-2xl p-6 shadow-sm border hover:shadow-md transition-shadow ${ann.id === selectedAnnouncementId ? "border-primary ring-2 ring-primary/20" : "border-outline-variant/20"}`}
                   >
                     <div className="flex items-start justify-between gap-4 mb-2">
                       <div>
@@ -171,16 +160,20 @@ export default function Announcements() {
                       </div>
                       <CategoryBadge category={ann.category} />
                     </div>
-                    <p className="text-sm text-on-surface-variant leading-relaxed mt-3">
-                      {renderContent(ann.content)}
+                    <p className="text-sm text-on-surface-variant leading-relaxed mt-3 break-words">
+                      {announcementPreview(ann.content)}
                     </p>
+                    <button type="button" onClick={() => openAnnouncement(ann.id)} className="mt-3 inline-flex items-center gap-1 rounded-lg px-2 py-1 -ml-2 text-sm font-bold text-primary hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-primary">
+                      View full message
+                      <span className="material-symbols-outlined text-base">arrow_forward</span>
+                    </button>
                   </article>
                 ))}
               </div>
 
               {hasMore && (
                 <button
-                  onClick={() => setVisible((v) => v + PAGE_SIZE)}
+                  onClick={() => setVisible((v) => Math.max(v, shown.length) + PAGE_SIZE)}
                   className="mt-6 w-full py-3 rounded-2xl border border-outline-variant/30 text-sm font-bold text-primary hover:bg-surface-container-low transition-colors"
                 >
                   View Older Announcements

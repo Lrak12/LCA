@@ -471,13 +471,21 @@ function ViewDetailsModal({ supervisor: sup, year, onClose, onEdit }) {
                 </tr>
               </thead>
               <tbody>
-                {gradeDetails.length ? (
-                  gradeDetails.map((d) => (
-                    <tr key={d.gl_id} className="border-t border-outline-variant/20">
-                      <td className="px-4 py-3 text-on-surface">{d.name}</td>
-                      <td className="px-4 py-3 text-right text-on-surface-variant">{d.studentCount} Students</td>
-                    </tr>
-                  ))
+                {gradeDetails.length || sup.sectionAssignments?.length ? (
+                  <>
+                    {gradeDetails.map((d) => (
+                      <tr key={`grade-${d.gl_id}`} className="border-t border-outline-variant/20">
+                        <td className="px-4 py-3 text-on-surface">{d.name} · Unsectioned</td>
+                        <td className="px-4 py-3 text-right text-on-surface-variant">{d.studentCount} Students</td>
+                      </tr>
+                    ))}
+                    {sup.sectionAssignments?.map((section) => (
+                      <tr key={`section-${section.id}`} className="border-t border-outline-variant/20">
+                        <td className="px-4 py-3 text-on-surface">{section.grade} · {section.name}</td>
+                        <td className="px-4 py-3 text-right text-on-surface-variant">{section.studentCount} Students</td>
+                      </tr>
+                    ))}
+                  </>
                 ) : (
                   <tr className="border-t border-outline-variant/20">
                     <td colSpan={2} className="px-4 py-4 text-center text-on-surface-variant">No grade levels assigned.</td>

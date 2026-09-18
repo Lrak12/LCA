@@ -1,6 +1,22 @@
 import { supabase, supabaseAdmin } from "../config/supabase.js";
 
 const ACTIVE_SESSION_KEY = "active_session_id";
+const ACTIVE_SESSION_EXPIRES_KEY = "active_session_expires_at";
+const loginLocks = new Map();
+
+const withLoginLock = async (authId, action) => {
+  const previous = loginLocks.get(authId) ?? Promise.resolve();
+  let release;
+  const current = new Promise((resolve) => { release = resolve; });
+  loginLocks.set(authId, current);
+  await previous;
+  try {
+    return await action();
+  } finally {
+    release();
+    if (loginLocks.get(authId) === current) loginLocks.delete(authId);
+  }
+};
 
 const decodeJwtPayload = (token) => {
   try {
@@ -91,34 +107,46 @@ export const login = async (school_id, password) => {
   }
 
   const accessToken = data.session?.access_token;
-  const sessionId = getTokenSessionId(accessToken);
-  if (!accessToken || !sessionId || !data.user?.id) {
+  const claims = getTokenClaims(accessToken);
+  const sessionId = claims?.session_id;
+  const expiresAt = Number(claims?.exp);
+  if (!accessToken || !sessionId || !Number.isFinite(expiresAt) || !data.user?.id) {
     throw new Error("Unable to establish a secure session. Please try again.");
   }
 
-  // Store the newest session in protected app metadata. Every authenticated API
-  // request compares its JWT session_id against this value, so an older access
-  // token stops working immediately instead of remaining usable until JWT expiry.
-  const appMetadata = {
-    ...(data.user.app_metadata ?? {}),
-    [ACTIVE_SESSION_KEY]: sessionId,
-  };
-  const { error: metadataError } = await supabaseAdmin.auth.admin.updateUserById(
-    data.user.id,
-    { app_metadata: appMetadata }
-  );
-  if (metadataError) {
-    await supabaseAdmin.auth.admin.signOut(accessToken, "local");
-    throw new Error("Unable to establish a secure session. Please try again.");
-  }
+  // Serialize simultaneous logins handled by this backend process. A rejected
+  // attempt revokes only its newly issued token; the first device stays signed in.
+  await withLoginLock(data.user.id, async () => {
+    const { data: currentUser, error: lookupError } = await supabaseAdmin.auth.admin.getUserById(data.user.id);
+    if (lookupError || !currentUser?.user) {
+      await supabaseAdmin.auth.admin.signOut(accessToken, "local");
+      throw new Error("Unable to establish a secure session. Please try again.");
+    }
 
-  // Revoke every older refresh session while retaining the token just issued.
-  // The metadata check above supplies immediate enforcement for already-issued
-  // access tokens, which Supabase revocation alone cannot invalidate early.
-  const { error: revokeError } = await supabaseAdmin.auth.admin.signOut(accessToken, "others");
-  if (revokeError) {
-    console.warn("Unable to revoke older refresh sessions:", revokeError.message);
-  }
+    const currentMetadata = currentUser.user.app_metadata ?? {};
+    const activeSessionId = currentMetadata[ACTIVE_SESSION_KEY];
+    const activeExpiresAt = Number(currentMetadata[ACTIVE_SESSION_EXPIRES_KEY]);
+    if (activeSessionId && activeSessionId !== sessionId && activeExpiresAt > Date.now() / 1000) {
+      await supabaseAdmin.auth.admin.signOut(accessToken, "local");
+      const conflict = new Error("This account is already logged in on another device. Please log out there first.");
+      conflict.statusCode = 409;
+      throw conflict;
+    }
+
+    const appMetadata = {
+      ...currentMetadata,
+      [ACTIVE_SESSION_KEY]: sessionId,
+      [ACTIVE_SESSION_EXPIRES_KEY]: expiresAt,
+    };
+    const { error: metadataError } = await supabaseAdmin.auth.admin.updateUserById(
+      data.user.id,
+      { app_metadata: appMetadata }
+    );
+    if (metadataError) {
+      await supabaseAdmin.auth.admin.signOut(accessToken, "local");
+      throw new Error("Unable to establish a secure session. Please try again.");
+    }
+  });
 
   return {
     data,
@@ -183,6 +211,7 @@ export const logout = async (token) => {
     if (currentMetadata[ACTIVE_SESSION_KEY] === claims.session_id) {
       const appMetadata = { ...currentMetadata };
       delete appMetadata[ACTIVE_SESSION_KEY];
+      delete appMetadata[ACTIVE_SESSION_EXPIRES_KEY];
       const { error: metadataError } = await supabaseAdmin.auth.admin.updateUserById(
         claims.sub,
         { app_metadata: appMetadata }

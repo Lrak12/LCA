@@ -6,6 +6,8 @@
 //   delete: DELETE /announcements/:id -> controllers/announcement.controller.js > remove (~line 25) -> services/announcement.service.js > deleteAnnouncement (~line 61)
 import { useEffect, useMemo, useState } from "react";
 import PrincipalLayout from "../../components/PrincipalLayout.jsx";
+import AnnouncementMessageModal from "../../components/AnnouncementMessageModal.jsx";
+import { announcementPreview } from "../../utils/announcementPreview.js";
 import { fetchAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement } from "../../api/announcements.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
@@ -34,10 +36,6 @@ const formatTime = (value) => {
   if (!value) return "";
   return new Date(value).toLocaleString("en-US", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 };
-
-// truncate long content to a ~145-char card preview
-const getPreview = (content = "") =>
-  content.length > 145 ? `${content.slice(0, 145).trim()}...` : content;
 
 // map the stored audience_role to a friendly label
 const normalizeAudience = (audience = "All") =>
@@ -342,6 +340,7 @@ export default function Announcements() {
   const [currentTime,   setCurrentTime]   = useState(0);   // "now" snapshot for published-vs-scheduled split
   const [showModal,     setShowModal]     = useState(false); // Create modal open?
   const [editTarget,    setEditTarget]    = useState(null);  // published announcement being edited
+  const [viewTarget,    setViewTarget]    = useState(null);
   const [deleteTarget,  setDeleteTarget]  = useState(null);  // announcement pending delete
   const [deleting,      setDeleting]      = useState(false);
   const [notice,        setNotice]        = useState("");
@@ -415,6 +414,14 @@ export default function Announcements() {
               setNotice("Announcement updated successfully.");
               load();
             }}
+          />
+        )}
+        {viewTarget && (
+          <AnnouncementMessageModal
+            announcement={viewTarget}
+            date={formatDate(viewTarget.posted_date)}
+            audience={normalizeAudience(viewTarget.audience_role)}
+            onClose={() => setViewTarget(null)}
           />
         )}
         {deleteTarget && (
@@ -537,7 +544,7 @@ export default function Announcements() {
                           {ann.title}
                         </h3>
                         <p className="text-on-surface-variant mt-5 leading-relaxed">
-                          {getPreview(ann.content)}
+                          {announcementPreview(ann.content, 145)}
                         </p>
 
                         <div className="mt-7 pt-4 border-t border-surface-container flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -556,10 +563,10 @@ export default function Announcements() {
                               {normalizeAudience(audience)}
                             </span>
                           </div>
-                          {/* <button className="text-secondary font-extrabold text-xs hover:underline inline-flex items-center gap-1"> 
+                          <button type="button" onClick={() => setViewTarget(ann)} className="text-secondary font-extrabold text-xs hover:underline inline-flex items-center gap-1">
                             View full details
                             <span className="material-symbols-outlined text-sm">arrow_forward</span>
-                          </button> */}
+                          </button>
                         </div>
                       </div>
                     </div>

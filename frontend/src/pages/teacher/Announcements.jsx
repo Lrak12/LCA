@@ -1,5 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import TeacherLayout from "../../components/TeacherLayout.jsx";
+import AnnouncementMessageModal from "../../components/AnnouncementMessageModal.jsx";
+import { announcementPreview } from "../../utils/announcementPreview.js";
 import { fetchAnnouncements } from "../../api/announcements.js";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
 
@@ -25,17 +28,9 @@ const audienceStyles = {
 
 const PAGE_SIZE = 5;
 
-// Render **bold** markdown in announcement content
-const renderContent = (text = "") => {
-  const parts = String(text).split(/\*\*(.*?)\*\*/g);
-  return parts.map((part, i) =>
-    i % 2 === 1
-      ? <strong key={i} className="font-bold text-on-surface">{part}</strong>
-      : <span key={i}>{part}</span>
-  );
-};
-
 export default function Announcements() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedAnnouncementId = Number(searchParams.get("announcement"));
   const schoolYearLabel       = useSchoolYear();
   const [items, setItems]     = useState([]);
   const [loading, setLoading] = useState(true);
@@ -71,11 +66,34 @@ export default function Announcements() {
     return list;
   }, [items, sort]);
 
-  const shown   = sorted.slice(0, visible);
-  const hasMore = visible < sorted.length;
+  const selectedIndex = sorted.findIndex((announcement) => announcement.ann_id === selectedAnnouncementId);
+  const selectedAnnouncement = selectedIndex >= 0 ? sorted[selectedIndex] : null;
+  const shown   = sorted.slice(0, Math.max(visible, selectedIndex + 1));
+  const hasMore = shown.length < sorted.length;
+
+  const openAnnouncement = (id) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("announcement", String(id));
+    setSearchParams(next);
+  };
+
+  const closeAnnouncement = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("announcement");
+    setSearchParams(next, { replace: true });
+  };
 
   return (
     <TeacherLayout schoolYearLabel={schoolYearLabel}>
+      {selectedAnnouncement && (
+        <AnnouncementMessageModal
+          announcement={selectedAnnouncement}
+          date={formatDate(selectedAnnouncement.posted_date)}
+          audience={selectedAnnouncement.audience_role}
+          postedBy={selectedAnnouncement.principal ? `${selectedAnnouncement.principal.first_name ?? ""} ${selectedAnnouncement.principal.last_name ?? ""}`.trim() : ""}
+          onClose={closeAnnouncement}
+        />
+      )}
       <main className="p-4 sm:p-8 max-w-full mx-auto w-full">
 
         {/* Header */}
@@ -135,7 +153,8 @@ export default function Announcements() {
                 return (
                   <article
                     key={ann.ann_id}
-                    className="bg-white rounded-2xl p-6 shadow-sm border border-outline-variant/20 hover:shadow-md transition-shadow flex gap-4"
+                    id={`announcement-${ann.ann_id}`}
+                    className={`bg-white rounded-2xl p-6 shadow-sm border hover:shadow-md transition-shadow flex gap-4 ${ann.ann_id === selectedAnnouncementId ? "border-primary ring-2 ring-primary/20" : "border-outline-variant/20"}`}
                   >
                     <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${s.bg} ${s.text}`}>
                       <span className="material-symbols-outlined text-xl" style={fillStyle}>{s.icon}</span>
@@ -148,7 +167,11 @@ export default function Announcements() {
                         <span className="text-[11px] text-on-surface-variant whitespace-nowrap shrink-0">{formatDate(ann.posted_date)}</span>
                       </div>
                       <h4 className="text-base font-extrabold text-on-surface leading-tight mt-2">{ann.title}</h4>
-                      <p className="text-sm text-on-surface-variant leading-relaxed mt-1.5">{renderContent(ann.content)}</p>
+                      <p className="text-sm text-on-surface-variant leading-relaxed mt-1.5 break-words">{announcementPreview(ann.content)}</p>
+                      <button type="button" onClick={() => openAnnouncement(ann.ann_id)} className="mt-3 inline-flex items-center gap-1 rounded-lg px-2 py-1 -ml-2 text-sm font-bold text-primary hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-primary">
+                        View full message
+                        <span className="material-symbols-outlined text-base">arrow_forward</span>
+                      </button>
                       {principalName && (
                         <p className="text-[11px] text-on-surface-variant mt-2">Posted by {principalName}</p>
                       )}
@@ -161,7 +184,7 @@ export default function Announcements() {
             {hasMore && (
               <div className="flex justify-center mt-6">
                 <button
-                  onClick={() => setVisible((v) => v + PAGE_SIZE)}
+                  onClick={() => setVisible((v) => Math.max(v, shown.length) + PAGE_SIZE)}
                   className="flex items-center gap-2 px-6 py-3 rounded-full border border-outline-variant/30 text-sm font-bold text-primary hover:bg-surface-container-low transition-colors"
                 >
                   View Older Announcements

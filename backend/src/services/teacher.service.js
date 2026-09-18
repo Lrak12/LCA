@@ -6,28 +6,20 @@ import * as NotificationService from "./notification.service.js";
 import { supabaseAdmin } from "../config/supabase.js";
 import { describeAuthCreateError } from "../helpers/authErrors.js";
 import { addAttendanceCredits } from "../helpers/attendanceCredits.js";
+import { getTeacherScopeById, teacherOwnsStudent } from "./teacherScope.service.js";
 
 // Grade-level assignments are school-year records. Always resolve them against
 // the requested year (or the active year) so a newly activated year cannot
 // inherit a supervisor's assignment from the previous year.
 const findTeacherGradeLevelsForSchoolYear = async (teacher_id, columns = "gl_id, level_name", sy_id = null) => {
-  let schoolYearId = Number(sy_id) || null;
-  if (!schoolYearId) {
-    const { data: activeYear, error: yearError } = await supabaseAdmin
-      .from("school_year")
-      .select("sy_id")
-      .eq("is_active", true)
-      .maybeSingle();
-    if (yearError) return { data: null, error: yearError };
-    schoolYearId = activeYear?.sy_id ?? null;
-  }
-  if (!schoolYearId) return { data: [], error: null };
+  const scope = await getTeacherScopeById(teacher_id, sy_id);
+  const fields = columns.split(",").map((field) => field.trim());
+  return { data: scope.gradeLevels.map((grade) => Object.fromEntries(fields.map((field) => [field, grade[field]]))), error: null };
+};
 
-  return supabaseAdmin
-    .from("grade_level")
-    .select(columns)
-    .eq("teacher_id", teacher_id)
-    .eq("sy_id", schoolYearId);
+const scopedStudentIds = async (teacher_id, sy_id = null) => {
+  const ids = (await getTeacherScopeById(teacher_id, sy_id)).studentIds;
+  return ids.length ? ids : [-1];
 };
 
 // student_pace has no sy_id column. Its school year is inherited from
@@ -145,17 +137,8 @@ const resolveTeacherScope = async (user_id) => {
 
   if (!teacher) return { teacher_id: null, studentIds: [], glIds: [] };
 
-  const { data: gradeLevels } = await findTeacherGradeLevelsForSchoolYear(teacher.teacher_id, "gl_id");
-
-  const glIds = (gradeLevels ?? []).map((g) => g.gl_id);
-  if (!glIds.length) return { teacher_id: teacher.teacher_id, studentIds: [], glIds: [] };
-
-  const { data: scopedStudents } = await supabaseAdmin
-    .from("student")
-    .select("student_id")
-    .in("gl_id", glIds);
-
-  return { teacher_id: teacher.teacher_id, studentIds: (scopedStudents ?? []).map((s) => s.student_id), glIds };
+  const scope = await getTeacherScopeById(teacher.teacher_id);
+  return { teacher_id: teacher.teacher_id, studentIds: scope.studentIds, glIds: scope.glIds };
 };
 
 // ── Student resolver (grade_level.teacher_id → student.gl_id) ────────────────
@@ -170,20 +153,13 @@ export const getStudentsForTeacher = async (user_id) => {
   if (tErr) throw new Error(tErr.message);
   if (!teacher) return [];
 
-  const { data: gradeLevels, error: glErr } = await findTeacherGradeLevelsForSchoolYear(
-    teacher.teacher_id,
-    "gl_id, level_name",
-  );
-
-  if (glErr) throw new Error(glErr.message);
-
-  const glIds = (gradeLevels ?? []).map((g) => g.gl_id);
-  if (!glIds.length) return [];
+  const scope = await getTeacherScopeById(teacher.teacher_id);
+  if (!scope.studentIds.length) return [];
 
   const { data: students, error: sErr } = await supabaseAdmin
     .from("student")
-    .select("student_id, first_name, last_name, gl_id, grade_level(level_name), date_of_birth, gender, address, contact_number")
-    .in("gl_id", glIds)
+    .select("student_id, first_name, last_name, gl_id, grade_level!student_gl_id_fkey(level_name), date_of_birth, gender, address, contact_number")
+    .in("student_id", scope.studentIds)
     .order("last_name");
 
   if (sErr) throw new Error(sErr.message);
@@ -206,6 +182,8 @@ export const getStudentPaceProjection = async (user_id, student_id) => {
     .eq("user_id", user_id)
     .maybeSingle();
   if (!teacher) return empty;
+
+  if (!(await teacherOwnsStudent(teacher.teacher_id, student_id))) return empty;
 
   const { data: sy } = await supabaseAdmin
     .from("school_year")
@@ -257,13 +235,7 @@ export const getLastCompletedPaces = async (user_id, student_id, { previousYear 
   if (!teacher) return {};
 
   // Ownership: only the teacher's own students
-  const { data: owned } = await supabaseAdmin
-    .from("student")
-    .select("student_id, grade_level!inner(teacher_id)")
-    .eq("student_id", student_id)
-    .eq("grade_level.teacher_id", teacher.teacher_id)
-    .maybeSingle();
-  if (!owned) return {};
+  if (!(await teacherOwnsStudent(teacher.teacher_id, student_id))) return {};
 
   let previousSchoolYear = null;
   let previousModuleIds = null;
@@ -595,8 +567,9 @@ export const getAttendance = async (user_id, date) => {
   // All students in those grade levels (alphabetical by last name).
   const { data: students, error: sErr } = await supabaseAdmin
     .from("student")
-    .select("student_id, first_name, last_name, gl_id, grade_level(level_name)")
+    .select("student_id, first_name, last_name, gl_id, grade_level!student_gl_id_fkey(level_name)")
     .in("gl_id", glIds)
+    .in("student_id", await scopedStudentIds(teacher.teacher_id))
     .order("last_name", { ascending: true });
   if (sErr) throw new Error(sErr.message);
 
@@ -683,8 +656,9 @@ export const getAttendanceHistory = async (user_id) => {
 
   const { data: students, error: studentError } = await supabaseAdmin
     .from("student")
-    .select("student_id, first_name, last_name, gl_id, grade_level(level_name)")
-    .in("gl_id", glIds);
+    .select("student_id, first_name, last_name, gl_id, grade_level!student_gl_id_fkey(level_name)")
+    .in("gl_id", glIds)
+    .in("student_id", await scopedStudentIds(teacher.teacher_id));
   if (studentError) throw new Error(studentError.message);
 
   const studentMap = new Map((students ?? []).map((student) => [student.student_id, student]));
@@ -775,7 +749,8 @@ export const submitAttendance = async (user_id, date, records) => {
   const { data: ownedStudents } = await supabaseAdmin
     .from("student")
     .select("student_id")
-    .in("gl_id", glIds);
+    .in("gl_id", glIds)
+    .in("student_id", await scopedStudentIds(teacher.teacher_id));
 
   const ownedIds = new Set((ownedStudents ?? []).map((s) => s.student_id));
   // Any submitted id NOT in that set = tampering > reject the whole request.
@@ -827,10 +802,16 @@ export const getStudentMonitoring = async (user_id, { grade, section, status, pa
   // Fetch ALL of the teacher's students — filters must apply before pagination
   let query = supabaseAdmin
     .from("student")
-    .select("student_id, first_name, last_name, grade_level(level_name)")
-    .in("gl_id", glIds);
+    .select("student_id, first_name, last_name, grade_level!student_gl_id_fkey(level_name)")
+    .in("gl_id", glIds)
+    .in("student_id", await scopedStudentIds(teacher.teacher_id));
 
-  if (section) query = query.eq("section", section);
+  if (section) {
+    const { data: matchingSections, error: sectionError } = await supabaseAdmin.from("grade_section")
+      .select("section_id").in("gl_id", glIds).eq("name", section);
+    if (sectionError) throw new Error(sectionError.message);
+    query = query.in("section_id", matchingSections?.length ? matchingSections.map((item) => item.section_id) : [-1]);
+  }
 
   const { data: students } = await query.order("student_id", { ascending: true });
 
@@ -959,8 +940,9 @@ export const getStudentMonitoringOverview = async (user_id, { grade, search, pac
   const activeModuleIds = await findPaceModuleIdsForGradeLevels(glIds);
   const { data: students } = await supabaseAdmin
     .from("student")
-    .select("student_id, first_name, last_name, gender, grade_level(level_name)")
+    .select("student_id, first_name, last_name, gender, grade_level!student_gl_id_fkey(level_name)")
     .in("gl_id", glIds)
+    .in("student_id", await scopedStudentIds(teacher.teacher_id))
     .order("student_id");
   if (!students?.length) return empty;
 
@@ -1127,7 +1109,7 @@ export const getStudentRankings = async (user_id, { grade, rankBy = "points", pa
   const activeModuleIds = await findPaceModuleIdsForGradeLevels(glIds);
 
   const { data: students } = await supabaseAdmin
-    .from("student").select("student_id, first_name, last_name, grade_level(level_name)").in("gl_id", glIds);
+    .from("student").select("student_id, first_name, last_name, grade_level!student_gl_id_fkey(level_name)").in("gl_id", glIds).in("student_id", await scopedStudentIds(teacher.teacher_id));
   if (!students?.length) return empty;
   const studentIds = students.map((s) => s.student_id);
 
@@ -1194,7 +1176,7 @@ export const getPaceAnalyticsOverview = async (user_id, { grade } = {}) => {
   const activeModuleIds = await findPaceModuleIdsForGradeLevels(glIds);
 
   const { data: students } = await supabaseAdmin
-    .from("student").select("student_id, first_name, last_name").in("gl_id", glIds);
+    .from("student").select("student_id, first_name, last_name").in("gl_id", glIds).in("student_id", await scopedStudentIds(teacher.teacher_id));
   if (!students?.length) return empty;
   const studentIds = students.map((s) => s.student_id);
 
@@ -1410,7 +1392,7 @@ export const getPaceAnalyticsReport = async (user_id, { grade, quarter, sy_id } 
   const activeModuleIds = await findPaceModuleIdsForGradeLevels(glIds);
 
   const { data: students } = await supabaseAdmin
-    .from("student").select("student_id, first_name, last_name").in("gl_id", glIds);
+    .from("student").select("student_id, first_name, last_name").in("gl_id", glIds).in("student_id", await scopedStudentIds(teacher.teacher_id, sy_id));
   if (!students?.length) return base;
   const studentIds = students.map((s) => s.student_id);
 
@@ -1819,8 +1801,9 @@ export const getPaceMonitoring = async (user_id, { student_id } = {}) => {
 
   const { data: students } = await supabaseAdmin
     .from("student")
-    .select("student_id, first_name, last_name, users(is_active), grade_level(level_name)")
+    .select("student_id, first_name, last_name, users(is_active), grade_level!student_gl_id_fkey(level_name)")
     .in("gl_id", glIds)
+    .in("student_id", await scopedStudentIds(teacher.teacher_id))
     .order("last_name");
   if (!students?.length) return empty;
 
@@ -2027,11 +2010,10 @@ export const updatePaceProjectionCell = async (user_id, { student_id, subject, q
 
   const { data: studentRow } = await supabaseAdmin
     .from("student")
-    .select("student_id, gl_id, grade_level!inner(teacher_id)")
+    .select("student_id, gl_id")
     .eq("student_id", student_id)
-    .eq("grade_level.teacher_id", teacher.teacher_id)
     .maybeSingle();
-  if (!studentRow) throw new Error("Student not found or not assigned to this teacher");
+  if (!studentRow || !(await teacherOwnsStudent(teacher.teacher_id, student_id))) throw new Error("Student not found or not assigned to this teacher");
 
   const { data: sy } = await supabaseAdmin
     .from("school_year")
@@ -2160,11 +2142,10 @@ export const updatePaceProjectionStatus = async (user_id, { student_id, subject,
 
   const { data: studentRow } = await supabaseAdmin
     .from("student")
-    .select("student_id, gl_id, grade_level!inner(teacher_id)")
+    .select("student_id, gl_id")
     .eq("student_id", Number(student_id))
-    .eq("grade_level.teacher_id", teacher.teacher_id)
     .maybeSingle();
-  if (!studentRow) throw new Error("Student not found or not assigned to this teacher");
+  if (!studentRow || !(await teacherOwnsStudent(teacher.teacher_id, student_id))) throw new Error("Student not found or not assigned to this teacher");
 
   const { data: sy } = await supabaseAdmin
     .from("school_year")
@@ -2311,11 +2292,10 @@ async function _resolveTeacherAndStudent(user_id, student_id) {
 
   const { data: studentRow } = await supabaseAdmin
     .from("student")
-    .select("student_id, grade_level!inner(teacher_id)")
+    .select("student_id")
     .eq("student_id", Number(student_id))
-    .eq("grade_level.teacher_id", teacher.teacher_id)
     .maybeSingle();
-  if (!studentRow) throw new Error("Student not found or not assigned to this teacher");
+  if (!studentRow || !(await teacherOwnsStudent(teacher.teacher_id, student_id))) throw new Error("Student not found or not assigned to this teacher");
 
   return teacher;
 }
@@ -2451,7 +2431,7 @@ async function _venueForPacetest(pacetest_id) {
   if (!pt) return null;
   const { data: sp } = await supabaseAdmin
     .from("student_pace")
-    .select("student(grade_level(level_name))")
+    .select("student(grade_level!student_gl_id_fkey(level_name))")
     .eq("sp_id", pt.sp_id)
     .maybeSingle();
   return sp?.student?.grade_level?.level_name ?? null;
@@ -2539,8 +2519,9 @@ export const getScheduledTests = async (user_id, { quarter, subject, status, fro
   const glIds = gradeLevels.map((g) => g.gl_id);
   let studentQuery = supabaseAdmin
     .from("student")
-    .select("student_id, user_id, first_name, last_name, grade_level(level_name)")
-    .in("gl_id", glIds);
+    .select("student_id, user_id, first_name, last_name, grade_level!student_gl_id_fkey(level_name)")
+    .in("gl_id", glIds)
+    .in("student_id", await scopedStudentIds(teacher.teacher_id));
   if (student_id) studentQuery = studentQuery.eq("student_id", Number(student_id));
   const { data: students } = await studentQuery;
   if (!students?.length) return empty;
@@ -2728,8 +2709,9 @@ export const getPaceTestScheduling = async (user_id, { subject, quarter, student
   const glIds = gradeLevels.map((g) => g.gl_id);
   let studentQuery = supabaseAdmin
     .from("student")
-    .select("student_id, first_name, last_name, grade_level(level_name)")
+    .select("student_id, first_name, last_name, grade_level!student_gl_id_fkey(level_name)")
     .in("gl_id", glIds)
+    .in("student_id", await scopedStudentIds(teacher.teacher_id))
     .order("last_name");
   if (student_id) studentQuery = studentQuery.eq("student_id", Number(student_id));
   const { data: students } = await studentQuery;
@@ -2864,8 +2846,9 @@ export const getReturningStudents = async (user_id) => {
   const glIds = gradeLevels.map((g) => g.gl_id);
   const { data: students } = await supabaseAdmin
     .from("student")
-    .select("student_id, first_name, last_name, date_of_birth, gender, grade_level(level_name)")
+    .select("student_id, first_name, last_name, date_of_birth, gender, grade_level!student_gl_id_fkey(level_name)")
     .in("gl_id", glIds)
+    .in("student_id", await scopedStudentIds(teacher.teacher_id))
     .order("last_name");
   if (!students?.length) return { students: [], schoolYear: "—" };
 
@@ -2954,11 +2937,10 @@ async function _ownedStudent(user_id, student_id) {
 
   const { data: student } = await supabaseAdmin
     .from("student")
-    .select("student_id, first_name, last_name, gl_id, grade_level!inner(teacher_id, level_name)")
+    .select("student_id, first_name, last_name, gl_id, grade_level!student_gl_id_fkey(level_name)")
     .eq("student_id", Number(student_id))
-    .eq("grade_level.teacher_id", teacher.teacher_id)
     .maybeSingle();
-  if (!student) throw new Error("Student not found or not assigned to this teacher");
+  if (!student || !(await teacherOwnsStudent(teacher.teacher_id, student_id))) throw new Error("Student not found or not assigned to this teacher");
 
   return { teacher, student };
 }
@@ -3400,7 +3382,7 @@ export const getStudentAcademicRecord = async (user_id, student_id) => {
   // Full student record
   const { data: full } = await supabaseAdmin
     .from("student")
-    .select("student_id, first_name, last_name, date_of_birth, gender, address, contact_number, grade_level(level_name)")
+    .select("student_id, first_name, last_name, date_of_birth, gender, address, contact_number, grade_level!student_gl_id_fkey(level_name)")
     .eq("student_id", student.student_id)
     .maybeSingle();
 
@@ -3446,7 +3428,7 @@ export const getStudentAcademicRecord = async (user_id, student_id) => {
     const glIds = (gl ?? []).map((g) => g.gl_id);
     const peerModuleIds = await findPaceModuleIdsForGradeLevels(glIds);
     const { data: peers } = await supabaseAdmin
-      .from("student").select("student_id, grade_level(level_name)").in("gl_id", glIds);
+      .from("student").select("student_id, grade_level!student_gl_id_fkey(level_name)").in("gl_id", glIds).in("student_id", await scopedStudentIds(teacher.teacher_id));
     const sameGrade = (peers ?? []).filter((s) => (s.grade_level?.level_name ?? null) === gradeName);
     const peerIds = sameGrade.map((s) => s.student_id);
     if (peerIds.length && peerModuleIds.length) {
@@ -3877,12 +3859,12 @@ async function _ownsSpId(user_id, sp_id) {
 
   const { data: sp } = await supabaseAdmin
     .from("student_pace")
-    .select("sp_id, module_id, student(grade_level!inner(teacher_id))")
+    .select("sp_id, module_id, student_id")
     .eq("sp_id", Number(sp_id))
     .maybeSingle();
   if (
     !sp ||
-    sp.student?.grade_level?.teacher_id !== teacher.teacher_id ||
+    !(await teacherOwnsStudent(teacher.teacher_id, sp.student_id)) ||
     !activeModuleIds.includes(sp.module_id)
   ) {
     throw new Error("PACE not found or not assigned to this teacher");

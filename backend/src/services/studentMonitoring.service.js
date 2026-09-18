@@ -330,7 +330,7 @@ export const getPaceAnalytics = async ({ quarter: requestedQuarter, gradeLevel: 
       gradeLevels: [],
       stats: { topPerformer: null, pacesFinished: 0, avgPoints: 0 },
       rankings: [], topCompletion: [],
-      trend: { weeks: ["Wk 1", "Wk 2", "Wk 3", "Wk 4", "Wk 5"], thisMonth: [], lastMonth: [] },
+      completionByQuarter: [null, null, null, null],
     };
   }
 
@@ -346,7 +346,7 @@ export const getPaceAnalytics = async ({ quarter: requestedQuarter, gradeLevel: 
   const [studentsResult, pacesResult, projectionsResult] = await Promise.all([
     StudentMonitoringModel.findStudents(),
     StudentMonitoringModel.findStudentPaces(),
-    StudentMonitoringModel.findPaceProjectionsForAnalytics(sy.sy_id, quarter),
+    StudentMonitoringModel.findAllPaceProjections(sy.sy_id),
   ]);
   if (studentsResult.error) throw new Error(studentsResult.error.message);
   if (pacesResult.error) throw new Error(pacesResult.error.message);
@@ -379,7 +379,8 @@ export const getPaceAnalytics = async ({ quarter: requestedQuarter, gradeLevel: 
     : eligibleStudents;
   const currentStudentIds = new Set(currentStudents.map((student) => student.student_id));
   const currentPaces = (paces ?? []).filter((pace) => currentStudentIds.has(pace.student_id));
-  const currentProjections = (projections ?? []).filter((projection) => currentStudentIds.has(projection.student_id));
+  const allCurrentProjections = (projections ?? []).filter((projection) => currentStudentIds.has(projection.student_id));
+  const currentProjections = allCurrentProjections.filter((projection) => Number(projection.quarter) === quarter);
 
   const studentById = new Map(currentStudents.map((s) => [s.student_id, s]));
 
@@ -490,34 +491,34 @@ export const getPaceAnalytics = async ({ quarter: requestedQuarter, gradeLevel: 
       a.full_name.localeCompare(b.full_name))
     .slice(0, 10);
 
-  // ── Completion performance trend (this month vs last month) ───────────────────
-  // For each month, the running % of all PACEs completed (100%) by week-of-month.
-  const totalPaces = currentPaces.length;
-  const weekOf = (d) => Math.min(5, Math.max(1, Math.ceil(d.getDate() / 7))); // 1..5
-  const monthlyCompletionCurve = (year, month) => {
-    const weekly = [0, 0, 0, 0, 0];
-    currentPaces.forEach((p) => {
-      if (p.status !== "Completed" || !p.completion_date) return;
-      const c = new Date(p.completion_date);
-      if (c.getFullYear() === year && c.getMonth() === month) weekly[weekOf(c) - 1] += 1;
-    });
-    // cumulative count → cumulative percentage of all PACEs
-    const curve = [];
-    let running = 0;
-    for (const n of weekly) {
-      running += n;
-      curve.push(totalPaces ? Math.round((running / totalPaces) * 1000) / 10 : 0);
-    }
-    return curve;
-  };
-
-  const now       = new Date();
-  const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const trend = {
-    weeks:     ["Wk 1", "Wk 2", "Wk 3", "Wk 4", "Wk 5"],
-    thisMonth: monthlyCompletionCurve(now.getFullYear(), now.getMonth()),
-    lastMonth: monthlyCompletionCurve(lastMonth.getFullYear(), lastMonth.getMonth()),
-  };
+  // Cumulative completion by quarter. A quarter with no PACE execution records
+  // is returned as null so future quarters do not repeat the last known rate.
+  const projectionRangesByStudent = new Map();
+  allCurrentProjections.forEach((projection) => {
+    const ranges = projectionRangesByStudent.get(projection.student_id) ?? [];
+    ranges.push(projection);
+    projectionRangesByStudent.set(projection.student_id, ranges);
+  });
+  const totalByQuarter = [0, 0, 0, 0];
+  const completedByQuarter = [0, 0, 0, 0];
+  currentPaces.forEach((pace) => {
+    const moduleNumber = Number(pace.pace_module?.module_number);
+    const projection = (projectionRangesByStudent.get(pace.student_id) ?? []).find((range) =>
+      range.subject === pace.pace_module?.subject
+      && Number.isFinite(moduleNumber)
+      && moduleNumber >= Number(range.pace_start)
+      && moduleNumber <= Number(range.pace_end));
+    const quarterIndex = Number(projection?.quarter) - 1;
+    if (quarterIndex < 0 || quarterIndex > 3) return;
+    totalByQuarter[quarterIndex] += 1;
+    if (pace.status === "Completed") completedByQuarter[quarterIndex] += 1;
+  });
+  const completionByQuarter = totalByQuarter.map((quarterTotal, index) => {
+    if (quarterTotal === 0) return null;
+    const total = totalByQuarter.slice(0, index + 1).reduce((sum, count) => sum + count, 0);
+    const completed = completedByQuarter.slice(0, index + 1).reduce((sum, count) => sum + count, 0);
+    return total ? Math.round((completed / total) * 1000) / 10 : 0;
+  });
 
   return {
     quarter,
@@ -530,7 +531,7 @@ export const getPaceAnalytics = async ({ quarter: requestedQuarter, gradeLevel: 
     },
     rankings,
     topCompletion,
-    trend,
+    completionByQuarter,
   };
 };
 

@@ -5,7 +5,7 @@ import { supabaseAdmin } from "../config/supabase.js";
 export const findStudents = () =>
   supabaseAdmin
     .from("student")
-    .select("student_id, user_id, first_name, last_name, date_of_birth, gender, address, contact_number, grade_level(gl_id, level_name)")
+    .select("student_id, user_id, first_name, last_name, date_of_birth, gender, address, contact_number, grade_level!student_gl_id_fkey(gl_id, level_name)")
     .order("last_name", { ascending: true });
 
 // Every student_pace row (+ its PACE module) - used to count completed/ongoing.
@@ -28,7 +28,7 @@ export const findDiagnosticAssessments = () =>
 export const findStudentProfileById = (student_id) =>
   supabaseAdmin
     .from("student")
-    .select("student_id, first_name, last_name, date_of_birth, gender, address, contact_number, enrollment_date, grade_level(gl_id, level_name)")
+    .select("student_id, first_name, last_name, date_of_birth, gender, address, contact_number, enrollment_date, grade_level!student_gl_id_fkey(gl_id, level_name)")
     .eq("student_id", student_id)
     .maybeSingle();
 
@@ -83,7 +83,7 @@ export const findAttendanceByStudentAndYear = (student_id, startDate, endDate) =
 export const findAllStudentsForExport = () =>
   supabaseAdmin
     .from("student")
-    .select("student_id, user_id, first_name, last_name, date_of_birth, gender, address, contact_number, enrollment_date, grade_level(level_name)")
+    .select("student_id, user_id, first_name, last_name, date_of_birth, gender, address, contact_number, enrollment_date, grade_level!student_gl_id_fkey(level_name)")
     .order("last_name", { ascending: true });
 
 // Self-test scores for the given student_pace ids (all scored attempts).
@@ -98,17 +98,8 @@ export const findSelfTestResultsBySpIds = (spIds) =>
 export const findAllPaceProjections = (sy_id) =>
   supabaseAdmin
     .from("pace_quarterly_projection")
-    .select("student_id, subject, quarter, pace_start")
-    .eq("sy_id", sy_id);
-
-// Planned PACE ranges for one quarter. Analytics uses these rows as its roster
-// and denominator even when a student has not started the planned PACEs yet.
-export const findPaceProjectionsForAnalytics = (sy_id, quarter) =>
-  supabaseAdmin
-    .from("pace_quarterly_projection")
     .select("student_id, subject, quarter, pace_start, pace_end, pace_count")
-    .eq("sy_id", sy_id)
-    .eq("quarter", quarter);
+    .eq("sy_id", sy_id);
 
 // All attendance rows in the active school-year date range (present/absent/tardy per student).
 export const findAllAttendanceInRange = (startDate, endDate) =>

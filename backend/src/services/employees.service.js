@@ -1,6 +1,8 @@
 import { supabase, supabaseAdmin } from "../config/supabase.js";
 import { describeAuthCreateError } from "../helpers/authErrors.js";
 import { getEligibleUserIds, getSchoolYear, setAccountActive } from "./schoolYearStatus.service.js";
+import { getTeacherScopeById } from "./teacherScope.service.js";
+import { isSectionSchemaUnavailable } from "../helpers/sectionSchema.js";
 
 const refreshTeacherHistory = async (teacher_id, sy_id, recorded_by = null) => {
   const now = new Date().toISOString();
@@ -12,34 +14,23 @@ const refreshTeacherHistory = async (teacher_id, sy_id, recorded_by = null) => {
     .is("unassigned_at", null);
   if (closeErr) throw new Error(closeErr.message);
 
-  const { data: grades, error: gradeErr } = await supabaseAdmin
-    .from("grade_level")
-    .select("gl_id, level_name")
-    .eq("sy_id", sy_id)
-    .eq("teacher_id", teacher_id);
-  if (gradeErr) throw new Error(gradeErr.message);
-
-  for (const grade of grades ?? []) {
-    const { data: students, error: studentErr } = await supabaseAdmin
-      .from("student")
-      .select("student_id")
-      .eq("gl_id", grade.gl_id);
-    if (studentErr) throw new Error(studentErr.message);
-
-    const rows = (students ?? []).map((student) => ({
-      student_id: student.student_id,
-      teacher_id,
-      sy_id,
-      gl_id: grade.gl_id,
-      grade_level_name: grade.level_name,
-      recorded_by: recorded_by ? Number(recorded_by) : null,
-      reason: "Supervisor profile assignment changed",
-    }));
-    if (rows.length) {
-      const { error } = await supabaseAdmin.from("student_supervisor_history").insert(rows);
-      if (error) throw new Error(error.message);
-    }
-  }
+  const scope = await getTeacherScopeById(teacher_id, sy_id);
+  if (!scope.studentIds.length) return;
+  const { data: students, error: studentErr } = await supabaseAdmin.from("student")
+    .select("student_id, gl_id").in("student_id", scope.studentIds);
+  if (studentErr) throw new Error(studentErr.message);
+  const names = new Map(scope.gradeLevels.map((grade) => [grade.gl_id, grade.level_name]));
+  const rows = (students ?? []).map((student) => ({
+    student_id: student.student_id,
+    teacher_id,
+    sy_id,
+    gl_id: student.gl_id,
+    grade_level_name: names.get(student.gl_id) ?? "Unassigned",
+    recorded_by: recorded_by ? Number(recorded_by) : null,
+    reason: "Supervisor profile assignment changed",
+  }));
+  const { error } = await supabaseAdmin.from("student_supervisor_history").insert(rows);
+  if (error) throw new Error(error.message);
 };
 
 export const getEmployees = async () => {
@@ -100,8 +91,9 @@ export const getSupervisors = async () => {
   const [
     { data: teachers },
     { data: gradeLevels },
-    { data: students },
+    { data: studentRows, error: studentError },
     { data: studentPaces },
+    { data: sectionRows, error: sectionError },
   ] = await Promise.all([
     supabaseAdmin
       .from("teacher")
@@ -111,19 +103,29 @@ export const getSupervisors = async () => {
       .from("grade_level")
       .select("gl_id, level_name, teacher_id")
       .eq("sy_id", activeSy?.sy_id ?? -1),
-    supabaseAdmin.from("student").select("student_id, gl_id"),
+    supabaseAdmin.from("student").select("student_id, gl_id, section_id"),
     supabaseAdmin.from("student_pace").select("student_id, pace_module(subject)"),
+    supabaseAdmin.from("grade_section").select("section_id, gl_id, name, teacher_id"),
   ]);
 
   // student headcount per grade level
   const studentCountByGl = new Map();
   (students ?? []).forEach((s) => {
-    studentCountByGl.set(s.gl_id, (studentCountByGl.get(s.gl_id) ?? 0) + 1);
+    if (!s.section_id) studentCountByGl.set(s.gl_id, (studentCountByGl.get(s.gl_id) ?? 0) + 1);
   });
 
   // gl_id → teacher_id, and teacher_id → [{ gl_id, name, studentCount }]
   const glToTeacher     = new Map();
   const levelsByTeacher = new Map();
+  const sectionToTeacher = new Map();
+  const sectionsByTeacher = new Map();
+  const gradeNames = new Map((gradeLevels ?? []).map((grade) => [grade.gl_id, grade.level_name]));
+  (sections ?? []).filter((section) => gradeNames.has(section.gl_id) && section.teacher_id).forEach((section) => {
+    sectionToTeacher.set(Number(section.section_id), section.teacher_id);
+    const list = sectionsByTeacher.get(section.teacher_id) ?? [];
+    list.push({ id: section.section_id, gl_id: section.gl_id, name: section.name, grade: gradeNames.get(section.gl_id) });
+    sectionsByTeacher.set(section.teacher_id, list);
+  });
   (gradeLevels ?? []).forEach((gl) => {
     if (gl.teacher_id == null) return;
     glToTeacher.set(gl.gl_id, gl.teacher_id);
@@ -138,8 +140,10 @@ export const getSupervisors = async () => {
 
   // student_id → teacher_id (via grade level)
   const studentToTeacher = new Map();
+  const studentCountBySection = new Map();
   (students ?? []).forEach((s) => {
-    const tid = glToTeacher.get(s.gl_id);
+    if (s.section_id) studentCountBySection.set(Number(s.section_id), (studentCountBySection.get(Number(s.section_id)) ?? 0) + 1);
+    const tid = s.section_id ? sectionToTeacher.get(Number(s.section_id)) : glToTeacher.get(s.gl_id);
     if (tid != null) studentToTeacher.set(s.student_id, tid);
   });
 
@@ -155,6 +159,10 @@ export const getSupervisors = async () => {
 
   return (teachers ?? []).filter((t) => eligibleTeachers.has(t.user_id)).map((t) => {
     const details = levelsByTeacher.get(t.teacher_id) ?? [];
+    const sectionAssignments = (sectionsByTeacher.get(t.teacher_id) ?? []).map((section) => ({
+      ...section,
+      studentCount: studentCountBySection.get(Number(section.id)) ?? 0,
+    }));
     return {
       id:                t.teacher_id,
       teacher_id:        t.teacher_id,
@@ -163,9 +171,10 @@ export const getSupervisors = async () => {
       contact_number:    t.contact_number,
       email:             t.users?.email,
       is_active:         t.users?.is_active ?? false,
-      gradeLevels:       details.map((d) => d.name),
+      gradeLevels:       [...new Set([...details.map((d) => d.name), ...sectionAssignments.map((section) => section.grade)])],
       gradeLevelDetails: details,
-      totalStudents:     details.reduce((sum, d) => sum + d.studentCount, 0),
+      sectionAssignments,
+      totalStudents:     [...studentToTeacher.values()].filter((id) => id === t.teacher_id).length,
       paceModules:       [...(subjectsByTeacher.get(t.teacher_id) ?? [])],
     };
   });
@@ -192,6 +201,14 @@ export const getEmployeeStats = async () => {
     supabaseAdmin.from("teacher").select("user_id, users(is_active)"),
     supabaseAdmin.from("principal").select("principal_id, users(is_active)"),
   ]);
+  if (sectionError && !isSectionSchemaUnavailable(sectionError)) throw new Error(sectionError.message);
+  if (studentError && !isSectionSchemaUnavailable(studentError)) throw new Error(studentError.message);
+  const { data: legacyStudents, error: legacyError } = studentError
+    ? await supabaseAdmin.from("student").select("student_id, gl_id")
+    : { data: [], error: null };
+  if (legacyError) throw new Error(legacyError.message);
+  const students = studentError ? legacyStudents : studentRows;
+  const sections = sectionError || studentError ? [] : sectionRows;
   const teachers = (teacherRows ?? []).filter((row) => eligible.has(row.user_id));
   const admins = adminRows ?? [];
   const active = teachers.filter((row) => row.users?.is_active).length

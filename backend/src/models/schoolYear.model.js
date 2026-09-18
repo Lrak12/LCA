@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "../config/supabase.js";
+import { isSectionSchemaUnavailable } from "../helpers/sectionSchema.js";
 
 const TABLE = "school_year";
 
@@ -23,16 +24,34 @@ export const findStudentAssignmentHistory = (sy_id) =>
     .select("assignment_id, student_id, teacher_id, gl_id, assigned_at, unassigned_at")
     .eq("sy_id", sy_id);
 
-export const findStudentGradeLevels = (student_ids) =>
-  supabaseAdmin
+export const findStudentGradeLevels = async (student_ids) => {
+  const result = await supabaseAdmin
     .from("student")
-    .select("student_id, gl_id")
+    .select("student_id, gl_id, section_id")
     .in("student_id", student_ids);
+  if (!result.error || !isSectionSchemaUnavailable(result.error)) return result;
+  return supabaseAdmin.from("student").select("student_id, gl_id").in("student_id", student_ids);
+};
 
-export const setStudentGradeLevel = (student_ids, gl_id) =>
+export const findStudentSectionAssignments = (gl_ids) =>
+  supabaseAdmin
+    .from("student_section_assignment")
+    .select("student_id, gl_id, section_id")
+    .in("gl_id", gl_ids);
+
+export const setStudentGradeLevel = async (student_ids, gl_id) => {
+  const result = await supabaseAdmin
+    .from("student")
+    .update({ gl_id, section_id: null })
+    .in("student_id", student_ids);
+  if (!result.error || !isSectionSchemaUnavailable(result.error)) return result;
+  return supabaseAdmin.from("student").update({ gl_id }).in("student_id", student_ids);
+};
+
+export const setStudentSection = (student_ids, section_id) =>
   supabaseAdmin
     .from("student")
-    .update({ gl_id })
+    .update({ section_id })
     .in("student_id", student_ids);
 
 export const create = (payload) =>

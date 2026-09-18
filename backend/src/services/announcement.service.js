@@ -4,11 +4,16 @@ import { supabaseAdmin }      from "../config/supabase.js";
 
 // Resolve which users should receive a notification for an announcement's audience.
 const resolveRecipients = async (audience_role) => {
-  let query = supabaseAdmin.from("users").select("user_id").eq("is_active", true);
   const roleMap = { Student: "student", Teacher: "teacher", Parent: "parent" };
-  const role = roleMap[audience_role];
-  if (role) query = query.eq("role", role);     // "All" (or unknown) → everyone
-  const { data } = await query;
+  const roles = audience_role === "All"
+    ? ["student", "teacher", "parent"]
+    : roleMap[audience_role] ? [roleMap[audience_role]] : [];
+  if (!roles.length) return [];
+  const { data } = await supabaseAdmin
+    .from("users")
+    .select("user_id")
+    .eq("is_active", true)
+    .in("role", roles);
   return (data ?? []).map((u) => u.user_id);
 };
 
@@ -45,7 +50,8 @@ export const createAnnouncement = async (payload, requestingUser) => {
     const recipients = await resolveRecipients(data.audience_role);
     await NotificationService.createForUsers(recipients, {
       title:           data.title,
-      message_content: data.content,
+      // Keep the body on the announcement page; the marker lets the bell open it.
+      message_content: `announcement:${data.ann_id}`,
     }).catch((e) => console.warn("[announcement] notification fan-out skipped:", e.message));
   }
 

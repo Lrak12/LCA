@@ -14,6 +14,7 @@ import { fetchAllSections, enrollStudentsInLevel, removeStudentFromLevel, assign
 import { fetchAllStudents } from "../../api/student.js";
 import { fetchAllTeachers } from "../../api/teacher.js";
 import AddGradeLevelModal from "../../components/AddGradeLevelModal.jsx";
+import ManageGradeSectionsModal from "../../components/ManageGradeSectionsModal.jsx";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
@@ -46,15 +47,17 @@ const formatDate = (d) => {
 
 // ─── Grade Level Card ─────────────────────────────────────────────────────────
 // One action button in the card's footer (Manage / Assign / View).
-function CardAction({ icon, label, primary, onClick }) {
+function CardAction({ icon, label, primary, onClick, disabled = false, title }) {
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
+      title={title}
       className={`flex flex-col items-center justify-center gap-1 py-3 text-[11px] font-bold transition-colors ${
         primary
           ? "text-white hover:bg-primary/90"
           : "text-on-surface-variant hover:bg-surface-container-lowest"
-      }`}
+      } disabled:cursor-not-allowed disabled:opacity-40`}
     >
       <span className="material-symbols-outlined text-base">{icon}</span>
       {label}
@@ -62,11 +65,9 @@ function CardAction({ icon, label, primary, onClick }) {
   );
 }
 
-// One grade-level tile: label, student count, assigned supervisor, and 3 actions.
-function GradeLevelCard({ level, onManageStudents, onAssignSupervisor, onView }) {
-  const supervisors = level.faculty ?? [];
-  const headline    = supervisors[0]?.name ?? null; // primary supervisor shown on the card
-  const extra       = supervisors.length - 1;        // "+N more" count
+// One grade-level tile: label, student count, section rosters and supervisors.
+function GradeLevelCard({ level, onManageStudents, onAssignSupervisor, onManageSections, onView }) {
+  const sections = level.sections ?? [];
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/20 flex flex-col overflow-hidden">
@@ -82,31 +83,37 @@ function GradeLevelCard({ level, onManageStudents, onAssignSupervisor, onView })
           </div>
         </div>
 
-        {/* Assigned supervisor */}
+        {/* Each section can have its own supervisor. Do not count the legacy
+            grade-level supervisor twice when they also lead a section. */}
         <p className="text-[13px] font-extrabold tracking-widest uppercase text-on-surface-variant mb-2">
-          Assigned Supervisor
+          {sections.length ? `Sections & Supervisors (${sections.length})` : "Assigned Supervisor"}
         </p>
-        <div className="flex items-center justify-between gap-2">
-          {headline ? (
-            <span className="text-xl font-black text-on-surface truncate">
-              {headline}
-              {extra > 0 && <span className="text-on-surface-variant font-medium"> +{extra} more</span>}
-            </span>
-          ) : (
-            <span className="text-sm text-on-surface-variant">No supervisor assigned</span>
-          )}
-          {headline && (
-            <span className="text-[13px] font-extrabold uppercase tracking-wide bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full shrink-0">
-              Assigned
-            </span>
-          )}
-        </div>
+        {sections.length ? (
+          <div className="space-y-2">
+            {sections.map((section) => (
+              <div key={section.id} className="rounded-lg border border-outline-variant/20 px-3 py-2">
+                <div className="flex items-center justify-between gap-2 text-sm font-bold text-on-surface">
+                  <span>{section.name}</span>
+                  <span className="shrink-0 text-xs font-medium text-on-surface-variant">{section.students} student{section.students === 1 ? "" : "s"}</span>
+                </div>
+                <p className="mt-2 text-[11px] font-bold uppercase tracking-wide text-on-surface-variant">Supervisor</p>
+                <p className={`mt-0.5 break-words text-base font-extrabold leading-snug ${section.teacher_name ? "text-on-surface" : "text-on-surface-variant"}`}>
+                  {section.teacher_name ?? "Not assigned"}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="break-words text-base font-extrabold text-on-surface">{level.faculty?.[0]?.name ?? "No supervisor assigned"}</p>
+        )}
+        {!!level.unsectioned_students && <p className="mt-3 text-xs text-amber-700">{level.unsectioned_students} student(s) not placed in a section</p>}
       </div>
 
       {/* Action footer: Manage -> onManageStudents (Enroll modal); Assign -> onAssignSupervisor; View -> onView (all set page-level state) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 border-t border-outline-variant/100 divide-x divide-outline-variant/100">
-        <CardAction icon="group"      label="Enroll" onClick={() => onManageStudents(level)} />
-        <CardAction icon="group_add"  label="Assign" onClick={() => onAssignSupervisor(level)} />
+      <div className={`grid grid-cols-2 ${level.sections?.length ? "" : "lg:grid-cols-4"} border-t border-outline-variant/100 divide-x divide-outline-variant/100`}>
+        {!level.sections?.length && <CardAction icon="group" label="Enroll" onClick={() => onManageStudents(level)} />}
+        {!level.sections?.length && <CardAction icon="group_add" label="Assign" onClick={() => onAssignSupervisor(level)} />}
+        <CardAction icon="account_tree" label="Sections" onClick={() => onManageSections(level)} disabled={level.sections_enabled === false} title={level.sections_enabled === false ? "Section database setup is pending" : undefined} />
         <CardAction icon="visibility" label="View"   onClick={() => onView(level)} />
       </div>
     </div>
@@ -596,7 +603,7 @@ function ViewGradeModal({ level, onClose, onChanged }) {
   const [removingId, setRemovingId] = useState(null); // student_id currently being removed
   const [rowError,  setRowError]  = useState(null); // error from a failed remove
 
-  const supervisorName = level.faculty?.[0]?.name ?? "No supervisor assigned";
+  const gradeSupervisorName = level.faculty?.[0]?.name ?? "No supervisor assigned";
 
   // Remove (unassign) a student from this grade, then update local state + cards.
   const handleRemove = async (student_id) => {
@@ -662,7 +669,10 @@ function ViewGradeModal({ level, onClose, onChanged }) {
               <div className="divide-y divide-outline-variant/10">
                 <InfoRow label="Grade Level">{level.name}</InfoRow>
                 <InfoRow label="Total Students">{loading ? "…" : `${total} Student${total === 1 ? "" : "s"}`}</InfoRow>
-                <InfoRow label="Assigned Supervisor">{supervisorName}</InfoRow>
+                <InfoRow label="Grade-level Supervisor">{gradeSupervisorName}</InfoRow>
+                {(level.sections ?? []).map((section) => (
+                  <InfoRow key={section.id} label={`${section.name} Supervisor`}>{section.teacher_name ?? "Not assigned"}</InfoRow>
+                ))}
                 <InfoRow label="Date Created">{formatDate(level.created_at ?? level.date_created)}</InfoRow>
                 <div className="flex items-center justify-between gap-4 py-1.5">
                   <span className="text-sm text-on-surface-variant">Status</span>
@@ -704,8 +714,8 @@ function ViewGradeModal({ level, onClose, onChanged }) {
                 <table className="w-full">
                   <thead>
                     <tr className="bg-surface-container-lowest border-b border-outline-variant/15">
-                      {["Student ID", "Student Name", "Date Assigned", ""].map((h, i) => (
-                        <th key={i} className={`text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant px-5 py-3 whitespace-nowrap ${i === 3 ? "text-right" : "text-left"}`}>
+                      {["Student ID", "Student Name", "Section", "Date Assigned", ""].map((h, i) => (
+                        <th key={i} className={`text-[10px] font-extrabold tracking-widest uppercase text-on-surface-variant px-5 py-3 whitespace-nowrap ${i === 4 ? "text-right" : "text-left"}`}>
                           {h}
                         </th>
                       ))}
@@ -716,6 +726,7 @@ function ViewGradeModal({ level, onClose, onChanged }) {
                       <tr key={s.student_id} className="hover:bg-surface-container-lowest transition-colors">
                         <td className="px-5 py-3 text-sm font-bold text-on-surface whitespace-nowrap">{s.student_id}</td>
                         <td className="px-5 py-3 text-sm font-bold text-on-surface">{s.first_name} {s.last_name}</td>
+                        <td className="px-5 py-3 text-sm text-on-surface-variant">{level.sections?.find((section) => Number(section.id) === Number(s.section_id))?.name ?? "Unsectioned"}</td>
                         <td className="px-5 py-3 text-sm text-on-surface-variant whitespace-nowrap">{formatDate(s.enrollment_date)}</td>
                         <td className="px-5 py-3 text-right whitespace-nowrap">
                           {confirmId === s.student_id ? (
@@ -775,15 +786,16 @@ export default function SchoolSections() {
   const [enrollTarget,  setEnrollTarget]  = useState(null);  // level whose Enroll modal is open
   const [assignTarget,  setAssignTarget]  = useState(null);  // level whose Assign modal is open
   const [viewTarget,    setViewTarget]    = useState(null);  // level whose View modal is open
+  const [sectionTargetId, setSectionTargetId] = useState(null);
   const [showAdd,       setShowAdd]       = useState(false);  // Add Grade Level modal open?
 
   // load all grade levels for the active school year
   const loadLevels = useCallback(() => {
     setLoading(true);
     setError(null);
-    fetchAllSections()
+    return fetchAllSections()
       .then((res) => setLevels(res.data?.data ?? res.data ?? []))
-      .catch(() => setError("Failed to load grade levels."))
+      .catch((err) => setError(err.response?.data?.message ?? err.message ?? "Failed to load grade levels."))
       .finally(() => setLoading(false));
   }, []);
 
@@ -815,7 +827,10 @@ export default function SchoolSections() {
 
   // totals shown in the stat cards
   const totalStudents = levels.reduce((a, l) => a + l.students, 0);
-  const totalTeachers = levels.reduce((a, l) => a + l.faculty.length, 0);
+  const totalTeachers = new Set(levels.flatMap((level) => [
+    ...(level.faculty ?? []).map((teacher) => teacher.id),
+    ...(level.sections ?? []).map((section) => section.teacher_id).filter(Boolean),
+  ])).size;
   // Use the first available order so gaps can be filled without exceeding 12.
   const nextOrder = Array.from({ length: 12 }, (_, index) => index + 1)
     .find((order) => !levels.some((level) => Number(level.level_order) === order)) ?? "";
@@ -850,13 +865,18 @@ export default function SchoolSections() {
         {levels.length >= 12 && (
           <p className="text-xs text-amber-600 font-semibold -mt-4 mb-6">Maximum of 12 grade levels reached.</p>
         )}
+        {levels.some((level) => level.sections_enabled === false) && (
+          <p role="alert" className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Grade levels are available, but section management needs the database update. Ask an administrator to apply the grade sections migration.
+          </p>
+        )}
 
         {/* Stat Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
           {[
-            { label: "Grade Levels",        value: levels.length,                  sub: "Active",      subColor: "text-amber-600",         icon: "inventory_2" },
-            { label: "Total Students",      value: totalStudents.toLocaleString(), sub: "Students",    subColor: "text-on-surface-variant", icon: "hub"        },
-            { label: "Supervisors Assigned",value: totalTeachers,                  sub: "Supervisors", subColor: "text-on-surface-variant", icon: "badge"      },
+            { label: "Grade Levels",        value: error ? "—" : levels.length,                  sub: "Active",      subColor: "text-amber-600",         icon: "inventory_2" },
+            { label: "Total Students",      value: error ? "—" : totalStudents.toLocaleString(), sub: "Students",    subColor: "text-on-surface-variant", icon: "hub"        },
+            { label: "Supervisors Assigned",value: error ? "—" : totalTeachers,                  sub: "Supervisors", subColor: "text-on-surface-variant", icon: "badge"      },
           ].map((c) => (
             <div key={c.label} className="bg-white rounded-2xl px-6 py-5 shadow-sm border border-outline-variant/20 flex items-center justify-between gap-4">
               <div className="min-w-0">
@@ -901,6 +921,7 @@ export default function SchoolSections() {
                 level={l}
                 onManageStudents={(lv) => setEnrollTarget(lv)}
                 onAssignSupervisor={(lv) => setAssignTarget(lv)}
+                onManageSections={(lv) => setSectionTargetId(lv.id)}
                 onView={(lv) => setViewTarget(lv)}
               />
             ))}
@@ -929,6 +950,13 @@ export default function SchoolSections() {
         <ViewGradeModal
           level={viewTarget}
           onClose={() => setViewTarget(null)}
+          onChanged={loadLevels}
+        />
+      )}
+      {sectionTargetId && levels.find((level) => level.id === sectionTargetId) && (
+        <ManageGradeSectionsModal
+          level={levels.find((level) => level.id === sectionTargetId)}
+          onClose={() => setSectionTargetId(null)}
           onChanged={loadLevels}
         />
       )}

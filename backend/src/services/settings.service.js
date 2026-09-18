@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "../config/supabase.js";
+import { isSectionSchemaUnavailable } from "../helpers/sectionSchema.js";
 import { updateSchoolYear as updateSchoolYearRecord } from "./schoolYear.service.js";
 
 export const getSettingsOverview = async () => {
@@ -26,9 +27,19 @@ export const getAcademicConfig = async () => {
     .order("level_order");
   if (glErr) throw new Error(glErr.message);
 
+  const gradeIds = (gradeLevels ?? []).map((grade) => grade.gl_id);
+  const { data: sections, error: sectionError } = gradeIds.length
+    ? await supabaseAdmin.from("grade_section").select("gl_id").in("gl_id", gradeIds)
+    : { data: [], error: null };
+  if (sectionError && !isSectionSchemaUnavailable(sectionError)) throw new Error(sectionError.message);
+  const withSections = (gradeLevels ?? []).map((grade) => ({
+    ...grade,
+    sections: (sections ?? []).filter((section) => section.gl_id === grade.gl_id).length,
+  }));
+
   const quarters = buildQuarters(schoolYear);
 
-  return { schoolYear, quarters, gradeLevels };
+  return { schoolYear, quarters, gradeLevels: withSections };
 };
 
 // A school year supports at most Grade 1-12 (MAX_GRADE_LEVELS). Checked up front in
