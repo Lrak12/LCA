@@ -1,7 +1,8 @@
 import client from "./client.js";
+import { getOrCreateDeviceId } from "../utils/deviceId.js";
 
 export const loginRequest = (id_number, password) =>
-  client.post("/auth/login", { id_number, password });
+  client.post("/auth/login", { id_number, password, device_id: getOrCreateDeviceId() });
 
 export const logoutRequest = () =>
   client.post("/auth/logout", {});

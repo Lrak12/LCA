@@ -107,6 +107,14 @@ export const getSupervisors = async () => {
     supabaseAdmin.from("student_pace").select("student_id, pace_module(subject)"),
     supabaseAdmin.from("grade_section").select("section_id, gl_id, name, teacher_id"),
   ]);
+  if (sectionError && !isSectionSchemaUnavailable(sectionError)) throw new Error(sectionError.message);
+  if (studentError && !isSectionSchemaUnavailable(studentError)) throw new Error(studentError.message);
+  const { data: legacyStudents, error: legacyError } = studentError
+    ? await supabaseAdmin.from("student").select("student_id, gl_id")
+    : { data: [], error: null };
+  if (legacyError) throw new Error(legacyError.message);
+  const students = studentError ? legacyStudents : studentRows;
+  const sections = sectionError || studentError ? [] : sectionRows;
 
   // student headcount per grade level
   const studentCountByGl = new Map();
@@ -201,14 +209,6 @@ export const getEmployeeStats = async () => {
     supabaseAdmin.from("teacher").select("user_id, users(is_active)"),
     supabaseAdmin.from("principal").select("principal_id, users(is_active)"),
   ]);
-  if (sectionError && !isSectionSchemaUnavailable(sectionError)) throw new Error(sectionError.message);
-  if (studentError && !isSectionSchemaUnavailable(studentError)) throw new Error(studentError.message);
-  const { data: legacyStudents, error: legacyError } = studentError
-    ? await supabaseAdmin.from("student").select("student_id, gl_id")
-    : { data: [], error: null };
-  if (legacyError) throw new Error(legacyError.message);
-  const students = studentError ? legacyStudents : studentRows;
-  const sections = sectionError || studentError ? [] : sectionRows;
   const teachers = (teacherRows ?? []).filter((row) => eligible.has(row.user_id));
   const admins = adminRows ?? [];
   const active = teachers.filter((row) => row.users?.is_active).length

@@ -62,6 +62,7 @@ const fmtClock = (iso) => {
   return isNaN(d) ? "—" : d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
 };
 const HIST_PAGE_SIZE = 10;
+const sectionLabel = (section) => `${section.gradeLevel} – ${section.name}`;
 
 // Convert cumulative daily records into Q1-Q4 monthly summary tables. All four
 // quarter sections are shown with every record stored for the school year.
@@ -206,6 +207,7 @@ export default function Attendance() {
   const [search,      setSearch]      = useState("");                         // name/ID search box text
   const [calHistory]                  = useState({});                         // date > status map that colours the calendar
   const [gradeLevels, setGradeLevels] = useState([]);
+  const [sections,    setSections]    = useState([]);
   const [summary,     setSummary]     = useState({ total: 0, present: 0, absent: 0, tardy: 0, excused: 0 }); // recorded tallies
   const [histPage,    setHistPage]    = useState(1);                          // History table page number
   const [loading,     setLoading]     = useState(false);                      // true while a day is loading
@@ -230,6 +232,7 @@ export default function Attendance() {
           max: d.attendanceBounds?.endDate ?? toDateStr(today),
         });
         setGradeLevels(d.gradeLevels ?? []);
+        setSections(d.sections ?? []);
         setSummary(d.summary ?? { total: 0, present: 0, absent: 0, tardy: 0, excused: 0 });
         // Seed the editable `log` from saved statuses (DB value > button key).
         const newLog = {};
@@ -245,6 +248,8 @@ export default function Attendance() {
       })
       .catch((error) => {                                 // expose API/schema failures instead of looking like an empty roster
         setStudents([]);
+        setGradeLevels([]);
+        setSections([]);
         setLog({});
         setSummary({ total: 0, present: 0, absent: 0, tardy: 0, excused: 0 });
         setSubmitError(error.response?.data?.message ?? error.message ?? "Failed to load attendance records.");
@@ -322,6 +327,9 @@ export default function Attendance() {
     const rangeEnd = report.attendanceBounds?.endDate ?? todayValue;
     const rangeLabel = `${formatShort(new Date(`${rangeStart}T00:00:00`))} – ${formatShort(new Date(`${rangeEnd}T00:00:00`))}`;
     const reportGradeLabel = report.gradeLevels?.length ? report.gradeLevels.join(", ") : gradeLabel;
+    const reportSectionLabel = report.sections?.length
+      ? report.sections.map(sectionLabel).join(", ")
+      : "No sections assigned";
     const cumulativeSummary = report.summary ?? { total: 0, days: 0, present: 0, absent: 0, tardy: 0, excused: 0 };
     const quarterSections = buildQuarterAttendanceSections(report);
     const quarterTables = quarterSections.map((section) => {
@@ -387,6 +395,7 @@ export default function Attendance() {
               <h1>Attendance Report</h1>
               <p class="school">Lifegiver Christian Academy</p>
               <p class="meta">${escapeHtml(reportGradeLabel)} &bull; ${escapeHtml(rangeLabel)}</p>
+              <p class="meta">Sections handled: ${escapeHtml(reportSectionLabel)}</p>
             </div>
             <div class="prepared">
               <strong>Attendance Records History</strong><br />
@@ -442,7 +451,10 @@ export default function Attendance() {
       }).join("");
       return `<h3>Quarter ${section.quarter}</h3><table border="1"><thead><tr><th rowspan="2">Student ID</th><th rowspan="2">Student Name</th><th rowspan="2">Grade</th>${monthHeaders}<th rowspan="2">Total Present</th></tr><tr>${statusHeaders}</tr></thead><tbody>${rows}</tbody></table><br>`;
     }).join("");
-    const html = `<h2>Attendance Report</h2><p>Lifegiver Christian Academy<br>School Year: ${esc(schoolYearLabel)}<br>Date Range: ${esc(rangeStart)} to ${esc(rangeEnd)}</p>${quarterTables}`;
+    const exportSectionLabel = report.sections?.length
+      ? report.sections.map(sectionLabel).join(", ")
+      : "No sections assigned";
+    const html = `<h2>Attendance Report</h2><p>Lifegiver Christian Academy<br>School Year: ${esc(schoolYearLabel)}<br>Date Range: ${esc(rangeStart)} to ${esc(rangeEnd)}<br>Sections handled: ${esc(exportSectionLabel)}</p>${quarterTables}`;
     const blob = new Blob([`\uFEFF<html><head><meta charset="utf-8"></head><body>${html}</body></html>`], {
       type: "application/vnd.ms-excel",
     });
@@ -529,9 +541,17 @@ export default function Attendance() {
             <h2 className="font-headline text-4xl font-extrabold tracking-tight text-primary uppercase">
               Attendance Records
             </h2>
-            <p className="text-on-surface-variant mt-1 text-2xl font-extrabold uppercase">
-              {gradeLabel}
-            </p>
+           
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold uppercase tracking-wide text-on-surface-variant">Sections handled:</span>
+              {sections.length ? sections.map((section) => (
+                <span key={section.sectionId} className="rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-sm font-semibold text-primary">
+                  {sectionLabel(section)}
+                </span>
+              )) : (
+                <span className="text-sm text-on-surface-variant">No sections assigned</span>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {/* Today / History toggle */}

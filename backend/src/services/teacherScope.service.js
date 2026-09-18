@@ -12,7 +12,7 @@ export const getTeacherScopeById = async (teacher_id, sy_id = null) => {
     if (error) throw new Error(error.message);
     yearId = year?.sy_id ?? null;
   }
-  if (!yearId) return { gradeLevels: [], glIds: [], sectionIds: [], studentIds: [] };
+  if (!yearId) return { gradeLevels: [], sections: [], glIds: [], sectionIds: [], studentIds: [] };
 
   const { data: grades, error: gradeError } = await supabaseAdmin.from("grade_level")
     .select("gl_id, level_name, sy_id, teacher_id")
@@ -21,7 +21,7 @@ export const getTeacherScopeById = async (teacher_id, sy_id = null) => {
   const allGradeIds = (grades ?? []).map((grade) => grade.gl_id);
   const { data: sectionRows, error: sectionError } = allGradeIds.length
     ? await supabaseAdmin.from("grade_section")
-        .select("section_id, gl_id, teacher_id")
+        .select("section_id, gl_id, name, teacher_id")
         .in("gl_id", allGradeIds).eq("teacher_id", Number(teacher_id))
     : { data: [], error: null };
   if (sectionError && !isSectionSchemaUnavailable(sectionError)) throw new Error(sectionError.message);
@@ -42,6 +42,7 @@ export const getTeacherScopeById = async (teacher_id, sy_id = null) => {
   const { glIds, sectionIds, studentIds } = collectTeacherScope(grades ?? [], studentError ? [] : sections ?? [], studentError ? legacyStudents.data ?? [] : studentRows ?? [], teacher_id);
   return {
     gradeLevels: (grades ?? []).filter((grade) => glIds.includes(grade.gl_id)),
+    sections: sections ?? [],
     glIds,
     sectionIds,
     studentIds,

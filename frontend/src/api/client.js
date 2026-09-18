@@ -2,6 +2,18 @@ const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000/api";
 
 const getToken = () => localStorage.getItem("lca_token");
 
+export const notifySessionClosing = () => {
+  const token = getToken();
+  if (!token) return;
+  // Keepalive gives a tab-close request a chance to reach the server. The live
+  // event stream closing provides a second signal if this request is dropped.
+  fetch(`${BASE_URL}/auth/session-closing`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    keepalive: true,
+  }).catch(() => {});
+};
+
 export const watchSessionEvents = async ({ signal, onSessionReplaced }) => {
   const token = getToken();
   if (!token) return;
@@ -19,11 +31,13 @@ export const watchSessionEvents = async ({ signal, onSessionReplaced }) => {
       // The default message is enough to end an invalid local session.
     }
 
+    // A newer request or login may have replaced this token already. Only the
+    // request that still owns the local session may end it or raise a notice.
+    if (getToken() !== token) return;
     localStorage.removeItem("lca_token");
     localStorage.removeItem("lca_user");
     const replacedByAnotherDevice = /signed in on another device/i.test(message);
     if (replacedByAnotherDevice) {
-      sessionStorage.setItem("lca_session_message", message);
       onSessionReplaced(message);
     } else {
       window.dispatchEvent(new CustomEvent("lca:session-ended"));
@@ -56,7 +70,7 @@ export const watchSessionEvents = async ({ signal, onSessionReplaced }) => {
             // Keep the safe default message when an event payload is malformed.
           }
         }
-        onSessionReplaced(message);
+        if (getToken() === token) onSessionReplaced(message);
         return;
       }
 
@@ -97,13 +111,10 @@ const request = async (endpoint, options = {}) => {
     // Any rejected authenticated token is no longer usable. Clear it centrally
     // so every page reacts consistently, including a session replaced by a login
     // from another device.
-    if (response.status === 401 && token) {
+    if (response.status === 401 && token && getToken() === token) {
       localStorage.removeItem("lca_token");
       localStorage.removeItem("lca_user");
       const replacedByAnotherDevice = /signed in on another device/i.test(message);
-      if (replacedByAnotherDevice) {
-        sessionStorage.setItem("lca_session_message", message);
-      }
       window.dispatchEvent(new CustomEvent("lca:session-ended", {
         detail: { message, replacedByAnotherDevice },
       }));

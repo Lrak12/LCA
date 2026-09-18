@@ -7,8 +7,11 @@ import { writeAudit } from "../services/audit.service.js";
 import * as SessionEvents from "../services/sessionEvents.service.js";
 
 export const login = asyncHandler(async (req, res) => {
-  const { id_number, password } = req.body;
-  const { data, role, username, user_id, id_number: idNum, first_name, last_name } = await AuthService.login(id_number, password);
+  const { id_number, password, device_id } = req.body;
+  const previousToken = req.headers.authorization?.startsWith("Bearer ")
+    ? req.headers.authorization.slice(7)
+    : null;
+  const { data, role, username, user_id, id_number: idNum, first_name, last_name } = await AuthService.login(id_number, password, device_id, previousToken);
 
   await writeAudit({
     user_id,
@@ -92,6 +95,11 @@ export const sessionEvents = (req, res) => {
   SessionEvents.subscribe(req.user.user_id, req, res);
 };
 
+export const sessionClosing = (req, res) => {
+  SessionEvents.scheduleSessionRelease(req.user.user_id, req.headers.authorization?.slice(7));
+  res.status(204).end();
+};
+
 const ROLE_PROFILE = {
   student:       { table: "student",       pk: "student_id"   },
   parent:        { table: "parent",        pk: "parent_id"    },
@@ -101,6 +109,7 @@ const ROLE_PROFILE = {
 };
 
 export const me = asyncHandler(async (req, res) => {
+  SessionEvents.keepSessionAlive(req.user.user_id, req.headers.authorization?.slice(7));
   const cfg = ROLE_PROFILE[req.user.role];
   if (cfg) {
     const { data: profile } = await supabaseAdmin

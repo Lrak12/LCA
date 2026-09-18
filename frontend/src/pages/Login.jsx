@@ -29,18 +29,14 @@ const ROLE_DASHBOARDS = {
 };
 
 export default function Login() {
-  const { user, logout, login } = useAuth();
+  const { user, loading: restoringSession, login } = useAuth();
   const navigate  = useNavigate();
 
-  // If someone reaches this page while a session is still active — most commonly
-  // by pressing the browser Back button after signing in — end that session
-  // automatically. Landing on /login always means "sign in fresh".
-  // Mount-only (empty deps) on purpose: a normal sign-in sets `user` a moment
-  // before we navigate away, and we must NOT log that in-progress login back out.
+  // A closed tab does not log out. Resume its saved session when the site opens
+  // at /login instead of asking for another login while that session is active.
   useEffect(() => {
-    if (user) logout();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (!restoringSession && user) navigate(ROLE_DASHBOARDS[user.role] ?? "/login", { replace: true });
+  }, [restoringSession, user, navigate]);
 
   const [idNumber, setIdNumber]         = useState("");
   const [password, setPassword]         = useState("");
@@ -51,6 +47,7 @@ export default function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (restoringSession) return;
     setError("");
     setLoading(true);
     try {
@@ -190,10 +187,10 @@ export default function Login() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || restoringSession}
               className="w-full py-4 bg-gradient-to-br from-primary to-primary-container text-white font-headline font-bold rounded-lg shadow-sm active:scale-[0.98] transition-all hover:shadow-lg hover:shadow-primary/10 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {loading ? "Signing in…" : "Sign In"}
+              {restoringSession ? "Checking session…" : loading ? "Signing in…" : "Sign In"}
             </button>
           </form>
 

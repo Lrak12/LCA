@@ -258,7 +258,6 @@ export default function ReturningStudentPlacement() {
                   <Info label="School Year" value={selected.schoolYear} />
                   <Info label="Status" value={<span className="inline-block bg-green-100 text-green-700 text-[10px] font-extrabold tracking-widest uppercase px-2.5 py-1 rounded-full">{selected.status}</span>} />
                 </div>
-               
               </div>
             </div>
 

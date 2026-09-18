@@ -1,17 +1,18 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import { loginRequest, logoutRequest, getMeRequest } from "../api/auth.js";
-import { watchSessionEvents } from "../api/client.js";
+import { notifySessionClosing, watchSessionEvents } from "../api/client.js";
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser]       = useState(null);
   const [loading, setLoading] = useState(true);
-  const [sessionNotice, setSessionNotice] = useState(
-    () => sessionStorage.getItem("lca_session_message") ?? ""
-  );
+  const [sessionNotice, setSessionNotice] = useState("");
 
   useEffect(() => {
+    // Older versions persisted this warning and replayed it on every visit.
+    // A replacement notice is only relevant when the current token fails.
+    sessionStorage.removeItem("lca_session_message");
     const restoreSession = async () => {
       const token = localStorage.getItem("lca_token");
       if (!token) {
@@ -20,11 +21,17 @@ export function AuthProvider({ children }) {
       }
       try {
         const res = await getMeRequest();
-        setUser(res.data);
-      } catch {
-        localStorage.removeItem("lca_token");
-        localStorage.removeItem("lca_user");
-        setUser(null);
+        if (localStorage.getItem("lca_token") === token) setUser(res.data);
+      } catch (error) {
+        if (localStorage.getItem("lca_token") === token) {
+          // Keep the token through temporary network/server failures. Clearing
+          // a valid token here would leave its server-side session locked.
+          if (error.status === 401) {
+            localStorage.removeItem("lca_token");
+            localStorage.removeItem("lca_user");
+          }
+          setUser(null);
+        }
       } finally {
         setLoading(false);
       }
@@ -49,6 +56,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (!user) return undefined;
 
+    window.addEventListener("pagehide", notifySessionClosing);
     const controller = new AbortController();
     let stopped = false;
 
@@ -60,7 +68,6 @@ export function AuthProvider({ children }) {
             onSessionReplaced: (message) => {
               localStorage.removeItem("lca_token");
               localStorage.removeItem("lca_user");
-              sessionStorage.setItem("lca_session_message", message);
               setSessionNotice(message);
               setUser(null);
             },
@@ -77,6 +84,7 @@ export function AuthProvider({ children }) {
     connect();
 
     return () => {
+      window.removeEventListener("pagehide", notifySessionClosing);
       stopped = true;
       controller.abort();
     };
@@ -88,6 +96,7 @@ export function AuthProvider({ children }) {
     localStorage.setItem("lca_token", res.data.access_token);
     localStorage.setItem("lca_user", JSON.stringify(res.data.user));
 
+    setSessionNotice("");
     setUser(res.data.user);
     return res.data.user;
   };
@@ -100,6 +109,7 @@ export function AuthProvider({ children }) {
     } finally {
       localStorage.removeItem("lca_token");
       localStorage.removeItem("lca_user");
+      setSessionNotice("");
       setUser(null);
     }
   };

@@ -22,6 +22,16 @@ const scopedStudentIds = async (teacher_id, sy_id = null) => {
   return ids.length ? ids : [-1];
 };
 
+const attendanceSections = (scope) => {
+  const gradeNames = new Map(scope.gradeLevels.map((grade) => [grade.gl_id, grade.level_name]));
+  return scope.sections.map((section) => ({
+    sectionId: section.section_id,
+    gradeLevel: gradeNames.get(section.gl_id) ?? "—",
+    name: section.name,
+  })).sort((a, b) => a.gradeLevel.localeCompare(b.gradeLevel, undefined, { numeric: true })
+    || a.name.localeCompare(b.name, undefined, { numeric: true }));
+};
+
 // student_pace has no sy_id column. Its school year is inherited from
 // student_pace.module_id -> pace_module.gl_id -> grade_level.sy_id. Resolve the
 // active grade's module ids once and use them to prevent prior-year execution
@@ -555,21 +565,22 @@ export const getAttendance = async (user_id, date) => {
     .eq("user_id", user_id)
     .maybeSingle();
   if (tErr) throw new Error(tErr.message);
-  if (!teacher) return { date, students: [], summary: { total: 0, present: 0, absent: 0, tardy: 0 }, attendanceBounds }; // no profile > empty day
+  if (!teacher) return { date, students: [], summary: { total: 0, present: 0, absent: 0, tardy: 0 }, gradeLevels: [], sections: [], attendanceBounds }; // no profile > empty day
 
   // The grade level(s) this teacher owns (their class).
-  const { data: gradeLevels } = await findTeacherGradeLevelsForSchoolYear(teacher.teacher_id, "gl_id, level_name");
+  const scope = await getTeacherScopeById(teacher.teacher_id);
+  const gradeLevels = scope.gradeLevels;
 
   const glIds = (gradeLevels ?? []).map((g) => g.gl_id);
   const emptySummary = { total: 0, present: 0, absent: 0, tardy: 0, excused: 0 };
-  if (!glIds.length) return { date, students: [], summary: emptySummary, gradeLevels: [], attendanceBounds }; // no class assigned > empty
+  if (!glIds.length) return { date, students: [], summary: emptySummary, gradeLevels: [], sections: [], attendanceBounds }; // no class assigned > empty
 
   // All students in those grade levels (alphabetical by last name).
   const { data: students, error: sErr } = await supabaseAdmin
     .from("student")
     .select("student_id, first_name, last_name, gl_id, grade_level!student_gl_id_fkey(level_name)")
     .in("gl_id", glIds)
-    .in("student_id", await scopedStudentIds(teacher.teacher_id))
+    .in("student_id", scope.studentIds.length ? scope.studentIds : [-1])
     .order("last_name", { ascending: true });
   if (sErr) throw new Error(sErr.message);
 
@@ -616,6 +627,7 @@ export const getAttendance = async (user_id, date) => {
     students: rows,
     summary: { total: rows.length, ...credits },
     gradeLevels: (gradeLevels ?? []).map((g) => g.level_name),
+    sections: attendanceSections(scope),
     attendanceBounds,
   };
 };
@@ -639,26 +651,23 @@ export const getAttendanceHistory = async (user_id) => {
     .maybeSingle();
   if (teacherError) throw new Error(teacherError.message);
   if (!teacher) {
-    return { students: [], records: [], summary: { total: 0, days: 0, present: 0, absent: 0, tardy: 0, excused: 0 }, gradeLevels: [], attendanceBounds };
+    return { students: [], records: [], summary: { total: 0, days: 0, present: 0, absent: 0, tardy: 0, excused: 0 }, gradeLevels: [], sections: [], attendanceBounds };
   }
 
-  const { data: gradeLevels, error: gradeError } = await findTeacherGradeLevelsForSchoolYear(
-    teacher.teacher_id,
-    "gl_id, level_name",
-  );
-  if (gradeError) throw new Error(gradeError.message);
+  const scope = await getTeacherScopeById(teacher.teacher_id);
+  const gradeLevels = scope.gradeLevels;
 
   const glIds = (gradeLevels ?? []).map((grade) => grade.gl_id);
   const emptySummary = { total: 0, days: 0, present: 0, absent: 0, tardy: 0, excused: 0 };
   if (!glIds.length) {
-    return { records: [], summary: emptySummary, gradeLevels: [], attendanceBounds };
+    return { students: [], records: [], summary: emptySummary, gradeLevels: [], sections: [], attendanceBounds };
   }
 
   const { data: students, error: studentError } = await supabaseAdmin
     .from("student")
     .select("student_id, first_name, last_name, gl_id, grade_level!student_gl_id_fkey(level_name)")
     .in("gl_id", glIds)
-    .in("student_id", await scopedStudentIds(teacher.teacher_id));
+    .in("student_id", scope.studentIds.length ? scope.studentIds : [-1]);
   if (studentError) throw new Error(studentError.message);
 
   const studentMap = new Map((students ?? []).map((student) => [student.student_id, student]));
@@ -674,6 +683,7 @@ export const getAttendanceHistory = async (user_id) => {
       records: [],
       summary: emptySummary,
       gradeLevels: (gradeLevels ?? []).map((grade) => grade.level_name),
+      sections: attendanceSections(scope),
       attendanceBounds,
     };
   }
@@ -716,6 +726,7 @@ export const getAttendanceHistory = async (user_id) => {
     records,
     summary,
     gradeLevels: (gradeLevels ?? []).map((grade) => grade.level_name),
+    sections: attendanceSections(scope),
     attendanceBounds,
   };
 };

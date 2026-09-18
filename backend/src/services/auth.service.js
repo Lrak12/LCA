@@ -1,7 +1,12 @@
 import { supabase, supabaseAdmin } from "../config/supabase.js";
+import { isActiveSessionConflict } from "../helpers/activeSession.js";
+import { randomUUID } from "node:crypto";
 
 const ACTIVE_SESSION_KEY = "active_session_id";
 const ACTIVE_SESSION_EXPIRES_KEY = "active_session_expires_at";
+const ACTIVE_DEVICE_KEY = "active_device_id";
+const ENDED_SESSION_REASON_KEY = "active_session_ended_reason";
+const CLOSED_PAGE_RECHECK_MS = 7000;
 const loginLocks = new Map();
 
 const withLoginLock = async (authId, action) => {
@@ -82,7 +87,7 @@ export const findUserBySchoolId = async (school_id) => {
   };
 };
 
-export const login = async (school_id, password) => {
+export const login = async (school_id, password, device_id = null, previousToken = null) => {
   const profile = await findUserBySchoolId(school_id);
 
   if (!profile) {
@@ -110,6 +115,9 @@ export const login = async (school_id, password) => {
   const claims = getTokenClaims(accessToken);
   const sessionId = claims?.session_id;
   const expiresAt = Number(claims?.exp);
+  const deviceId = typeof device_id === "string" && /^[0-9a-f]{32}$/i.test(device_id)
+    ? device_id.toLowerCase()
+    : null;
   if (!accessToken || !sessionId || !Number.isFinite(expiresAt) || !data.user?.id) {
     throw new Error("Unable to establish a secure session. Please try again.");
   }
@@ -123,12 +131,34 @@ export const login = async (school_id, password) => {
       throw new Error("Unable to establish a secure session. Please try again.");
     }
 
-    const currentMetadata = currentUser.user.app_metadata ?? {};
-    const activeSessionId = currentMetadata[ACTIVE_SESSION_KEY];
-    const activeExpiresAt = Number(currentMetadata[ACTIVE_SESSION_EXPIRES_KEY]);
-    if (activeSessionId && activeSessionId !== sessionId && activeExpiresAt > Date.now() / 1000) {
+    let currentMetadata = currentUser.user.app_metadata ?? {};
+    const previousClaims = getTokenClaims(previousToken);
+    let ownsPreviousSession = false;
+    if (previousClaims?.sub === data.user.id && previousClaims?.session_id === currentMetadata[ACTIVE_SESSION_KEY]) {
+      const { data: previousUser, error: previousError } = await supabaseAdmin.auth.getUser(previousToken);
+      ownsPreviousSession = !previousError && previousUser?.user?.id === data.user.id;
+    }
+    const conflicts = () => isActiveSessionConflict({
+      activeSessionId: currentMetadata[ACTIVE_SESSION_KEY],
+      activeExpiresAt: currentMetadata[ACTIVE_SESSION_EXPIRES_KEY],
+      newSessionId: sessionId,
+      sameBrowser: Boolean(deviceId && currentMetadata[ACTIVE_DEVICE_KEY] === deviceId),
+      ownsPreviousSession,
+    });
+    if (conflicts()) {
+      // Closing a page releases its session after a short reload-safe grace
+      // period. Recheck once so a new desktop's first login can succeed.
+      await new Promise((resolve) => setTimeout(resolve, CLOSED_PAGE_RECHECK_MS));
+      const { data: latestUser, error: refreshError } = await supabaseAdmin.auth.admin.getUserById(data.user.id);
+      if (refreshError || !latestUser?.user) {
+        await supabaseAdmin.auth.admin.signOut(accessToken, "local");
+        throw new Error("Unable to establish a secure session. Please try again.");
+      }
+      currentMetadata = latestUser.user.app_metadata ?? {};
+    }
+    if (conflicts()) {
       await supabaseAdmin.auth.admin.signOut(accessToken, "local");
-      const conflict = new Error("This account is already logged in on another device. Please log out there first.");
+      const conflict = new Error("This account is already active in another browser or device. Please log out there or wait for that session to expire.");
       conflict.statusCode = 409;
       throw conflict;
     }
@@ -137,6 +167,8 @@ export const login = async (school_id, password) => {
       ...currentMetadata,
       [ACTIVE_SESSION_KEY]: sessionId,
       [ACTIVE_SESSION_EXPIRES_KEY]: expiresAt,
+      [ACTIVE_DEVICE_KEY]: deviceId,
+      [ENDED_SESSION_REASON_KEY]: null,
     };
     const { error: metadataError } = await supabaseAdmin.auth.admin.updateUserById(
       data.user.id,
@@ -206,12 +238,18 @@ export const logout = async (token) => {
     const { data } = await supabaseAdmin.auth.admin.getUserById(claims.sub);
     const currentMetadata = data?.user?.app_metadata ?? {};
 
-    // Clear the marker only when this is still the newest session. This avoids
-    // a delayed logout request from an older device clearing the new login.
+    // Replace the marker rather than removing it. Supabase access JWTs remain
+    // usable until expiration even after refresh-token revocation, so a missing
+    // marker would accidentally let the old JWT through as a legacy session.
+    // Never replace a newer login's marker from an older device.
     if (currentMetadata[ACTIVE_SESSION_KEY] === claims.session_id) {
-      const appMetadata = { ...currentMetadata };
-      delete appMetadata[ACTIVE_SESSION_KEY];
-      delete appMetadata[ACTIVE_SESSION_EXPIRES_KEY];
+      const appMetadata = {
+        ...currentMetadata,
+        [ACTIVE_SESSION_KEY]: randomUUID(),
+        [ACTIVE_SESSION_EXPIRES_KEY]: 0,
+        [ACTIVE_DEVICE_KEY]: null,
+        [ENDED_SESSION_REASON_KEY]: "logout",
+      };
       const { error: metadataError } = await supabaseAdmin.auth.admin.updateUserById(
         claims.sub,
         { app_metadata: appMetadata }
