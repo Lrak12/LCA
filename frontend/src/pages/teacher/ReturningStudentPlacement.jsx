@@ -258,14 +258,7 @@ export default function ReturningStudentPlacement() {
                   <Info label="School Year" value={selected.schoolYear} />
                   <Info label="Status" value={<span className="inline-block bg-green-100 text-green-700 text-[10px] font-extrabold tracking-widest uppercase px-2.5 py-1 rounded-full">{selected.status}</span>} />
                 </div>
-                <button
-                  title="Editing student info is coming soon"
-                  className="flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl border border-gray-200 text-on-surface-variant hover:bg-gray-50 transition-colors shrink-0"
-                  onClick={() => {}}
-                >
-                  <span className="material-symbols-outlined text-base">edit</span>
-                  Edit Info
-                </button>
+               
               </div>
             </div>
 
