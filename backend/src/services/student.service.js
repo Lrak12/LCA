@@ -538,7 +538,7 @@ export const getStudentAnnouncements = async (user_id) => {
 
   const { data, error } = await supabaseAdmin
     .from("announcement")
-    .select("ann_id, title, content, posted_date, audience_role")
+    .select("ann_id, title, content, posted_date, audience_role, principal(first_name, last_name)")
     .eq("is_active", true)
     .or("audience_role.eq.All,audience_role.eq.Student")
     .gte("posted_date", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
@@ -579,6 +579,9 @@ export const getStudentAnnouncements = async (user_id) => {
       is_priority: isPriority,
       is_read: notification?.is_read ?? true,
       notification_id: notification?.notification_id ?? null,
+      posted_by: a.principal
+        ? `${a.principal.first_name ?? ""} ${a.principal.last_name ?? ""}`.trim()
+        : "",
       postedAt: formatDateTime(a.posted_date),
       };
     }).sort((a, b) => Number(b.is_priority) - Number(a.is_priority)),

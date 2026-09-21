@@ -44,15 +44,6 @@ const categoryStyles = {
   General: { bg: "bg-slate-100",  text: "text-slate-600"  },
 };
 
-const CategoryBadge = ({ category }) => {
-  const s = categoryStyles[category] ?? categoryStyles.General;
-  return (
-    <span className={`text-[9px] font-extrabold tracking-widest uppercase px-2.5 py-1 rounded-full shrink-0 ${s.bg} ${s.text}`}>
-      {category}
-    </span>
-  );
-};
-
 const PAGE_SIZE = 5;
 
 export default function Announcements() {
@@ -108,7 +99,8 @@ export default function Announcements() {
         <AnnouncementMessageModal
           announcement={selectedAnnouncement}
           date={selectedAnnouncement.postedAt}
-          audience={selectedAnnouncement.category}
+          audience="Principal"
+          postedBy={selectedAnnouncement.posted_by}
           onClose={closeAnnouncement}
         />
       )}
@@ -129,7 +121,7 @@ export default function Announcements() {
             </h2>
             <p className="text-on-surface-variant mt-1 max-w-lg">
               Stay informed with the latest school updates, reminders, and
-              important notices from your teachers and administrators.
+              important notices from the principal.
             </p>
           </div>
           <div className="flex items-center gap-2 bg-white border border-outline-variant/20 rounded-xl px-4 py-2.5 shadow-sm shrink-0">
@@ -156,11 +148,13 @@ export default function Announcements() {
           ) : (
             <>
               <div className="space-y-4">
-                {shown.map((ann) => (
+                {shown.map((ann) => {
+                  const style = categoryStyles[ann.category] ?? categoryStyles.General;
+                  return (
                   <article
                     key={ann.id}
                     id={`announcement-${ann.id}`}
-                    className={`rounded-2xl p-6 shadow-sm border hover:shadow-md transition-shadow ${
+                    className={`rounded-2xl p-6 shadow-sm border hover:shadow-md transition-shadow flex gap-4 ${
                       ann.id === selectedAnnouncementId
                         ? "border-primary bg-white ring-2 ring-primary/20"
                         : ann.is_read
@@ -168,28 +162,37 @@ export default function Announcements() {
                           : "border-primary/40 bg-primary/[0.035]"
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-4 mb-2">
-                      <div>
-                        <h4 className="text-base font-extrabold text-on-surface leading-tight">{ann.title}</h4>
-                        <p className="text-[11px] text-on-surface-variant mt-0.5">{ann.postedAt}</p>
-                      </div>
-                      <div className="flex flex-wrap items-center justify-end gap-2">
-                        <span className={`inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-widest ${ann.is_read ? "text-on-surface-variant" : "text-primary"}`}>
-                          <span className={`h-2 w-2 rounded-full ${ann.is_read ? "bg-outline-variant" : "bg-primary"}`} />
-                          {ann.is_read ? "Read" : "Unread"}
-                        </span>
-                        <CategoryBadge category={ann.category} />
-                      </div>
+                    <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${style.bg} ${style.text}`}>
+                      <span className="material-symbols-outlined text-xl" style={fillStyle}>{ann.is_priority ? "push_pin" : "campaign"}</span>
                     </div>
-                    <p className="text-sm text-on-surface-variant leading-relaxed mt-3 break-words">
-                      {announcementPreview(ann.content)}
-                    </p>
-                    <button type="button" onClick={() => openAnnouncement(ann.id)} className="mt-3 inline-flex items-center gap-1 rounded-lg px-2 py-1 -ml-2 text-sm font-bold text-primary hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-primary">
-                      View full message
-                      <span className="material-symbols-outlined text-base">arrow_forward</span>
-                    </button>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`text-[9px] font-extrabold tracking-widest uppercase px-2.5 py-1 rounded-full ${style.bg} ${style.text}`}>
+                            {ann.is_priority ? "Priority · Principal" : "Principal"}
+                          </span>
+                          <span className={`inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-widest ${ann.is_read ? "text-on-surface-variant" : "text-primary"}`}>
+                            <span className={`h-2 w-2 rounded-full ${ann.is_read ? "bg-outline-variant" : "bg-primary"}`} />
+                            {ann.is_read ? "Read" : "Unread"}
+                          </span>
+                        </div>
+                        <span className="shrink-0 whitespace-nowrap text-[11px] text-on-surface-variant">{ann.postedAt}</span>
+                      </div>
+                      <p className="mt-3 text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant">Subject</p>
+                      <h4 className="mt-1 text-base font-extrabold text-on-surface leading-tight">{ann.title}</h4>
+                      <p className="mt-3 text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant">Message</p>
+                      <p className="mt-1 text-sm text-on-surface-variant leading-relaxed break-words">
+                        {announcementPreview(ann.content)}
+                      </p>
+                      <button type="button" onClick={() => openAnnouncement(ann.id)} className="mt-3 inline-flex items-center gap-1 rounded-lg px-2 py-1 -ml-2 text-sm font-bold text-primary hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-primary">
+                        View full message
+                        <span className="material-symbols-outlined text-base">arrow_forward</span>
+                      </button>
+                      {ann.posted_by && <p className="mt-2 text-[11px] text-on-surface-variant">Posted by {ann.posted_by}</p>}
+                    </div>
                   </article>
-                ))}
+                  );
+                })}
               </div>
 
               {hasMore && (
