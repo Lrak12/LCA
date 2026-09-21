@@ -4,6 +4,7 @@ import TeacherLayout from "../../components/TeacherLayout.jsx";
 import AnnouncementMessageModal from "../../components/AnnouncementMessageModal.jsx";
 import { announcementPreview } from "../../utils/announcementPreview.js";
 import { fetchAnnouncements } from "../../api/announcements.js";
+import { markNotificationRead } from "../../api/notifications.js";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
@@ -20,10 +21,10 @@ const formatDate = (iso) => {
 
 // audience_role → badge style + icon (no category column exists in the schema)
 const audienceStyles = {
-  All:     { bg: "bg-blue-100",   text: "text-blue-700",   icon: "campaign" },
-  Teacher: { bg: "bg-amber-100",  text: "text-amber-700",  icon: "groups"   },
-  Student: { bg: "bg-purple-100", text: "text-purple-700", icon: "school"   },
-  Parent:  { bg: "bg-green-100",  text: "text-green-700",  icon: "diversity_3" },
+  All:     { bg: "bg-blue-100",   text: "text-blue-700"   },
+  Teacher: { bg: "bg-amber-100",  text: "text-amber-700"  },
+  Student: { bg: "bg-purple-100", text: "text-purple-700" },
+  Parent:  { bg: "bg-green-100",  text: "text-green-700"  },
 };
 
 const PAGE_SIZE = 5;
@@ -59,6 +60,7 @@ export default function Announcements() {
   const sorted = useMemo(() => {
     const list = [...items];
     list.sort((a, b) => {
+      if (Boolean(a.is_priority) !== Boolean(b.is_priority)) return a.is_priority ? -1 : 1;
       const da = new Date(a.posted_date).getTime() || 0;
       const db = new Date(b.posted_date).getTime() || 0;
       return sort === "recent" ? db - da : da - db;
@@ -72,6 +74,11 @@ export default function Announcements() {
   const hasMore = shown.length < sorted.length;
 
   const openAnnouncement = (id) => {
+    const announcement = items.find((item) => item.ann_id === id);
+    if (announcement && !announcement.is_read && announcement.notification_id) {
+      setItems((current) => current.map((item) => item.ann_id === id ? { ...item, is_read: true } : item));
+      markNotificationRead(announcement.notification_id).catch(() => { /* optimistic read state */ });
+    }
     const next = new URLSearchParams(searchParams);
     next.set("announcement", String(id));
     setSearchParams(next);
@@ -89,7 +96,7 @@ export default function Announcements() {
         <AnnouncementMessageModal
           announcement={selectedAnnouncement}
           date={formatDate(selectedAnnouncement.posted_date)}
-          audience={selectedAnnouncement.audience_role}
+          audience="Principal"
           postedBy={selectedAnnouncement.principal ? `${selectedAnnouncement.principal.first_name ?? ""} ${selectedAnnouncement.principal.last_name ?? ""}`.trim() : ""}
           onClose={closeAnnouncement}
         />
@@ -154,20 +161,34 @@ export default function Announcements() {
                   <article
                     key={ann.ann_id}
                     id={`announcement-${ann.ann_id}`}
-                    className={`bg-white rounded-2xl p-6 shadow-sm border hover:shadow-md transition-shadow flex gap-4 ${ann.ann_id === selectedAnnouncementId ? "border-primary ring-2 ring-primary/20" : "border-outline-variant/20"}`}
+                    className={`rounded-2xl p-6 shadow-sm border hover:shadow-md transition-shadow flex gap-4 ${
+                      ann.ann_id === selectedAnnouncementId
+                        ? "border-primary bg-white ring-2 ring-primary/20"
+                        : ann.is_read
+                          ? "border-outline-variant/20 bg-white"
+                          : "border-primary/40 bg-primary/[0.035]"
+                    }`}
                   >
                     <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${s.bg} ${s.text}`}>
-                      <span className="material-symbols-outlined text-xl" style={fillStyle}>{s.icon}</span>
+                      <span className="material-symbols-outlined text-xl" style={fillStyle}>{ann.is_priority ? "push_pin" : "campaign"}</span>
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-4">
-                        <span className={`text-[9px] font-extrabold tracking-widest uppercase px-2.5 py-1 rounded-full ${s.bg} ${s.text}`}>
-                          {ann.audience_role ?? "All"}
-                        </span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`text-[9px] font-extrabold tracking-widest uppercase px-2.5 py-1 rounded-full ${s.bg} ${s.text}`}>
+                            {ann.is_priority ? "Priority · Principal" : "Principal"}
+                          </span>
+                          <span className={`inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-widest ${ann.is_read ? "text-on-surface-variant" : "text-primary"}`}>
+                            <span className={`h-2 w-2 rounded-full ${ann.is_read ? "bg-outline-variant" : "bg-primary"}`} />
+                            {ann.is_read ? "Read" : "Unread"}
+                          </span>
+                        </div>
                         <span className="text-[11px] text-on-surface-variant whitespace-nowrap shrink-0">{formatDate(ann.posted_date)}</span>
                       </div>
-                      <h4 className="text-base font-extrabold text-on-surface leading-tight mt-2">{ann.title}</h4>
-                      <p className="text-sm text-on-surface-variant leading-relaxed mt-1.5 break-words">{announcementPreview(ann.content)}</p>
+                      <p className="mt-3 text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant">Subject</p>
+                      <h4 className="mt-1 text-base font-extrabold text-on-surface leading-tight">{ann.title}</h4>
+                      <p className="mt-3 text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant">Message</p>
+                      <p className="text-sm text-on-surface-variant leading-relaxed mt-1 break-words">{announcementPreview(ann.content)}</p>
                       <button type="button" onClick={() => openAnnouncement(ann.ann_id)} className="mt-3 inline-flex items-center gap-1 rounded-lg px-2 py-1 -ml-2 text-sm font-bold text-primary hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-primary">
                         View full message
                         <span className="material-symbols-outlined text-base">arrow_forward</span>

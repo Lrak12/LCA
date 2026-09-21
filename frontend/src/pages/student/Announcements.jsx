@@ -16,6 +16,7 @@ import StudentLayout from "../../components/StudentLayout.jsx";
 import AnnouncementMessageModal from "../../components/AnnouncementMessageModal.jsx";
 import { announcementPreview } from "../../utils/announcementPreview.js";
 import { fetchStudentAnnouncements } from "../../api/student.js";
+import { markNotificationRead } from "../../api/notifications.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
 
@@ -82,6 +83,14 @@ export default function Announcements() {
   const hasMore  = shown.length < announcements.length;
 
   const openAnnouncement = (id) => {
+    const announcement = announcements.find((item) => item.id === id);
+    if (announcement && !announcement.is_read && announcement.notification_id) {
+      setData((current) => current ? {
+        ...current,
+        announcements: (current.announcements ?? []).map((item) => item.id === id ? { ...item, is_read: true } : item),
+      } : current);
+      markNotificationRead(announcement.notification_id).catch(() => { /* optimistic read state */ });
+    }
     const next = new URLSearchParams(searchParams);
     next.set("announcement", String(id));
     setSearchParams(next);
@@ -151,14 +160,26 @@ export default function Announcements() {
                   <article
                     key={ann.id}
                     id={`announcement-${ann.id}`}
-                    className={`bg-white rounded-2xl p-6 shadow-sm border hover:shadow-md transition-shadow ${ann.id === selectedAnnouncementId ? "border-primary ring-2 ring-primary/20" : "border-outline-variant/20"}`}
+                    className={`rounded-2xl p-6 shadow-sm border hover:shadow-md transition-shadow ${
+                      ann.id === selectedAnnouncementId
+                        ? "border-primary bg-white ring-2 ring-primary/20"
+                        : ann.is_read
+                          ? "border-outline-variant/20 bg-white"
+                          : "border-primary/40 bg-primary/[0.035]"
+                    }`}
                   >
                     <div className="flex items-start justify-between gap-4 mb-2">
                       <div>
                         <h4 className="text-base font-extrabold text-on-surface leading-tight">{ann.title}</h4>
                         <p className="text-[11px] text-on-surface-variant mt-0.5">{ann.postedAt}</p>
                       </div>
-                      <CategoryBadge category={ann.category} />
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        <span className={`inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-widest ${ann.is_read ? "text-on-surface-variant" : "text-primary"}`}>
+                          <span className={`h-2 w-2 rounded-full ${ann.is_read ? "bg-outline-variant" : "bg-primary"}`} />
+                          {ann.is_read ? "Read" : "Unread"}
+                        </span>
+                        <CategoryBadge category={ann.category} />
+                      </div>
                     </div>
                     <p className="text-sm text-on-surface-variant leading-relaxed mt-3 break-words">
                       {announcementPreview(ann.content)}

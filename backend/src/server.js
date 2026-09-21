@@ -6,6 +6,7 @@ import morgan from "morgan";
 
 import { errorHandler, notFound } from "./middlewares/error.middleware.js";
 import router from "./routes/index.js";
+import { deleteExpiredAnnouncements } from "./services/announcement.service.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -33,5 +34,13 @@ app.use(errorHandler);
 
 app.listen(PORT, () => {
   console.log(`LCA server running on port ${PORT}`);
-  
+
+  const cleanExpiredAnnouncements = () => deleteExpiredAnnouncements()
+    .then((count) => {
+      if (count) console.log(`[announcements] removed ${count} expired announcement(s) and their notifications`);
+    })
+    .catch((error) => console.warn("[announcements] expiry cleanup failed:", error.message));
+  cleanExpiredAnnouncements();
+  const announcementCleanupTimer = setInterval(cleanExpiredAnnouncements, 60 * 60 * 1000);
+  announcementCleanupTimer.unref();
 });

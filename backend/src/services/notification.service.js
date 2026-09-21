@@ -34,3 +34,8 @@ export const createForUsers = async (userIds, { title, message_content }) => {
   const { error } = await NotificationModel.insertMany(rows);
   if (error) throw new Error(error.message);
 };
+
+export const deleteForAnnouncements = async (announcementIds) => {
+  const { error } = await NotificationModel.removeForAnnouncements(announcementIds);
+  if (error) throw new Error(error.message);
+};

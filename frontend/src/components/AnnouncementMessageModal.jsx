@@ -29,7 +29,8 @@ export default function AnnouncementMessageModal({ announcement, date, audience,
       <div role="dialog" aria-modal="true" aria-labelledby={titleId} className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b border-outline-variant/20 px-6 py-5">
           <div className="min-w-0">
-            <h2 id={titleId} className="font-headline text-xl font-extrabold text-primary break-words">{announcement.title}</h2>
+            <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant">Subject</p>
+            <h2 id={titleId} className="mt-1 font-headline text-xl font-extrabold text-primary break-words">{announcement.title}</h2>
             <p className="mt-1 text-xs text-on-surface-variant">
               {[date, audience, postedBy ? `Posted by ${postedBy}` : null].filter(Boolean).join(" · ")}
             </p>
@@ -38,8 +39,11 @@ export default function AnnouncementMessageModal({ announcement, date, audience,
             <span className="material-symbols-outlined">close</span>
           </button>
         </div>
-        <div className="overflow-y-auto px-6 py-6 text-sm leading-relaxed text-on-surface-variant whitespace-pre-wrap break-words">
-          {renderContent(announcement.content)}
+        <div className="overflow-y-auto px-6 py-6">
+          <p className="mb-2 text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant">Message</p>
+          <div className="text-sm leading-relaxed text-on-surface-variant whitespace-pre-wrap break-words">
+            {renderContent(announcement.content)}
+          </div>
         </div>
       </div>
     </div>

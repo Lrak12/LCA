@@ -33,3 +33,12 @@ export const markAllRead = (user_id) =>
 
 export const insertMany = (rows) =>
   supabaseAdmin.from(TABLE).insert(rows).select();
+
+export const removeForAnnouncements = (announcementIds) => {
+  const markers = (announcementIds ?? []).map((id) => `announcement:${id}`);
+  if (!markers.length) return Promise.resolve({ error: null });
+  return supabaseAdmin
+    .from(TABLE)
+    .delete()
+    .in("message_content", markers);
+};

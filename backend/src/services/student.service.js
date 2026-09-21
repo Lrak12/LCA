@@ -8,6 +8,7 @@ import { getEligibleUserIds, getSchoolYear, setAccountActive } from "./schoolYea
 import { addAttendanceCredits } from "../helpers/attendanceCredits.js";
 import { teacherOwnsStudent } from "./teacherScope.service.js";
 import { isSectionSchemaUnavailable } from "../helpers/sectionSchema.js";
+import { deleteExpiredAnnouncements } from "./announcement.service.js";
 
 // School wall-clock timezone. PACE test schedules are stored as real instants
 // anchored to the school offset (see teacher.service.js SCHOOL_TZ_OFFSET), so
@@ -528,6 +529,7 @@ export const changeStudentPassword = async (user_id, { currentPassword, newPassw
 };
 
 export const getStudentAnnouncements = async (user_id) => {
+  await deleteExpiredAnnouncements();
   const { data: student } = await supabaseAdmin
     .from("student")
     .select("first_name")
@@ -539,9 +541,21 @@ export const getStudentAnnouncements = async (user_id) => {
     .select("ann_id, title, content, posted_date, audience_role")
     .eq("is_active", true)
     .or("audience_role.eq.All,audience_role.eq.Student")
+    .gte("posted_date", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+    .lte("posted_date", new Date().toISOString())
     .order("posted_date", { ascending: false });
 
   if (error) throw new Error(error.message);
+
+  const announcementMarkers = (data ?? []).map((announcement) => `announcement:${announcement.ann_id}`);
+  const { data: announcementNotifications, error: notificationError } = announcementMarkers.length
+    ? await supabaseAdmin.from("notification")
+        .select("notification_id, message_content, is_read")
+        .eq("user_id", user_id)
+        .in("message_content", announcementMarkers)
+    : { data: [], error: null };
+  if (notificationError) console.warn("[student announcements] read-state lookup skipped:", notificationError.message);
+  const announcementReadState = new Map((announcementNotifications ?? []).map((row) => [row.message_content, row]));
 
   const formatDateTime = (raw) => {
     if (!raw) return "—";
@@ -553,13 +567,21 @@ export const getStudentAnnouncements = async (user_id) => {
 
   return {
     student:       { first_name: student?.first_name ?? null },
-    announcements: (data ?? []).map((a) => ({
+    announcements: (data ?? []).map((a) => {
+      const priorityMarker = "<!--LCA:PRIORITY-->";
+      const isPriority = String(a.content ?? "").startsWith(priorityMarker);
+      const notification = announcementReadState.get(`announcement:${a.ann_id}`);
+      return {
       id:       a.ann_id,
       title:    a.title,
-      content:  a.content ?? "",
+      content:  isPriority ? a.content.slice(priorityMarker.length) : a.content ?? "",
       category: a.audience_role ?? "General",
+      is_priority: isPriority,
+      is_read: notification?.is_read ?? true,
+      notification_id: notification?.notification_id ?? null,
       postedAt: formatDateTime(a.posted_date),
-    })),
+      };
+    }).sort((a, b) => Number(b.is_priority) - Number(a.is_priority)),
   };
 };
 

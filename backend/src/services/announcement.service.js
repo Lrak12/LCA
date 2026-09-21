@@ -27,21 +27,97 @@ const resolvePrincipalId = async (user_id) => {
   return data.principal_id;
 };
 
-export const getAnnouncements = async (role) => {
+const ANNOUNCEMENT_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
+const PRIORITY_MARKER = "<!--LCA:PRIORITY-->";
+const normalizeAnnouncement = (announcement) => {
+  if (!announcement) return announcement;
+  const markedPriority = String(announcement.content ?? "").startsWith(PRIORITY_MARKER);
+  return {
+    ...announcement,
+    is_priority: Boolean(announcement.is_priority) || markedPriority,
+    content: markedPriority ? announcement.content.slice(PRIORITY_MARKER.length) : announcement.content,
+  };
+};
+const storedContent = (content, isPriority) =>
+  `${isPriority ? PRIORITY_MARKER : ""}${String(content ?? "").replace(PRIORITY_MARKER, "")}`;
+const isExpired = (announcement, now = Date.now()) => {
+  if (!announcement?.posted_date) return false;
+  const postedAt = new Date(announcement.posted_date).getTime();
+  return Number.isFinite(postedAt) && postedAt + ANNOUNCEMENT_LIFETIME_MS <= now;
+};
+
+// Remove expired announcement notifications first, then the announcements. This
+// prevents bell entries from pointing to posts that no longer exist.
+export const deleteExpiredAnnouncements = async () => {
+  const cutoff = new Date(Date.now() - ANNOUNCEMENT_LIFETIME_MS).toISOString();
+  const { data, error } = await supabaseAdmin
+    .from("announcement")
+    .select("ann_id")
+    .eq("is_active", true)
+    .lte("posted_date", cutoff);
+  if (error) throw new Error(error.message);
+  const ids = (data ?? []).map((announcement) => announcement.ann_id);
+  if (!ids.length) return 0;
+
+  await NotificationService.deleteForAnnouncements(ids);
+  const { error: deleteError } = await AnnouncementModel.removeMany(ids);
+  if (deleteError) throw new Error(deleteError.message);
+  return ids.length;
+};
+
+export const getAnnouncements = async (role, user_id = null) => {
+  await deleteExpiredAnnouncements();
   const { data, error } = await AnnouncementModel.findAll(role);
   if (error) throw new Error(error.message);
-  return data;
+  const now = Date.now();
+  // Keep drafts available to the principal, but remove expired published posts
+  // for everyone. Sorting then promotes the next valid priority post.
+  const visible = (data ?? []).map(normalizeAnnouncement).filter((announcement) => {
+    if (announcement.is_active === false) return role === "administrator" || role === "principal";
+    const publishTime = announcement.posted_date ? new Date(announcement.posted_date).getTime() : 0;
+    if (role !== "administrator" && role !== "principal" && publishTime > now) return false;
+    return !isExpired(announcement, now);
+  }).sort((a, b) => Number(Boolean(b.is_priority)) - Number(Boolean(a.is_priority))
+    || (new Date(b.posted_date).getTime() || 0) - (new Date(a.posted_date).getTime() || 0));
+
+  if (!user_id || role === "administrator" || role === "principal" || !visible.length) {
+    return visible.map((announcement) => ({ ...announcement, is_read: true, notification_id: null }));
+  }
+
+  const markers = visible.map((announcement) => `announcement:${announcement.ann_id}`);
+  const { data: notificationRows, error: notificationError } = await supabaseAdmin
+    .from("notification")
+    .select("notification_id, message_content, is_read")
+    .eq("user_id", user_id)
+    .in("message_content", markers);
+  if (notificationError) console.warn("[announcements] read-state lookup skipped:", notificationError.message);
+  const readState = new Map((notificationRows ?? []).map((row) => [row.message_content, row]));
+  return visible.map((announcement) => {
+    const notification = readState.get(`announcement:${announcement.ann_id}`);
+    return {
+      ...announcement,
+      // Announcements that predate notification fan-out are treated as read.
+      is_read: notification?.is_read ?? true,
+      notification_id: notification?.notification_id ?? null,
+    };
+  });
 };
 
 export const getAnnouncementById = async (ann_id) => {
   const { data, error } = await AnnouncementModel.findById(ann_id);
   if (error) throw new Error("Announcement not found");
-  return data;
+  return normalizeAnnouncement(data);
 };
 
 export const createAnnouncement = async (payload, requestingUser) => {
   const principal_id = await resolvePrincipalId(requestingUser.user_id);
-  const { data, error } = await AnnouncementModel.create({ ...payload, principal_id });
+  const createPayload = {
+    ...payload,
+    content: storedContent(payload.content, payload.is_priority),
+    principal_id,
+  };
+  delete createPayload.is_priority;
+  const { data, error } = await AnnouncementModel.create(createPayload);
   if (error) throw new Error(error.message);
 
   // Fan out a notification to every targeted user (non-fatal — posting still
@@ -55,14 +131,14 @@ export const createAnnouncement = async (payload, requestingUser) => {
     }).catch((e) => console.warn("[announcement] notification fan-out skipped:", e.message));
   }
 
-  return data;
+  return normalizeAnnouncement(data);
 };
 
 export const updateAnnouncement = async (ann_id, payload, requestingUser) => {
   const principal_id = await resolvePrincipalId(requestingUser.user_id);
   const editable = {};
   if (payload.title !== undefined) editable.title = String(payload.title).trim();
-  if (payload.content !== undefined) editable.content = String(payload.content).trim();
+  if (payload.content !== undefined) editable.content = storedContent(String(payload.content).trim(), payload.is_priority);
   if (payload.audience_role !== undefined) editable.audience_role = payload.audience_role;
   if (payload.posted_date !== undefined) editable.posted_date = payload.posted_date;
   if (payload.is_active !== undefined) editable.is_active = Boolean(payload.is_active);
@@ -71,10 +147,11 @@ export const updateAnnouncement = async (ann_id, payload, requestingUser) => {
 
   const { data, error } = await AnnouncementModel.update(ann_id, principal_id, editable);
   if (error) throw new Error(error.message);
-  return data;
+  return normalizeAnnouncement(data);
 };
 
 export const deleteAnnouncement = async (ann_id) => {
+  await NotificationService.deleteForAnnouncements([ann_id]);
   const { error } = await AnnouncementModel.remove(ann_id);
   if (error) throw new Error(error.message);
 };

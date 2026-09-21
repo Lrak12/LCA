@@ -3,7 +3,7 @@ import { sendSuccess, sendCreated } from "../helpers/response.js";
 import asyncHandler from "../helpers/asyncHandler.js";
 
 export const getAll = asyncHandler(async (req, res) => {
-  const data = await AnnouncementService.getAnnouncements(req.user.role);
+  const data = await AnnouncementService.getAnnouncements(req.user.role, req.user.user_id);
   sendSuccess(res, data);
 });
 

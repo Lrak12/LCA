@@ -19,12 +19,12 @@ const Skeleton = ({ className }) => (
 );
 
 const categoryStyles = {
-  Parents: { icon: "push_pin",             bg: "bg-secondary-fixed",        text: "text-secondary", border: "border-secondary" },
-  Parent:  { icon: "push_pin",             bg: "bg-secondary-fixed",        text: "text-secondary", border: "border-secondary" },
-  Student: { icon: "event",                bg: "bg-primary-fixed",          text: "text-primary",   border: "border-primary"   },
-  Teacher: { icon: "group_add",            bg: "bg-primary-fixed",          text: "text-primary",   border: "border-primary"   },
-  Admin:   { icon: "admin_panel_settings", bg: "bg-surface-container-high", text: "text-primary",   border: "border-primary"   },
-  All:     { icon: "campaign",             bg: "bg-tertiary-fixed",         text: "text-secondary", border: "border-secondary" },
+  Parents: { bg: "bg-secondary-fixed",        text: "text-secondary", border: "border-secondary" },
+  Parent:  { bg: "bg-secondary-fixed",        text: "text-secondary", border: "border-secondary" },
+  Student: { bg: "bg-primary-fixed",          text: "text-primary",   border: "border-primary"   },
+  Teacher: { bg: "bg-primary-fixed",          text: "text-primary",   border: "border-primary"   },
+  Admin:   { bg: "bg-surface-container-high", text: "text-primary",   border: "border-primary"   },
+  All:     { bg: "bg-tertiary-fixed",         text: "text-secondary", border: "border-secondary" },
 };
 
 const formatDate = (value) => {
@@ -39,7 +39,10 @@ const formatTime = (value) => {
 
 // map the stored audience_role to a friendly label
 const normalizeAudience = (audience = "All") =>
-  audience === "Parent" ? "Parents" : audience === "All" ? "Entire Community" : audience;
+  audience === "Parent" ? "Parents"
+    : audience === "Teacher" ? "Supervisors"
+    : audience === "All" ? "Entire Community"
+    : audience;
 
 // ─── Days remaining until auto-delete ────────────────────────────────────────
 // announcements expire 7 days after posting; returns days left (can be negative)
@@ -128,6 +131,7 @@ function CreateAnnouncementModal({ onClose, onSuccess, announcement = null }) {
   });
   const [title,     setTitle]     = useState(announcement?.title ?? "");
   const [content,   setContent]   = useState(announcement?.content ?? "");
+  const [priority,  setPriority]  = useState(Boolean(announcement?.is_priority));
   const [publish,   setPublish]   = useState("immediate"); // immediate | schedule
   const [date,      setDate]      = useState("");
   const [time,      setTime]      = useState("");
@@ -171,6 +175,7 @@ function CreateAnnouncementModal({ onClose, onSuccess, announcement = null }) {
           audience_role: roles[0],
           posted_date,
           is_active: announcement.is_active !== false,
+          is_priority: priority,
         });
       } else {
         // One announcement per selected audience.
@@ -180,6 +185,7 @@ function CreateAnnouncementModal({ onClose, onSuccess, announcement = null }) {
           audience_role: role,
           posted_date,
           is_active:     true,
+          is_priority:   priority,
         })));
       }
       onSuccess();
@@ -238,18 +244,18 @@ function CreateAnnouncementModal({ onClose, onSuccess, announcement = null }) {
               </div>
             </div>
 
-            {/* Title + message */}
+            {/* Subject + body */}
             <div className="space-y-5">
               <div>
-                <label className={sectionLabel}>Title {req}</label>
-                <input className={`${inputClass} mt-2`} placeholder="Enter announcement title" value={title} onChange={(e) => setTitle(e.target.value)} />
+                <label className={sectionLabel}>Subject {req}</label>
+                <input className={`${inputClass} mt-2`} placeholder="Enter announcement subject" value={title} onChange={(e) => setTitle(e.target.value)} />
               </div>
               <div>
-                <label className={sectionLabel}>Announcement Message {req}</label>
+                <label className={sectionLabel}>Body {req}</label>
                 <textarea
                   rows={7}
                   className={`${inputClass} mt-2 resize-none`}
-                  placeholder="Enter announcement message here..."
+                  placeholder="Enter the announcement body here..."
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
                 />
@@ -259,6 +265,23 @@ function CreateAnnouncementModal({ onClose, onSuccess, announcement = null }) {
 
             {/* Publication options */}
             <div>
+              <label className="mb-5 flex cursor-pointer items-start gap-3 rounded-xl border-2 border-outline-variant/30 p-3 hover:bg-surface-container-lowest">
+                <input
+                  type="checkbox"
+                  checked={priority}
+                  onChange={(event) => setPriority(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+                />
+                <span>
+                  <span className="flex items-center gap-1.5 text-sm font-bold text-on-surface">
+                    <span className="material-symbols-outlined text-base">push_pin</span>
+                    Priority
+                  </span>
+                  <span className="mt-1 block text-[11px] leading-snug text-on-surface-variant">
+                    Keep this above normal announcements until it is deleted or expires.
+                  </span>
+                </span>
+              </label>
               {editing ? (
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
                   <p className="flex items-center gap-2 text-sm font-bold text-emerald-700">
@@ -379,7 +402,10 @@ export default function Announcements() {
 
   // active + posted date already reached -> shown in the main feed
   const published = useMemo(
-    () => announcements.filter((ann) => ann.is_active !== false && (!ann.posted_date || new Date(ann.posted_date).getTime() <= currentTime)),
+    () => announcements
+      .filter((ann) => ann.is_active !== false && (!ann.posted_date || new Date(ann.posted_date).getTime() <= currentTime))
+      .sort((a, b) => Number(Boolean(b.is_priority)) - Number(Boolean(a.is_priority))
+        || (new Date(b.posted_date).getTime() || 0) - (new Date(a.posted_date).getTime() || 0)),
     [announcements, currentTime]
   );
 
@@ -485,10 +511,10 @@ export default function Announcements() {
                 No published announcements yet.
               </div>
             ) : (
-              published.map((ann, index) => {
+              published.map((ann) => {
                 const audience    = ann.audience_role || "All";
                 const category    = categoryStyles[audience] || categoryStyles.All;
-                const eyebrow     = index === 0 ? "Important Announcement" : audience === "All" ? "School Calendar" : `${normalizeAudience(audience)} Update`;
+                const eyebrow     = ann.is_priority ? "Priority Announcement" : `${normalizeAudience(audience)} Announcement`;
                 const daysLeft    = getDaysRemaining(ann.posted_date);
                 const expiringSoon = daysLeft !== null && daysLeft <= 2 && daysLeft > 0;
                 const expiredToday = daysLeft !== null && daysLeft <= 0;
@@ -497,7 +523,7 @@ export default function Announcements() {
                   <article key={ann.ann_id} className="bg-white rounded-xl p-7 shadow-sm hover:shadow-md transition-shadow">
                     <div className="flex items-start gap-4">
                       <div className={`w-10 h-10 rounded-lg ${category.bg} ${category.text} flex items-center justify-center shrink-0`}>
-                        <span className="material-symbols-outlined" style={fillStyle}>{category.icon}</span>
+                        <span className="material-symbols-outlined" style={fillStyle}>{ann.is_priority ? "push_pin" : "campaign"}</span>
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-4">
@@ -540,10 +566,12 @@ export default function Announcements() {
                           </div>
                         </div>
 
+                        <p className="mt-3 text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant">Subject</p>
                         <h3 className="font-headline text-xl font-extrabold text-primary mt-1">
                           {ann.title}
                         </h3>
-                        <p className="text-on-surface-variant mt-5 leading-relaxed">
+                        <p className="mt-4 text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant">Message</p>
+                        <p className="text-on-surface-variant mt-1 leading-relaxed">
                           {announcementPreview(ann.content, 145)}
                         </p>
 

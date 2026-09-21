@@ -6,4 +6,5 @@ export const announcementValidator = [
   body("audience_role")
     .isIn(["All", "Student", "Teacher", "Parent", "Admin"])
     .withMessage("Invalid audience role"),
+  body("is_priority").optional().isBoolean().withMessage("Priority must be true or false"),
 ];

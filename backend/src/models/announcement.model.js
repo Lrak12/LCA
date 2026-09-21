@@ -44,3 +44,9 @@ export const remove = (ann_id) =>
     .from(TABLE)
     .delete()
     .eq("ann_id", ann_id);
+
+export const removeMany = (announcementIds) =>
+  supabaseAdmin
+    .from(TABLE)
+    .delete()
+    .in("ann_id", announcementIds);
