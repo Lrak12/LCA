@@ -14,7 +14,7 @@ import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import StudentLayout from "../../components/StudentLayout.jsx";
 import AnnouncementMessageModal from "../../components/AnnouncementMessageModal.jsx";
-import { compareAnnouncements, formatAnnouncementTimestamp } from "../../utils/announcementFeed.js";
+import { announcementTone, compareAnnouncements, formatAnnouncementTimestamp } from "../../utils/announcementFeed.js";
 import { fetchStudentAnnouncements } from "../../api/student.js";
 import { markNotificationRead } from "../../api/notifications.js";
 import { useAuth } from "../../context/AuthContext.jsx";
@@ -35,14 +35,6 @@ const getGreeting = () => {
 
 const formatDate = (date = new Date()) =>
   date.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-
-const categoryStyles = {
-  All:     { bg: "bg-blue-100",   text: "text-blue-700"   },
-  Student: { bg: "bg-purple-100", text: "text-purple-700" },
-  Teacher: { bg: "bg-amber-100",  text: "text-amber-700"  },
-  Parent:  { bg: "bg-green-100",  text: "text-green-700"  },
-  General: { bg: "bg-slate-100",  text: "text-slate-600"  },
-};
 
 const PAGE_SIZE = 5;
 
@@ -149,17 +141,17 @@ export default function Announcements() {
             <>
               <div className="space-y-4">
                 {shown.map((ann) => {
-                  const style = categoryStyles[ann.category] ?? categoryStyles.General;
+                  const style = announcementTone(ann.is_priority);
                   return (
                   <article
                     key={ann.id}
                     id={`announcement-${ann.id}`}
-                    className={`rounded-2xl p-6 shadow-sm border hover:shadow-md transition-shadow flex gap-4 ${
+                    className={`rounded-2xl p-6 shadow-sm border hover:shadow-md transition-shadow flex gap-4 ${style.border} ${
                       ann.id === selectedAnnouncementId
-                        ? "border-primary bg-white ring-2 ring-primary/20"
+                        ? "bg-white ring-2 ring-primary/20"
                         : ann.is_read
-                          ? "border-outline-variant/20 bg-white"
-                          : "border-primary/40 bg-primary/[0.035]"
+                          ? "bg-white"
+                          : "bg-slate-50"
                     }`}
                   >
                     <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${style.bg} ${style.text}`}>

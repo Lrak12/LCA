@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useState } from "react";
 import PrincipalLayout from "../../components/PrincipalLayout.jsx";
 import AnnouncementMessageModal from "../../components/AnnouncementMessageModal.jsx";
-import { compareAnnouncements, formatAnnouncementTimestamp } from "../../utils/announcementFeed.js";
+import { announcementTone, compareAnnouncements, formatAnnouncementTimestamp } from "../../utils/announcementFeed.js";
 import { fetchAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement } from "../../api/announcements.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
@@ -17,15 +17,6 @@ const fillStyle = { fontVariationSettings: '"FILL" 1' };
 const Skeleton = ({ className }) => (
   <div className={`animate-pulse bg-surface-container-high rounded-xl ${className}`} />
 );
-
-const categoryStyles = {
-  Parents: { bg: "bg-secondary-fixed",        text: "text-secondary", border: "border-secondary" },
-  Parent:  { bg: "bg-secondary-fixed",        text: "text-secondary", border: "border-secondary" },
-  Student: { bg: "bg-primary-fixed",          text: "text-primary",   border: "border-primary"   },
-  Teacher: { bg: "bg-primary-fixed",          text: "text-primary",   border: "border-primary"   },
-  Admin:   { bg: "bg-surface-container-high", text: "text-primary",   border: "border-primary"   },
-  All:     { bg: "bg-tertiary-fixed",         text: "text-secondary", border: "border-secondary" },
-};
 
 const formatDate = (value) => {
   if (!value) return "Not scheduled";
@@ -512,14 +503,14 @@ export default function Announcements() {
             ) : (
               published.map((ann) => {
                 const audience    = ann.audience_role || "All";
-                const category    = categoryStyles[audience] || categoryStyles.All;
+                const category    = announcementTone(ann.is_priority);
                 const eyebrow     = ann.is_priority ? "Priority Announcement" : `${normalizeAudience(audience)} Announcement`;
                 const daysLeft    = getDaysRemaining(ann.posted_date);
                 const expiringSoon = daysLeft !== null && daysLeft <= 2 && daysLeft > 0;
                 const expiredToday = daysLeft !== null && daysLeft <= 0;
 
                 return (
-                  <article key={ann.ann_id} className="bg-white rounded-xl p-7 shadow-sm hover:shadow-md transition-shadow">
+                  <article key={ann.ann_id} className={`bg-white rounded-xl border p-7 shadow-sm hover:shadow-md transition-shadow ${category.border}`}>
                     <div className="flex items-start gap-4">
                       <div className={`w-10 h-10 rounded-lg ${category.bg} ${category.text} flex items-center justify-center shrink-0`}>
                         <span className="material-symbols-outlined" style={fillStyle}>{ann.is_priority ? "push_pin" : "campaign"}</span>

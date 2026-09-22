@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import TeacherLayout from "../../components/TeacherLayout.jsx";
 import AnnouncementMessageModal from "../../components/AnnouncementMessageModal.jsx";
-import { compareAnnouncements, formatAnnouncementTimestamp } from "../../utils/announcementFeed.js";
+import { announcementTone, compareAnnouncements, formatAnnouncementTimestamp } from "../../utils/announcementFeed.js";
 import { fetchAnnouncements } from "../../api/announcements.js";
 import { markNotificationRead } from "../../api/notifications.js";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
@@ -17,14 +17,6 @@ const formatDate = (iso) => {
   if (!iso) return "—";
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-};
-
-// audience_role → badge style + icon (no category column exists in the schema)
-const audienceStyles = {
-  All:     { bg: "bg-blue-100",   text: "text-blue-700"   },
-  Teacher: { bg: "bg-amber-100",  text: "text-amber-700"  },
-  Student: { bg: "bg-purple-100", text: "text-purple-700" },
-  Parent:  { bg: "bg-green-100",  text: "text-green-700"  },
 };
 
 const PAGE_SIZE = 5;
@@ -128,7 +120,7 @@ export default function Announcements() {
           <>
             <div className="space-y-4">
               {shown.map((ann) => {
-                const s = audienceStyles[ann.audience_role] ?? audienceStyles.All;
+                const s = announcementTone(ann.is_priority);
                 const principalName = ann.principal
                   ? `${ann.principal.first_name ?? ""} ${ann.principal.last_name ?? ""}`.trim()
                   : "";
@@ -136,12 +128,12 @@ export default function Announcements() {
                   <article
                     key={ann.ann_id}
                     id={`announcement-${ann.ann_id}`}
-                    className={`rounded-2xl p-6 shadow-sm border hover:shadow-md transition-shadow flex gap-4 ${
+                    className={`rounded-2xl p-6 shadow-sm border hover:shadow-md transition-shadow flex gap-4 ${s.border} ${
                       ann.ann_id === selectedAnnouncementId
-                        ? "border-primary bg-white ring-2 ring-primary/20"
+                        ? "bg-white ring-2 ring-primary/20"
                         : ann.is_read
-                          ? "border-outline-variant/20 bg-white"
-                          : "border-primary/40 bg-primary/[0.035]"
+                          ? "bg-white"
+                          : "bg-slate-50"
                     }`}
                   >
                     <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${s.bg} ${s.text}`}>

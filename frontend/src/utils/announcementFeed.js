@@ -4,6 +4,10 @@ export const compareAnnouncements = (a, b) =>
   || (new Date(b.posted_date).getTime() || 0) - (new Date(a.posted_date).getTime() || 0)
   || Number(b.ann_id ?? b.id ?? 0) - Number(a.ann_id ?? a.id ?? 0);
 
+export const announcementTone = (isPriority) => isPriority
+  ? { bg: "bg-blue-100", text: "text-blue-700", border: "border-blue-200" }
+  : { bg: "bg-amber-100", text: "text-amber-700", border: "border-amber-200" };
+
 export const formatAnnouncementTimestamp = (value) => {
   if (!value) return "—";
   const date = new Date(value);
