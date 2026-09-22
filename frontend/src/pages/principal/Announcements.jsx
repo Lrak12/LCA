@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useState } from "react";
 import PrincipalLayout from "../../components/PrincipalLayout.jsx";
 import AnnouncementMessageModal from "../../components/AnnouncementMessageModal.jsx";
-import { announcementPreview } from "../../utils/announcementPreview.js";
+import { compareAnnouncements, formatAnnouncementTimestamp } from "../../utils/announcementFeed.js";
 import { fetchAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement } from "../../api/announcements.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
@@ -404,8 +404,7 @@ export default function Announcements() {
   const published = useMemo(
     () => announcements
       .filter((ann) => ann.is_active !== false && (!ann.posted_date || new Date(ann.posted_date).getTime() <= currentTime))
-      .sort((a, b) => Number(Boolean(b.is_priority)) - Number(Boolean(a.is_priority))
-        || (new Date(b.posted_date).getTime() || 0) - (new Date(a.posted_date).getTime() || 0)),
+      .sort(compareAnnouncements),
     [announcements, currentTime]
   );
 
@@ -445,7 +444,7 @@ export default function Announcements() {
         {viewTarget && (
           <AnnouncementMessageModal
             announcement={viewTarget}
-            date={formatDate(viewTarget.posted_date)}
+            date={formatAnnouncementTimestamp(viewTarget.posted_date)}
             audience={normalizeAudience(viewTarget.audience_role)}
             onClose={() => setViewTarget(null)}
           />
@@ -570,16 +569,11 @@ export default function Announcements() {
                         <h3 className="font-headline text-xl font-extrabold text-primary mt-1">
                           {ann.title}
                         </h3>
-                        <p className="mt-4 text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant">Message</p>
-                        <p className="text-on-surface-variant mt-1 leading-relaxed">
-                          {announcementPreview(ann.content, 145)}
-                        </p>
-
-                        <div className="mt-7 pt-4 border-t border-surface-container flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="mt-5 pt-4 border-t border-surface-container flex flex-col md:flex-row md:items-center justify-between gap-4">
                           <div className="flex flex-wrap items-center gap-3 text-xs text-on-surface-variant">
                             <span className="inline-flex items-center gap-1">
                               <span className="material-symbols-outlined text-sm">calendar_month</span>
-                              Posted {formatDate(ann.posted_date)}
+                              Posted {formatAnnouncementTimestamp(ann.posted_date)}
                             </span>
                             {daysLeft !== null && daysLeft > 0 && (
                               <span className="inline-flex items-center gap-1">

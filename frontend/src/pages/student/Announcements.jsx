@@ -14,7 +14,7 @@ import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import StudentLayout from "../../components/StudentLayout.jsx";
 import AnnouncementMessageModal from "../../components/AnnouncementMessageModal.jsx";
-import { announcementPreview } from "../../utils/announcementPreview.js";
+import { compareAnnouncements, formatAnnouncementTimestamp } from "../../utils/announcementFeed.js";
 import { fetchStudentAnnouncements } from "../../api/student.js";
 import { markNotificationRead } from "../../api/notifications.js";
 import { useAuth } from "../../context/AuthContext.jsx";
@@ -66,7 +66,7 @@ export default function Announcements() {
 
   const firstName = user?.first_name ?? user?.username ?? "Student";
 
-  const announcements = data?.announcements ?? [];
+  const announcements = [...(data?.announcements ?? [])].sort(compareAnnouncements);
 
   const selectedIndex = announcements.findIndex((announcement) => announcement.id === selectedAnnouncementId);
   const selectedAnnouncement = selectedIndex >= 0 ? announcements[selectedIndex] : null;
@@ -98,7 +98,7 @@ export default function Announcements() {
       {selectedAnnouncement && (
         <AnnouncementMessageModal
           announcement={selectedAnnouncement}
-          date={selectedAnnouncement.postedAt}
+          date={formatAnnouncementTimestamp(selectedAnnouncement.posted_date)}
           audience="Principal"
           postedBy={selectedAnnouncement.posted_by}
           onClose={closeAnnouncement}
@@ -176,14 +176,10 @@ export default function Announcements() {
                             {ann.is_read ? "Read" : "Unread"}
                           </span>
                         </div>
-                        <span className="shrink-0 whitespace-nowrap text-[11px] text-on-surface-variant">{ann.postedAt}</span>
+                        <span className="shrink-0 text-right text-[11px] text-on-surface-variant">{formatAnnouncementTimestamp(ann.posted_date)}</span>
                       </div>
                       <p className="mt-3 text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant">Subject</p>
                       <h4 className="mt-1 text-base font-extrabold text-on-surface leading-tight">{ann.title}</h4>
-                      <p className="mt-3 text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant">Message</p>
-                      <p className="mt-1 text-sm text-on-surface-variant leading-relaxed break-words">
-                        {announcementPreview(ann.content)}
-                      </p>
                       <button type="button" onClick={() => openAnnouncement(ann.id)} className="mt-3 inline-flex items-center gap-1 rounded-lg px-2 py-1 -ml-2 text-sm font-bold text-primary hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-primary">
                         View full message
                         <span className="material-symbols-outlined text-base">arrow_forward</span>

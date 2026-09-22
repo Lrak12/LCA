@@ -557,14 +557,6 @@ export const getStudentAnnouncements = async (user_id) => {
   if (notificationError) console.warn("[student announcements] read-state lookup skipped:", notificationError.message);
   const announcementReadState = new Map((announcementNotifications ?? []).map((row) => [row.message_content, row]));
 
-  const formatDateTime = (raw) => {
-    if (!raw) return "—";
-    const d = new Date(raw);
-    const date = d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-    const time = d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
-    return `${date} • ${time}`;
-  };
-
   return {
     student:       { first_name: student?.first_name ?? null },
     announcements: (data ?? []).map((a) => {
@@ -582,9 +574,11 @@ export const getStudentAnnouncements = async (user_id) => {
       posted_by: a.principal
         ? `${a.principal.first_name ?? ""} ${a.principal.last_name ?? ""}`.trim()
         : "",
-      postedAt: formatDateTime(a.posted_date),
+      posted_date: a.posted_date,
       };
-    }).sort((a, b) => Number(b.is_priority) - Number(a.is_priority)),
+    }).sort((a, b) => Number(b.is_priority) - Number(a.is_priority)
+      || (new Date(b.posted_date).getTime() || 0) - (new Date(a.posted_date).getTime() || 0)
+      || Number(b.id) - Number(a.id)),
   };
 };
 

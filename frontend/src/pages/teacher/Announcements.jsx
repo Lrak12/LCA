@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import TeacherLayout from "../../components/TeacherLayout.jsx";
 import AnnouncementMessageModal from "../../components/AnnouncementMessageModal.jsx";
-import { announcementPreview } from "../../utils/announcementPreview.js";
+import { compareAnnouncements, formatAnnouncementTimestamp } from "../../utils/announcementFeed.js";
 import { fetchAnnouncements } from "../../api/announcements.js";
 import { markNotificationRead } from "../../api/notifications.js";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
@@ -36,7 +36,6 @@ export default function Announcements() {
   const [items, setItems]     = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState("");
-  const [sort, setSort]       = useState("recent"); // recent | oldest
   const [visible, setVisible] = useState(PAGE_SIZE);
 
   useEffect(() => {
@@ -57,16 +56,7 @@ export default function Announcements() {
     return () => { cancelled = true; };
   }, []);
 
-  const sorted = useMemo(() => {
-    const list = [...items];
-    list.sort((a, b) => {
-      if (Boolean(a.is_priority) !== Boolean(b.is_priority)) return a.is_priority ? -1 : 1;
-      const da = new Date(a.posted_date).getTime() || 0;
-      const db = new Date(b.posted_date).getTime() || 0;
-      return sort === "recent" ? db - da : da - db;
-    });
-    return list;
-  }, [items, sort]);
+  const sorted = useMemo(() => [...items].sort(compareAnnouncements), [items]);
 
   const selectedIndex = sorted.findIndex((announcement) => announcement.ann_id === selectedAnnouncementId);
   const selectedAnnouncement = selectedIndex >= 0 ? sorted[selectedIndex] : null;
@@ -95,7 +85,7 @@ export default function Announcements() {
       {selectedAnnouncement && (
         <AnnouncementMessageModal
           announcement={selectedAnnouncement}
-          date={formatDate(selectedAnnouncement.posted_date)}
+          date={formatAnnouncementTimestamp(selectedAnnouncement.posted_date)}
           audience="Principal"
           postedBy={selectedAnnouncement.principal ? `${selectedAnnouncement.principal.first_name ?? ""} ${selectedAnnouncement.principal.last_name ?? ""}`.trim() : ""}
           onClose={closeAnnouncement}
@@ -123,21 +113,6 @@ export default function Announcements() {
             {error}
           </div>
         )}
-
-        {/* Sort */}
-        <div className="flex items-center justify-end mb-5">
-          <label className="flex items-center gap-2 text-sm text-on-surface-variant">
-            <span className="font-semibold">Sort by:</span>
-            <select
-              value={sort}
-              onChange={(e) => setSort(e.target.value)}
-              className="font-bold text-on-surface bg-transparent focus:outline-none cursor-pointer"
-            >
-              <option value="recent">Most Recent</option>
-              <option value="oldest">Oldest First</option>
-            </select>
-          </label>
-        </div>
 
         {/* List */}
         {loading ? (
@@ -183,12 +158,10 @@ export default function Announcements() {
                             {ann.is_read ? "Read" : "Unread"}
                           </span>
                         </div>
-                        <span className="text-[11px] text-on-surface-variant whitespace-nowrap shrink-0">{formatDate(ann.posted_date)}</span>
+                        <span className="text-[11px] text-on-surface-variant shrink-0 text-right">{formatAnnouncementTimestamp(ann.posted_date)}</span>
                       </div>
                       <p className="mt-3 text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant">Subject</p>
                       <h4 className="mt-1 text-base font-extrabold text-on-surface leading-tight">{ann.title}</h4>
-                      <p className="mt-3 text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant">Message</p>
-                      <p className="text-sm text-on-surface-variant leading-relaxed mt-1 break-words">{announcementPreview(ann.content)}</p>
                       <button type="button" onClick={() => openAnnouncement(ann.ann_id)} className="mt-3 inline-flex items-center gap-1 rounded-lg px-2 py-1 -ml-2 text-sm font-bold text-primary hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-primary">
                         View full message
                         <span className="material-symbols-outlined text-base">arrow_forward</span>
