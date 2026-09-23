@@ -2,7 +2,9 @@ import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import TeacherLayout from "../../components/TeacherLayout.jsx";
 import AnnouncementMessageModal from "../../components/AnnouncementMessageModal.jsx";
-import { announcementTone, compareAnnouncements, formatAnnouncementTimestamp } from "../../utils/announcementFeed.js";
+import AnnouncementDateFilter from "../../components/AnnouncementDateFilter.jsx";
+import AnnouncementFeedCard from "../../components/AnnouncementFeedCard.jsx";
+import { compareAnnouncements, formatAnnouncementTimestamp, isAnnouncementWithinDateRange } from "../../utils/announcementFeed.js";
 import { fetchAnnouncements } from "../../api/announcements.js";
 import { markNotificationRead } from "../../api/notifications.js";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
@@ -29,6 +31,8 @@ export default function Announcements() {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState("");
   const [visible, setVisible] = useState(PAGE_SIZE);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate]     = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -49,11 +53,18 @@ export default function Announcements() {
   }, []);
 
   const sorted = useMemo(() => [...items].sort(compareAnnouncements), [items]);
+  const filtered = useMemo(
+    () => sorted.filter((announcement) => isAnnouncementWithinDateRange(announcement, fromDate, toDate)),
+    [sorted, fromDate, toDate],
+  );
 
   const selectedIndex = sorted.findIndex((announcement) => announcement.ann_id === selectedAnnouncementId);
   const selectedAnnouncement = selectedIndex >= 0 ? sorted[selectedIndex] : null;
-  const shown   = sorted.slice(0, Math.max(visible, selectedIndex + 1));
-  const hasMore = shown.length < sorted.length;
+  const shown   = filtered.slice(0, visible);
+  const hasMore = shown.length < filtered.length;
+
+  const changeFromDate = (value) => { setFromDate(value); setVisible(PAGE_SIZE); };
+  const changeToDate = (value) => { setToDate(value); setVisible(PAGE_SIZE); };
 
   const openAnnouncement = (id) => {
     const announcement = items.find((item) => item.ann_id === id);
@@ -106,63 +117,37 @@ export default function Announcements() {
           </div>
         )}
 
+        <AnnouncementDateFilter
+          fromDate={fromDate}
+          toDate={toDate}
+          onFromDateChange={changeFromDate}
+          onToDateChange={changeToDate}
+        />
+
         {/* List */}
         {loading ? (
           <div className="space-y-4">
             {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-28 w-full" />)}
           </div>
-        ) : sorted.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <div className="bg-white rounded-2xl p-5 sm:p-10 text-center shadow-sm border border-outline-variant/20">
             <span className="material-symbols-outlined text-4xl text-on-surface-variant mb-3 block" style={fillStyle}>notifications_off</span>
-            <p className="text-on-surface-variant text-sm font-bold">No announcements from the principal yet.</p>
+            <p className="text-on-surface-variant text-sm font-bold">
+              {items.length > 0 ? "No announcements match the selected dates." : "No announcements from the principal yet."}
+            </p>
           </div>
         ) : (
           <>
             <div className="space-y-4">
               {shown.map((ann) => {
-                const s = announcementTone(ann.is_priority);
-                const principalName = ann.principal
-                  ? `${ann.principal.first_name ?? ""} ${ann.principal.last_name ?? ""}`.trim()
-                  : "";
                 return (
-                  <article
+                  <AnnouncementFeedCard
                     key={ann.ann_id}
-                    id={`announcement-${ann.ann_id}`}
-                    className={`rounded-2xl p-6 shadow-sm border hover:shadow-md transition-shadow flex gap-4 ${s.border} ${
-                      ann.ann_id === selectedAnnouncementId
-                        ? "bg-white ring-2 ring-primary/20"
-                        : ann.is_read
-                          ? "bg-white"
-                          : "bg-slate-50"
-                    }`}
-                  >
-                    <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${s.bg} ${s.text}`}>
-                      <span className="material-symbols-outlined text-xl" style={fillStyle}>{ann.is_priority ? "push_pin" : "campaign"}</span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className={`text-[9px] font-extrabold tracking-widest uppercase px-2.5 py-1 rounded-full ${s.bg} ${s.text}`}>
-                            {ann.is_priority ? "Priority · Principal" : "Principal"}
-                          </span>
-                          <span className={`inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-widest ${ann.is_read ? "text-on-surface-variant" : "text-primary"}`}>
-                            <span className={`h-2 w-2 rounded-full ${ann.is_read ? "bg-outline-variant" : "bg-primary"}`} />
-                            {ann.is_read ? "Read" : "Unread"}
-                          </span>
-                        </div>
-                        <span className="text-[11px] text-on-surface-variant shrink-0 text-right">{formatAnnouncementTimestamp(ann.posted_date)}</span>
-                      </div>
-                      <p className="mt-3 text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant">Subject</p>
-                      <h4 className="mt-1 text-base font-extrabold text-on-surface leading-tight">{ann.title}</h4>
-                      <button type="button" onClick={() => openAnnouncement(ann.ann_id)} className="mt-3 inline-flex items-center gap-1 rounded-lg px-2 py-1 -ml-2 text-sm font-bold text-primary hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-primary">
-                        View full message
-                        <span className="material-symbols-outlined text-base">arrow_forward</span>
-                      </button>
-                      {principalName && (
-                        <p className="text-[11px] text-on-surface-variant mt-2">Posted by {principalName}</p>
-                      )}
-                    </div>
-                  </article>
+                    announcement={ann}
+                    announcementId={ann.ann_id}
+                    selected={ann.ann_id === selectedAnnouncementId}
+                    onOpen={() => openAnnouncement(ann.ann_id)}
+                  />
                 );
               })}
             </div>
@@ -170,7 +155,7 @@ export default function Announcements() {
             {hasMore && (
               <div className="flex justify-center mt-6">
                 <button
-                  onClick={() => setVisible((v) => Math.max(v, shown.length) + PAGE_SIZE)}
+                  onClick={() => setVisible((v) => v + PAGE_SIZE)}
                   className="flex items-center gap-2 px-6 py-3 rounded-full border border-outline-variant/30 text-sm font-bold text-primary hover:bg-surface-container-low transition-colors"
                 >
                   View Older Announcements

@@ -120,7 +120,13 @@ const checkDuplicate = async (year_label, start_date, end_date, ignoredId = null
 export const listSchoolYears = async () => {
   const { data, error } = await SchoolYearModel.findAll();
   if (error) throw new Error(error.message);
-  return data ?? [];
+
+  return Promise.all((data ?? []).map(async (schoolYear) => {
+    const { data: gradeLevel, error: gradeLevelError } =
+      await SchoolYearModel.findFirstGradeLevel(schoolYear.sy_id);
+    if (gradeLevelError) throw new Error(gradeLevelError.message);
+    return { ...schoolYear, has_data: Boolean(gradeLevel) };
+  }));
 };
 
 export const createSchoolYear = async ({ year_label, start_date, end_date }) => {
@@ -153,6 +159,15 @@ export const createSchoolYear = async ({ year_label, start_date, end_date }) => 
 export const updateSchoolYear = async (sy_id, { year_label, start_date, end_date }) => {
   const { data: oldYear, error: findError } = await SchoolYearModel.findById(sy_id);
   if (findError || !oldYear) throw new Error("School year not found.");
+
+  const { data: gradeLevel, error: gradeLevelError } =
+    await SchoolYearModel.findFirstGradeLevel(sy_id);
+  if (gradeLevelError) throw new Error(gradeLevelError.message);
+  if (gradeLevel) {
+    const err = new Error("This school year can no longer be edited because it already contains data.");
+    err.statusCode = 409;
+    throw err;
+  }
 
   const payload = validateSchoolYear(
     {

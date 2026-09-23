@@ -7,7 +7,8 @@
 import { useEffect, useMemo, useState } from "react";
 import PrincipalLayout from "../../components/PrincipalLayout.jsx";
 import AnnouncementMessageModal from "../../components/AnnouncementMessageModal.jsx";
-import { announcementTone, compareAnnouncements, formatAnnouncementTimestamp } from "../../utils/announcementFeed.js";
+import AnnouncementDateFilter from "../../components/AnnouncementDateFilter.jsx";
+import { announcementTone, compareAnnouncements, formatAnnouncementTimestamp, isAnnouncementWithinDateRange } from "../../utils/announcementFeed.js";
 import { fetchAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement } from "../../api/announcements.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
@@ -358,6 +359,8 @@ export default function Announcements() {
   const [deleteTarget,  setDeleteTarget]  = useState(null);  // announcement pending delete
   const [deleting,      setDeleting]      = useState(false);
   const [notice,        setNotice]        = useState("");
+  const [fromDate,      setFromDate]      = useState("");
+  const [toDate,        setToDate]        = useState("");
 
   const load = async () => {
     setLoading(true);
@@ -391,24 +394,29 @@ export default function Announcements() {
     }
   };
 
+  const dateFilteredAnnouncements = useMemo(
+    () => announcements.filter((announcement) => isAnnouncementWithinDateRange(announcement, fromDate, toDate)),
+    [announcements, fromDate, toDate],
+  );
+
   // active + posted date already reached -> shown in the main feed
   const published = useMemo(
-    () => announcements
+    () => dateFilteredAnnouncements
       .filter((ann) => ann.is_active !== false && (!ann.posted_date || new Date(ann.posted_date).getTime() <= currentTime))
       .sort(compareAnnouncements),
-    [announcements, currentTime]
+    [dateFilteredAnnouncements, currentTime]
   );
 
   // active + posted date still in the future -> shown in the Scheduled sidebar
   const scheduled = useMemo(
-    () => announcements.filter((ann) => ann.is_active !== false && ann.posted_date && new Date(ann.posted_date).getTime() > currentTime),
-    [announcements, currentTime]
+    () => dateFilteredAnnouncements.filter((ann) => ann.is_active !== false && ann.posted_date && new Date(ann.posted_date).getTime() > currentTime),
+    [dateFilteredAnnouncements, currentTime]
   );
 
   // inactive rows -> drafts
   const drafts = useMemo(
-    () => announcements.filter((ann) => ann.is_active === false),
-    [announcements]
+    () => dateFilteredAnnouncements.filter((ann) => ann.is_active === false),
+    [dateFilteredAnnouncements]
   );
 
   return (
@@ -484,6 +492,13 @@ export default function Announcements() {
           )}
         </header>
 
+        <AnnouncementDateFilter
+          fromDate={fromDate}
+          toDate={toDate}
+          onFromDateChange={setFromDate}
+          onToDateChange={setToDate}
+        />
+
         <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-8">
           <section className="space-y-6">
             {loading ? (
@@ -498,7 +513,9 @@ export default function Announcements() {
               ))
             ) : published.length === 0 ? (
               <div className="bg-white rounded-xl p-12 text-center text-on-surface-variant">
-                No published announcements yet.
+                {announcements.length > 0 && (fromDate || toDate)
+                  ? "No published announcements match the selected dates."
+                  : "No published announcements yet."}
               </div>
             ) : (
               published.map((ann) => {
@@ -576,7 +593,7 @@ export default function Announcements() {
                               {normalizeAudience(audience)}
                             </span>
                           </div>
-                          <button type="button" onClick={() => setViewTarget(ann)} className="text-secondary font-extrabold text-xs hover:underline inline-flex items-center gap-1">
+                          <button type="button" onClick={() => setViewTarget(ann)} className="ml-auto text-secondary font-extrabold text-xs hover:underline inline-flex items-center gap-1">
                             View full details
                             <span className="material-symbols-outlined text-sm">arrow_forward</span>
                           </button>

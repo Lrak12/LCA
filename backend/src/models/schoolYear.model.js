@@ -18,6 +18,17 @@ export const findGradeLevels = (sy_id) =>
     .select("gl_id, level_name, teacher_id")
     .eq("sy_id", sy_id);
 
+// Grade levels are the first records created inside a school year and all
+// academic records for that year hang off them. A single matching row is
+// therefore enough to treat the school year as containing data.
+export const findFirstGradeLevel = (sy_id) =>
+  supabaseAdmin
+    .from("grade_level")
+    .select("gl_id")
+    .eq("sy_id", sy_id)
+    .limit(1)
+    .maybeSingle();
+
 export const findStudentAssignmentHistory = (sy_id) =>
   supabaseAdmin
     .from("student_supervisor_history")

@@ -333,7 +333,9 @@ function SchoolYearTab({ setBanner }) {
         {active && (
           <button
             onClick={() => setEditing(active)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-outline-variant/40 text-sm font-bold text-on-surface hover:bg-surface-container-low"
+            disabled={active.has_data}
+            title={active.has_data ? "This school year already contains data and can no longer be edited." : "Edit the active school year"}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-outline-variant/40 text-sm font-bold text-on-surface hover:bg-surface-container-low disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
           >
             <span className="material-symbols-outlined text-base">edit</span>
             Edit Active School Year
@@ -559,7 +561,12 @@ function SchoolYearTab({ setBanner }) {
                           </button>
                         )}
                         {/* Edit -> setEditing(sy) opens <EditSchoolYearModal> */}
-                        <button onClick={() => setEditing(sy)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-outline-variant/40 text-on-surface text-xs font-bold hover:bg-surface-container-low">
+                        <button
+                          onClick={() => setEditing(sy)}
+                          disabled={sy.has_data}
+                          title={sy.has_data ? "This school year already contains data and can no longer be edited." : "Edit this school year"}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-outline-variant/40 text-on-surface text-xs font-bold hover:bg-surface-container-low disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                        >
                           <span className="material-symbols-outlined text-sm">edit</span> Edit
                         </button>
                       </div>
