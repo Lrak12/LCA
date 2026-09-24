@@ -12,5 +12,7 @@ export const updateQuarters         = (data)        => client.put("/settings/aca
 export const fetchAccount           = ()            => client.get("/account");
 export const updateAccount          = (data)        => client.put("/account", data);
 export const changeAccountPassword  = (data)        => client.post("/account/password", data);
+export const requestAccountEmailCode = (newEmail)   => client.post("/account/email/request-code", { newEmail });
+export const verifyAccountEmailCode  = ({ newEmail, code }) => client.post("/account/email/verify", { newEmail, code });
 export const fetchSupportRequests    = ()            => client.get("/account/support-requests");
 export const submitSupportRequest    = (data)        => client.post("/account/support-requests", data);

@@ -32,7 +32,8 @@ export default function PrincipalLayout({ children, schoolYearLabel = "—" }) {
   const [sidebarOpen, setSidebarOpen] = useState(() => typeof window !== "undefined" && window.innerWidth >= 768); // open on desktop, hidden on mobile; toggled via header ☰
 
   // Derive display name and role from user object
-  const displayName = user?.fullName || user?.username || "Admin User";
+  const profileName = [user?.first_name, user?.last_name].filter(Boolean).join(" ").trim();
+  const displayName = profileName || user?.fullName || user?.username || "Admin User";
   const displayRole = user?.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : "Head Administrator";
   const avatarInitials = displayName.slice(0, 2).toUpperCase();
 

@@ -10,10 +10,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import PrincipalLayout from "../../components/PrincipalLayout.jsx";
+import EmailChangeModal from "../../components/EmailChangeModal.jsx";
 import { isPhMobile, PH_MOBILE_HINT } from "../../utils/phone.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
-import { fetchAccount, updateAccount, changeAccountPassword, fetchSupportRequests, submitSupportRequest } from "../../api/settings.js";
+import { fetchAccount, updateAccount, changeAccountPassword, requestAccountEmailCode, verifyAccountEmailCode, fetchSupportRequests, submitSupportRequest } from "../../api/settings.js";
 import { loadSettings, saveSettings, applySettings, DEFAULT_SETTINGS } from "../../utils/accessibility.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
@@ -78,7 +79,7 @@ function PasswordField({ label, value, onChange }) {
 }
 
 export default function Settings() {
-  const { logout } = useAuth();
+  const { logout, updateUser } = useAuth();
   const navigate         = useNavigate();
   const schoolYearLabel  = useSchoolYear();
 
@@ -92,6 +93,7 @@ export default function Settings() {
   const [okMsg,   setOkMsg]   = useState("");           // success message
   const [support, setSupport] = useState([]);           // this user's past support requests
   const [supportLoading, setSupportLoading] = useState(true);
+  const [showEmailModal, setShowEmailModal] = useState(false);
 
   // (re)load the user's support-request history
   const loadSupport = () => {
@@ -164,11 +166,18 @@ export default function Settings() {
       await updateAccount({
         first_name:     form.first_name.trim(),
         last_name:      form.last_name.trim(),
-        email:          form.email.trim(),
         contact_number: form.contact_number.trim(),
       });
       const res = await fetchAccount();
       applyAccount(res.data);
+      const firstName = res.data.first_name ?? "";
+      const lastName = res.data.last_name ?? "";
+      updateUser({
+        first_name: firstName,
+        last_name: lastName,
+        fullName: `${firstName} ${lastName}`.trim(),
+        email: res.data.email,
+      });
       setPwd({ current: "", new: "", confirm: "" });
       setOkMsg("Your changes have been saved.");
     } catch (err) {
@@ -247,8 +256,35 @@ export default function Settings() {
                       </div>
                       <div>
                         <label className={labelClass}>Email Address</label>
-                        <input className={inputClass} required value={form.email} onChange={(e) => set("email", e.target.value)} />
+                        <div className="flex items-center gap-2">
+                          <input className={`${inputClass} cursor-not-allowed bg-surface-container-low text-on-surface-variant`} required value={form.email} disabled />
+                          <button
+                            type="button"
+                            onClick={() => setShowEmailModal(true)}
+                            className="shrink-0 whitespace-nowrap rounded-lg border border-outline-variant/40 px-4 py-2.5 text-sm font-bold text-primary transition-colors hover:bg-surface-container-low"
+                          >
+                            Change
+                          </button>
+                        </div>
+                        <p className="mt-1 text-xs text-on-surface-variant">Changing your email sends a verification code to the new address.</p>
                       </div>
+                      {showEmailModal && (
+                        <EmailChangeModal
+                          currentEmail={form.email}
+                          requestCode={(newEmail) => requestAccountEmailCode(newEmail)}
+                          verifyCode={async (code, newEmail) => {
+                            const res = await verifyAccountEmailCode({ newEmail, code });
+                            return res?.data?.email;
+                          }}
+                          onChanged={(newEmail) => {
+                            setForm((current) => ({ ...current, email: newEmail }));
+                            setSaved((current) => ({ ...current, email: newEmail }));
+                            updateUser({ email: newEmail });
+                            setOkMsg("Your email address has been verified and updated.");
+                          }}
+                          onClose={() => setShowEmailModal(false)}
+                        />
+                      )}
                       <div>
                         <label className={labelClass}>Contact Number</label>
                         <input className={inputClass} value={form.contact_number} onChange={(e) => set("contact_number", e.target.value)} />

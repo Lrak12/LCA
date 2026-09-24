@@ -20,7 +20,7 @@ export default function AnnouncementFeedCard({ announcement, announcementId, sel
   return (
     <article
       id={`announcement-${announcementId}`}
-      className={`rounded-xl border bg-white p-7 shadow-sm transition-shadow hover:shadow-md ${category.border} ${selected ? "ring-2 ring-primary/20" : ""}`}
+      className={`rounded-xl border p-7 shadow-sm transition-shadow hover:shadow-md ${category.border} ${announcement.is_read ? "bg-white" : "bg-slate-50"} ${selected ? "ring-2 ring-primary/20" : ""}`}
     >
       <div className="flex items-start gap-4">
         <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${category.bg} ${category.text}`}>
@@ -30,9 +30,15 @@ export default function AnnouncementFeedCard({ announcement, announcementId, sel
         </div>
 
         <div className="min-w-0 flex-1">
-          <p className={`text-[10px] font-extrabold uppercase tracking-widest ${category.text}`}>
-            {eyebrow}
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className={`text-[10px] font-extrabold uppercase tracking-widest ${category.text}`}>
+              {eyebrow}
+            </p>
+            <span className={`inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-widest ${announcement.is_read ? "text-on-surface-variant" : "text-primary"}`}>
+              <span className={`h-2 w-2 rounded-full ${announcement.is_read ? "bg-outline-variant" : "bg-primary"}`} />
+              {announcement.is_read ? "Read" : "Unread"}
+            </span>
+          </div>
           <p className="mt-3 text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant">
             Subject
           </p>
