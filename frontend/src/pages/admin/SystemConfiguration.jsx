@@ -730,8 +730,11 @@ function UserAccessTab({ setBanner, schoolYearLabel }) {
               type="button"
               onClick={() => { setSearchInput(""); setSearch(""); setPage(1); }}
               aria-label="Clear search"
-              className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1 text-base text-outline hover:text-on-surface cursor-pointer leading-none"
-            >close</button>
+              title="Clear search"
+              className="absolute right-2.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface"
+            >
+              <span className="material-symbols-outlined text-base leading-none">close</span>
+            </button>
           )}
         </div>
         <select value={role} onChange={(e) => { setRole(e.target.value); setPage(1); }} className={`${inputCls} w-auto cursor-pointer`}>
