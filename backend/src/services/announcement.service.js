@@ -40,6 +40,15 @@ const normalizeAnnouncement = (announcement) => {
 };
 const storedContent = (content, isPriority) =>
   `${isPriority ? PRIORITY_MARKER : ""}${String(content ?? "").replace(PRIORITY_MARKER, "")}`;
+const normalizePostedDate = (value) => {
+  const postedAt = value ? new Date(value) : new Date();
+  if (Number.isNaN(postedAt.getTime())) {
+    const error = new Error("A valid announcement publication date and time is required.");
+    error.statusCode = 400;
+    throw error;
+  }
+  return postedAt.toISOString();
+};
 const isExpired = (announcement, now = Date.now()) => {
   if (!announcement?.posted_date) return false;
   const postedAt = new Date(announcement.posted_date).getTime();
@@ -114,6 +123,7 @@ export const createAnnouncement = async (payload, requestingUser) => {
   const createPayload = {
     ...payload,
     content: storedContent(payload.content, payload.is_priority),
+    posted_date: normalizePostedDate(payload.posted_date),
     principal_id,
   };
   delete createPayload.is_priority;
@@ -140,7 +150,7 @@ export const updateAnnouncement = async (ann_id, payload, requestingUser) => {
   if (payload.title !== undefined) editable.title = String(payload.title).trim();
   if (payload.content !== undefined) editable.content = storedContent(String(payload.content).trim(), payload.is_priority);
   if (payload.audience_role !== undefined) editable.audience_role = payload.audience_role;
-  if (payload.posted_date !== undefined) editable.posted_date = payload.posted_date;
+  if (payload.posted_date !== undefined) editable.posted_date = normalizePostedDate(payload.posted_date);
   if (payload.is_active !== undefined) editable.is_active = Boolean(payload.is_active);
   if (editable.title === "") throw new Error("Announcement title is required.");
   if (editable.content === "") throw new Error("Announcement message is required.");

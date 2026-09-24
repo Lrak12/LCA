@@ -49,8 +49,17 @@ export default function Announcements() {
       }
     };
     load();
-    return () => { cancelled = true; };
-  }, []);
+    // Keep the feed in step with the notification bell. Changing the selected
+    // announcement ID (for example, by clicking a bell notification) also
+    // triggers an immediate fetch so the modal never waits for the next poll.
+    const refreshTimer = window.setInterval(load, 15000);
+    window.addEventListener("focus", load);
+    return () => {
+      cancelled = true;
+      window.clearInterval(refreshTimer);
+      window.removeEventListener("focus", load);
+    };
+  }, [selectedAnnouncementId]);
 
   const sorted = useMemo(() => [...items].sort(compareAnnouncements), [items]);
   const filtered = useMemo(
