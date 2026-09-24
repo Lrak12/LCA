@@ -933,7 +933,7 @@ export const getAllSubmissionStatuses = async (sy_id = null) => {
 
 // ── Assign PACE (teacher) ─────────────────────────────────────────────────────
 // Takes a teacher_id, student_id and subject→startPace map.
-// Generates 4 quarterly rows in pace_quarterly_projection (6 PACEs/quarter default).
+// Generates 4 quarterly rows in pace_quarterly_projection (3 PACEs/quarter default).
 // generatePaceProjection - upserts a student's projected PACE plan into
 //   pace_quarterly_projection. Accepts either the old flat { subject: startPace }
 //   or the full { subject: { "1": {start,count}, ... } } grid. SHARED save target

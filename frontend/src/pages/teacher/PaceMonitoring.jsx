@@ -74,7 +74,7 @@ const SUBJECT_LABELS = [
 
 const QUARTER_KEYS   = ["Q1", "Q2", "Q3", "Q4"];
 const QUARTER_LABELS = { Q1: "1st Quarter", Q2: "2nd Quarter", Q3: "3rd Quarter", Q4: "4th Quarter" };
-const DEFAULT_COUNT  = 6;
+const DEFAULT_COUNT  = 3;
 
 // Badge colours for the "Ready for Next PACE" footer (labels come from the API).
 const READINESS_STYLES = {
