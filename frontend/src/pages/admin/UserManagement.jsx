@@ -497,6 +497,15 @@ export default function UserManagement() {
   const total = data?.total ?? 0;
   const rangeStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1; // "Showing X to Y" numbers
   const rangeEnd   = Math.min(page * PAGE_SIZE, total);
+  const hasActiveFilters = Boolean(searchInput || search || role !== "all" || status !== "all");
+
+  const clearFilters = () => {
+    setSearchInput("");
+    setSearch("");
+    setRole("all");
+    setStatus("all");
+    setPage(1);
+  };
 
   // flip one user's active flag, show a toast, then reload
   const toggleActive = async (u) => {
@@ -613,6 +622,15 @@ export default function UserManagement() {
             </select>
             <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1 pointer-events-none text-lg leading-none text-on-surface-variant">expand_more</span>
           </div>
+          <button
+            type="button"
+            onClick={clearFilters}
+            disabled={!hasActiveFilters}
+            className="flex items-center justify-center gap-1.5 rounded-lg border border-outline-variant/40 px-4 py-2.5 text-sm font-bold text-on-surface-variant transition-colors hover:bg-surface-container-low disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <span className="material-symbols-outlined text-base">filter_alt_off</span>
+            Clear Filters
+          </button>
         </div>
 
         {/* Table */}
