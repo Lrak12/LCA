@@ -271,6 +271,7 @@ export default function StudentSummaryModal({ studentId, onClose, onUpdated }) {
           Projected PACE Plan tab). Saving persists the projection, then refetches this summary. */}
       {showFullPlan && s && planProjection && (
         <ProjectedPacePlanModal
+          key={s.student_id}
           student={{
             student_id: s.student_id,
             grade_level: s.grade_level,   // string label; modal falls back to it for display

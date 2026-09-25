@@ -137,7 +137,7 @@ export function ClassAcademicRecordContent({ teacher, quarter, schoolYearId }) {
                     <tr key={i} className="hover:bg-slate-50/60 transition-colors">
                       <TD className="text-left px-3 font-bold text-on-surface">{s.name}</TD>
                       <TD className="font-bold text-on-surface">{s.paces}</TD>
-                      <TD className="text-on-surface">{s.cum}</TD>
+                      <TD className="text-on-surface">{Math.round(Number(s.cum) || 0)}</TD>
                       <TD className="font-extrabold text-green-600">{s.h100}</TD>
                       <TD className="text-on-surface">{s.cum100}</TD>
                       <TD className="font-bold text-on-surface">{s.ave > 0 ? `${s.ave}%` : "—"}</TD>

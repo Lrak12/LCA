@@ -16,8 +16,8 @@ const toDateInput = (iso) => {
   return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
 };
 
-// `student` = the summary modal's `s` (has first_name, last_name, gender, date_of_birth,
-// address, contact_number). onSaved = () => reload the summary + list.
+// `student` = the summary modal's `s`. Parent/guardian editing is intentionally
+// hidden for now; onSaved reloads the summary and student list.
 export default function EditStudentModal({ student, onClose, onSaved }) {
   const [form, setForm] = useState({
     first_name:     student.first_name ?? "",
@@ -61,7 +61,7 @@ export default function EditStudentModal({ student, onClose, onSaved }) {
       });
       onSaved?.();
     } catch (err) {
-      setError(err.message ?? "Failed to update student.");
+      setError(err.response?.data?.message ?? err.message ?? "Failed to update student.");
     } finally {
       setSaving(false);
     }
@@ -120,6 +120,8 @@ export default function EditStudentModal({ student, onClose, onSaved }) {
               <label className={labelClass}>Contact Number</label>
               <input value={form.contact_number} onChange={set("contact_number")} placeholder="e.g., 09171234567" className={inputClass} />
             </div>
+            {/* Parent/guardian editing is temporarily hidden. Backend update support
+                remains available so these fields can be restored later. */}
           </div>
         </div>
 

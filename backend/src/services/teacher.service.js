@@ -7,6 +7,7 @@ import { supabaseAdmin } from "../config/supabase.js";
 import { describeAuthCreateError } from "../helpers/authErrors.js";
 import { addAttendanceCredits } from "../helpers/attendanceCredits.js";
 import { getTeacherScopeById, teacherOwnsStudent } from "./teacherScope.service.js";
+import { boundedPaceCount, requirePaceInRange } from "../helpers/paceRange.js";
 
 // Grade-level assignments are school-year records. Always resolve them against
 // the requested year (or the active year) so a newly activated year cannot
@@ -2034,8 +2035,8 @@ export const updatePaceProjectionCell = async (user_id, { student_id, subject, q
   if (!sy) throw new Error("No active school year");
   const activeModuleIds = await findPaceModuleIdsForGradeLevels([studentRow.gl_id]);
 
-  const start  = Number(pace_start);
-  const count  = Number(pace_count) || 3;
+  const start = requirePaceInRange(pace_start);
+  const count = boundedPaceCount(start, pace_count || 3);
 
   const { data: currentProjection } = await supabaseAdmin
     .from("pace_quarterly_projection")
@@ -3205,7 +3206,7 @@ export const saveStudentPace = async (user_id, payload) => {
   const { teacher, student } = await _ownedStudent(user_id, student_id);
 
   if (!subject || !pace_number) throw new Error("Subject and PACE number are required");
-  const paceNum = Number(pace_number);
+  const paceNum = requirePaceInRange(pace_number);
   const newStatus = status || "Assigned";
 
   // A terminal failure stops progression in this subject for the rest of the

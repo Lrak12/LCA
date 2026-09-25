@@ -5,6 +5,7 @@ import { supabaseAdmin } from "../config/supabase.js";
 import { getTeacherScopeById, teacherOwnsStudent } from "./teacherScope.service.js";
 import { getEligibleUserIds, getSchoolYear } from "./schoolYearStatus.service.js";
 import { addAttendanceCredits, attendanceCredits } from "../helpers/attendanceCredits.js";
+import { PACE_MAX, boundedPaceCount, requirePaceInRange } from "../helpers/paceRange.js";
 
 const QUARTER_LABELS = ["1st Quarter", "2nd Quarter", "3rd Quarter", "4th Quarter"];
 
@@ -397,7 +398,7 @@ export const getTeacherAcademicReport = async (teacher_id, quarter = 1, sy_id = 
     const students = (savedRows ?? []).map((row) => ({
       name: row.student ? `${row.student.last_name}, ${row.student.first_name}` : `Student ${row.student_id}`,
       paces: row.total_paces ?? 0,
-      cum: row.cumulative_score ?? 0,
+      cum: Math.round(Number(row.cumulative_score) || 0),
       h100: row.count_perfect_100s ?? 0,
       cum100: row.cumulative_100s ?? 0,
       ave: row.average_score ?? 0,
@@ -426,7 +427,7 @@ export const getTeacherAcademicReport = async (teacher_id, quarter = 1, sy_id = 
     return {
       name:   formatName(student),
       paces:  m.paces,
-      cum:    m.avgScore,
+      cum:    Math.round(Number(m.avgScore) || 0),
       h100:   m.h100,
       cum100: m.cum100,
       ave:    m.avgScore,
@@ -637,7 +638,7 @@ async function saveAcademicReport(teacher_id, quarter, sy) {
       recorded_by:           teacher_id,
       quarter,
       total_paces:           m.paces,
-      cumulative_score:      m.avgScore,
+      cumulative_score:      Math.round(Number(m.avgScore) || 0),
       count_perfect_100s:    m.h100,
       cumulative_100s:       m.cum100,
       average_score:         m.avgScore,
@@ -971,20 +972,23 @@ export const generatePaceProjection = async (teacher_id, student_id, paces) => {
     if (typeof quarterData === "number" || typeof quarterData === "string") {
       // ── Old format: { subject: lastCompletedPace } ──────────────────
       // Auto-generate 4 equal quarters of DEFAULT_PER_QUARTER each.
-      const start = Number(quarterData);
-      if (!start || isNaN(start) || start <= 0) continue;
+      const start = requirePaceInRange(quarterData);
+      let cursor = start;
       for (let q = 1; q <= 4; q++) {
-        const paceStart = start + (q - 1) * DEFAULT_PER_QUARTER;
+        if (cursor > PACE_MAX) break;
+        const paceStart = cursor;
+        const paceCount = boundedPaceCount(paceStart, DEFAULT_PER_QUARTER);
         rows.push({
           student_id: Number(student_id),
           sy_id:      sy.sy_id,
           quarter:    q,
           subject,
           pace_start: paceStart,
-          pace_end:   paceStart + DEFAULT_PER_QUARTER - 1,
-          pace_count: DEFAULT_PER_QUARTER,
+          pace_end:   paceStart + paceCount - 1,
+          pace_count: paceCount,
           status:     "not-started",
         });
+        cursor += paceCount;
       }
     } else if (typeof quarterData === "object" && quarterData !== null) {
       // ── New format: { subject: { "1": { start, count }, "2": {...}, ... } }
@@ -992,9 +996,8 @@ export const generatePaceProjection = async (teacher_id, student_id, paces) => {
       for (let q = 1; q <= 4; q++) {
         const qData = quarterData[String(q)];
         if (!qData) continue;
-        const paceStart = Number(qData.start);
-        const paceCount = Number(qData.count) || DEFAULT_PER_QUARTER;
-        if (!paceStart || isNaN(paceStart) || paceStart <= 0) continue;
+        const paceStart = requirePaceInRange(qData.start);
+        const paceCount = boundedPaceCount(paceStart, qData.count || DEFAULT_PER_QUARTER);
         rows.push({
           student_id: Number(student_id),
           sy_id:      sy.sy_id,
@@ -1129,16 +1132,19 @@ export const generateDiagnosticProjection = async (student_id, paces = {}) => {
   for (const [subject, val] of Object.entries(paces)) {
     if (!subject.trim()) continue;
     if (typeof val === "number" || typeof val === "string") {
-      const start = Number(val);
-      if (!start || isNaN(start) || start <= 0) continue;
-      for (let q = 1; q <= 4; q++) rows.push(makeRow(q, subject, start + (q - 1) * PER_QUARTER, PER_QUARTER));
+      const start = requirePaceInRange(val);
+      let cursor = start;
+      for (let q = 1; q <= 4 && cursor <= PACE_MAX; q++) {
+        const count = boundedPaceCount(cursor, PER_QUARTER);
+        rows.push(makeRow(q, subject, cursor, count));
+        cursor += count;
+      }
     } else if (val && typeof val === "object") {
       for (let q = 1; q <= 4; q++) {
         const qd = val[String(q)];
         if (!qd) continue;
-        const start = Number(qd.start);
-        const count = Number(qd.count) || PER_QUARTER;
-        if (!start || isNaN(start) || start <= 0) continue;
+        const start = requirePaceInRange(qd.start);
+        const count = boundedPaceCount(start, qd.count || PER_QUARTER);
         rows.push(makeRow(q, subject, start, count));
       }
     }

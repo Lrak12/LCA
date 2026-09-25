@@ -89,17 +89,18 @@ function GradeLevelCard({ level, onManageStudents, onAssignSupervisor, onManageS
           {sections.length ? `Sections & Supervisors (${sections.length})` : "Assigned Supervisor"}
         </p>
         {sections.length ? (
-          <div className="space-y-2">
+          <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
             {sections.map((section) => (
-              <div key={section.id} className="rounded-lg border border-outline-variant/20 px-3 py-2">
-                <div className="flex items-center justify-between gap-2 text-sm font-bold text-on-surface">
-                  <span>{section.name}</span>
-                  <span className="shrink-0 text-xs font-medium text-on-surface-variant">{section.students} student{section.students === 1 ? "" : "s"}</span>
+              <div key={section.id} className="flex items-center justify-between gap-3 rounded-lg border border-outline-variant/20 px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold text-on-surface" title={section.name}>{section.name}</p>
+                  <p className={`mt-0.5 truncate text-xs font-semibold ${section.teacher_name ? "text-on-surface" : "text-on-surface-variant"}`} title={section.teacher_name ?? "Not assigned"}>
+                    {section.teacher_name ?? "Not assigned"}
+                  </p>
                 </div>
-                <p className="mt-2 text-[11px] font-bold uppercase tracking-wide text-on-surface-variant">Supervisor</p>
-                <p className={`mt-0.5 break-words text-base font-extrabold leading-snug ${section.teacher_name ? "text-on-surface" : "text-on-surface-variant"}`}>
-                  {section.teacher_name ?? "Not assigned"}
-                </p>
+                <span className="shrink-0 rounded-full bg-surface-container-low px-2 py-1 text-[11px] font-bold text-on-surface-variant">
+                  {section.students} student{section.students === 1 ? "" : "s"}
+                </span>
               </div>
             ))}
           </div>

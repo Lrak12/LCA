@@ -7,6 +7,7 @@ import {
   assignStudentPace,
 } from "../../api/teacher.js";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
+import { isPaceInRange, paceOptionsWithLegacy } from "../../utils/paceRange.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
@@ -126,7 +127,7 @@ export default function ReturningStudentPlacement() {
     const paces = {};
     SUBJECT_LABELS.forEach((l) => {
       const n = Number(source[l]);
-      if (n > 0) paces[l] = n;   // backend auto-projects 4 quarters of 3 from this start
+      if (isPaceInRange(n)) paces[l] = n; // backend stops the projection at PACE 1144
     });
     if (!Object.keys(paces).length) {
       setGenError("No valid starting PACEs to generate. Enter a basis or recommendation first.");
@@ -311,10 +312,16 @@ export default function ReturningStudentPlacement() {
                     {SUBJECT_LABELS.map((label) => (
                       <div key={label}>
                         <label className="block text-[9px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-1 leading-tight">{SUBJECT_HEAD[label]}</label>
-                        <input type="number" min="1001" max="9999" value={overrides[label]}
+                        <select value={overrides[label]}
                           onChange={(e) => setOverrides((p) => ({ ...p, [label]: e.target.value }))}
-                          placeholder="—"
-                          className="w-full text-center border border-gray-200 rounded-lg px-2 py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                          className="w-full text-center border border-gray-200 rounded-lg px-2 py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20">
+                          <option value="">—</option>
+                          {paceOptionsWithLegacy(overrides[label]).map((n) => (
+                            <option key={n} value={n} disabled={!isPaceInRange(n)}>
+                              {n}{!isPaceInRange(n) ? " (existing)" : ""}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     ))}
                   </div>

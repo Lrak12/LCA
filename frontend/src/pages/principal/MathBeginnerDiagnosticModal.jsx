@@ -6,6 +6,7 @@
 //   update: PUT  /assessments/diagnostic/:id  -> controllers/assessment.controller.js > updateDiagnostic (~line 55) -> services/assessment.service.js > updateDiagnostic (~line 43)
 import { useState } from "react";
 import { createDiagnostic, updateDiagnostic } from "../../api/diagnosticAssessments.js";
+import { isPaceInRange, paceOptionsWithLegacy } from "../../utils/paceRange.js";
 
 // "1,5,9" (stored) -> Set of numbers for the clickable grid
 const parseGaps = (raw) =>
@@ -196,14 +197,16 @@ export default function MathBeginnerDiagnosticModal({ student, existing, onClose
                 </p>
                 <div className="flex items-center justify-end gap-2">
                   <span className="text-on-surface-variant font-bold text-xl">#</span>
-                  <input
-                    type="text"
+                  <select
                     value={startPace}
                     onChange={(e) => { setManual(true); setStartPace(e.target.value); }}
-                    placeholder="0000"
-                    maxLength={4}
                     className="w-full text-center text-4xl font-extrabold font-headline tracking-tight text-primary border-b-2 border-primary bg-transparent focus:outline-none placeholder:text-on-surface-variant/30"
-                  />
+                  >
+                    <option value="">—</option>
+                    {paceOptionsWithLegacy(startPace).map((n) => (
+                      <option key={n} value={n} disabled={!isPaceInRange(n)}>{n}{!isPaceInRange(n) ? " (existing)" : ""}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
             </div>

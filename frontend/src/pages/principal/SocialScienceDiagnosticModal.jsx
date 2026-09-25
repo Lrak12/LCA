@@ -7,6 +7,7 @@
 //   update: PUT  /assessments/diagnostic/:id  -> controllers/assessment.controller.js > updateDiagnostic (~line 55) -> services/assessment.service.js > updateDiagnostic (~line 43)
 import { useState, useEffect } from "react";
 import { createDiagnostic, updateDiagnostic } from "../../api/diagnosticAssessments.js";
+import { isPaceInRange, paceOptionsWithLegacy } from "../../utils/paceRange.js";
 
 // the score sheet rows: each PACE page-range and its minimum passing score
 const PACE_ROWS = [
@@ -221,14 +222,16 @@ export default function SocialScienceDiagnosticModal({ subject, student, existin
               </p>
               <div className="flex items-center gap-2">
                 <span className="text-on-surface-variant font-bold text-xl">#</span>
-                <input
-                  type="text"
+                <select
                   value={startPace}
                   onChange={(e) => { setManual(true); setStartPace(e.target.value); }}
-                  placeholder="0000"
-                  maxLength={4}
                   className="w-36 text-center text-4xl font-extrabold font-headline tracking-tight text-primary border-b-2 border-primary bg-transparent focus:outline-none placeholder:text-on-surface-variant/30"
-                />
+                >
+                  <option value="">—</option>
+                  {paceOptionsWithLegacy(startPace).map((n) => (
+                    <option key={n} value={n} disabled={!isPaceInRange(n)}>{n}{!isPaceInRange(n) ? " (existing)" : ""}</option>
+                  ))}
+                </select>
               </div>
             </div>
           </div>

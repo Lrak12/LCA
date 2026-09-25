@@ -37,6 +37,10 @@ import {
   saveStudentScriptures,
 } from "../../api/teacher.js";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
+import {
+  PACE_MAX, PACE_MIN, PACE_OPTIONS, boundedPaceCount,
+  isPaceInRange, paceOptionsWithLegacy,
+} from "../../utils/paceRange.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
@@ -90,11 +94,13 @@ function buildAutoProjectPaces(q1Data) {
   const paces = {};
   SUBJECT_LABELS.forEach((label) => {
     const start = Number(q1Data[label]?.start);
-    const count = Number(q1Data[label]?.count) || DEFAULT_COUNT;
-    if (!start || isNaN(start) || start <= 0) return;
+    const requestedCount = Number(q1Data[label]?.count) || DEFAULT_COUNT;
+    if (!isPaceInRange(start)) return;
     paces[label] = {};
     let cursor = start;
     for (let q = 1; q <= 4; q++) {
+      if (cursor > PACE_MAX) break;
+      const count = boundedPaceCount(cursor, requestedCount);
       paces[label][String(q)] = { start: cursor, count };
       cursor += count;
     }
@@ -163,10 +169,7 @@ const PaceLine = ({ pace, editable = false, disabled = false, onCommit, onStatus
   return (
     <div className={`flex items-center justify-center gap-0.5 flex-nowrap ${disabled ? "opacity-55" : ""}`}>
       {editing ? (
-        <input
-          type="number"
-          min="1001"
-          max="9999"
+        <select
           value={val}
           autoFocus
           onChange={(e) => setVal(e.target.value)}
@@ -176,7 +179,13 @@ const PaceLine = ({ pace, editable = false, disabled = false, onCommit, onStatus
             if (e.key === "Escape") setEditing(false);
           }}
           className="w-14 text-center text-[11px] font-bold border border-primary/50 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary/40"
-        />
+        >
+          {paceOptionsWithLegacy(val).map((n) => (
+            <option key={n} value={n} disabled={!isPaceInRange(n)}>
+              {n}{!isPaceInRange(n) ? " (existing)" : ""}
+            </option>
+          ))}
+        </select>
       ) : (
         <span
           className={`text-[11px] font-bold whitespace-nowrap ${pace.status === "failed" ? "text-red-700" : "text-slate-700"} ${editable && !locked ? "cursor-pointer hover:text-primary transition-colors" : locked ? "cursor-not-allowed" : ""}`}
@@ -376,20 +385,19 @@ function AssignInitialModal({ studentName, onSave, onClose, saving, error }) {
               {SUBJECT_LABELS.map((label) => {
                 const start = Number(q1Data[label].start);
                 const count = Number(q1Data[label].count) || DEFAULT_COUNT;
-                const q4End = start > 0 ? start + count * 4 - 1 : "—";
+                const q4End = isPaceInRange(start) ? Math.min(start + count * 4 - 1, PACE_MAX) : "—";
                 return (
                   <tr key={label} className="border-b border-gray-100 hover:bg-gray-50/50">
                     <td className="px-4 py-3 text-xs font-bold text-on-surface border border-gray-200 leading-snug">{label}</td>
                     <td className="px-3 py-2 text-center border border-gray-200">
-                      <input
-                        type="number"
-                        min="1001"
-                        max="9999"
+                      <select
                         value={q1Data[label].start}
                         onChange={(e) => setField(label, "start", e.target.value)}
-                        placeholder="—"
                         className="w-24 text-center border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20"
-                      />
+                      >
+                        <option value="">—</option>
+                        {PACE_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
+                      </select>
                     </td>
                     <td className="px-3 py-2 text-center border border-gray-200">
                       <input
@@ -917,8 +925,8 @@ export default function PaceMonitoring() {
   const handlePaceEdit = async (subjectLabel, quarterNum, rowIndex, newNum, count) => {
     if (!selectedStudentId) return;
     const newStart = newNum - rowIndex;                  // re-base: cell N in row i means the quarter starts at N-i
-    if (newStart <= 0) {                                 // typed number too low for this row
-      setError("That PACE number is too low for this row.");
+    if (newStart < PACE_MIN || newStart > PACE_MAX) {
+      setError(`The PACE block must start between ${PACE_MIN} and ${PACE_MAX}.`);
       return;
     }
     setError("");

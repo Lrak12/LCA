@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "../config/supabase.js";
 import { validateSchoolYear } from "../helpers/schoolYearValidation.js";
 import { isSectionSchemaUnavailable } from "../helpers/sectionSchema.js";
+import { PACE_MAX, boundedPaceCount, isPaceInRange } from "../helpers/paceRange.js";
 import { activateSchoolYear, createSchoolYear } from "./schoolYear.service.js";
 
 // One school year = 12 PACEs per subject (4 quarters × 3). A student has
@@ -182,21 +183,25 @@ export const commitRollover = async ({ year_label, start_date, end_date, student
     const basis = st.basis ?? {};
     Object.entries(basis).forEach(([subject, lastNum]) => {
       const start = Number(lastNum);
-      if (!start || isNaN(start) || start <= 0) return;
+      if (!isPaceInRange(start)) return;
+      let cursor = start + 1;
       for (let q = 1; q <= 4; q++) {
-        const paceStart = start + 1 + (q - 1) * PER_QUARTER;
+        if (cursor > PACE_MAX) break;
+        const paceStart = cursor;
+        const paceCount = boundedPaceCount(paceStart, PER_QUARTER);
         projectionRows.push({
           student_id: studentId,
           sy_id:      newSy.sy_id,
           quarter:    q,
           subject,
           pace_start: paceStart,
-          pace_end:   paceStart + PER_QUARTER - 1,
-          pace_count: PER_QUARTER,
+          pace_end:   paceStart + paceCount - 1,
+          pace_count: paceCount,
           status_r0:  "not-started",
           status_r1:  "not-started",
           status_r2:  "not-started",
         });
+        cursor += paceCount;
       }
     });
   }

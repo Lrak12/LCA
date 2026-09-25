@@ -328,10 +328,10 @@ export const assignStudentsToGradeSection = async (gl_id, section_id, student_id
   return { assigned: ids.length };
 };
 
-export const removeStudentFromGradeSection = async (gl_id, section_id, student_id, recorded_by = null) => {
+export const removeStudentFromGradeSection = async (gl_id, section_id, student_id) => {
   const { grade, section } = await getGradeSection(gl_id, section_id);
   const { data, error } = await supabaseAdmin.from("student")
-    .update({ section_id: null })
+    .update({ gl_id: null, section_id: null })
     .eq("student_id", Number(student_id)).eq("gl_id", grade.gl_id).eq("section_id", section.section_id)
     .select("student_id").maybeSingle();
   if (error) throw new Error(error.message);
@@ -339,7 +339,7 @@ export const removeStudentFromGradeSection = async (gl_id, section_id, student_i
   const { error: placementError } = await supabaseAdmin.from("student_section_assignment")
     .delete().eq("student_id", data.student_id).eq("gl_id", grade.gl_id);
   if (placementError) throw new Error(placementError.message);
-  await saveStudentAssignment(data.student_id, grade, recorded_by);
+  await closeStudentAssignment(data.student_id, grade.sy_id);
   return { removed: true };
 };
 

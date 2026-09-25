@@ -6,6 +6,7 @@ import * as SelfTestModel   from "../models/selfTestResult.model.js";
 import * as PaceTestModel   from "../models/paceTestResult.model.js";
 import * as StudentPaceModel from "../models/studentPace.model.js";
 import * as TeacherModel    from "../models/teacher.model.js";
+import { isPaceInRange, requirePaceInRange } from "../helpers/paceRange.js";
 
 const PASSING_SCORE = 80;
 const PACE_TEST_PASSING_SCORE = 90;
@@ -25,6 +26,9 @@ export const getDiagnosticsByStudent = async (student_id) => {
 };
 
 export const createDiagnostic = async (payload, user) => {
+  if (payload.start_pace != null && payload.start_pace !== "") {
+    requirePaceInRange(payload.start_pace);
+  }
   const { data: principal, error: principalErr } = await PrincipalModel.findByUserId(user.user_id);
   if (principalErr || !principal) throw new Error("Principal profile not found");
 
@@ -42,6 +46,12 @@ export const createDiagnostic = async (payload, user) => {
 };
 
 export const updateDiagnostic = async (diag_id, payload) => {
+  if (payload.start_pace != null && payload.start_pace !== "" && !isPaceInRange(payload.start_pace)) {
+    const { data: existing, error: existingError } = await DiagnosticModel.findById(diag_id);
+    if (existingError || Number(existing?.start_pace) !== Number(payload.start_pace)) {
+      requirePaceInRange(payload.start_pace);
+    }
+  }
   const { data, error } = await DiagnosticModel.update(diag_id, payload);
   if (error) throw new Error(error.message);
   return data;

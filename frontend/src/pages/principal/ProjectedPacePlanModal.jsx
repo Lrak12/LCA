@@ -10,6 +10,10 @@ import { useState } from "react";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { generateProjection } from "../../api/diagnosticAssessments.js";
+import {
+  PACE_MAX, PACE_MIN, PACE_OPTIONS, boundedPaceCount,
+  isPaceInRange, paceOptionsWithLegacy,
+} from "../../utils/paceRange.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
@@ -38,20 +42,12 @@ const matchStart = (subjectKey, recommended) => {
   return DEFAULT_START;                                // subjects with no diagnostic default to 1001
 };
 
-// dropdown options: a window around the current value (-3 to +15)
-const startOptions = (val) => {
-  const v = Number(val) || DEFAULT_START;
-  const opts = [];
-  for (let n = Math.max(1, v - 3); n <= v + 15; n++) opts.push(n);
-  return opts;
-};
-
 // seed the grid: each subject's 4 quarter-start PACEs, 3 apart (consecutive blocks)
 const buildInitial = (recommended) => {
   const g = {};
   PLAN_SUBJECTS.forEach(({ key }) => {
     const base = Number(matchStart(key, recommended)) || DEFAULT_START;
-    g[key] = [base, base + 3, base + 6, base + 9]; // per-quarter starts (consecutive blocks)
+    g[key] = [base, base + 3, base + 6, base + 9].map((pace) => pace <= PACE_MAX ? pace : null);
   });
   return g;
 };
@@ -66,21 +62,39 @@ const buildFromProjection = (subjectPaces) => {
     const quarters = subjectPaces?.[key]?.quarters ?? [];
     g[key] = [0, 1, 2, 3].map((qi) => {
       const start = Number(quarters[qi]?.paces?.[0]);
-      return Number.isFinite(start) && start > 0 ? start : DEFAULT_START + qi * 3;
+      return Number.isFinite(start) && start > 0 ? start : null;
     });
   });
   return g;
 };
 
+const cloneGrid = (grid) => Object.fromEntries(
+  Object.entries(grid).map(([subject, starts]) => [subject, [...starts]]),
+);
+
 // Rendered by <ProjectedPaceRecommendation> (planPaces). onBack = () => setPlanPaces(null)
 // (back to the recommendation); onCancel + onSaved both navigate("/admin/diagnostic").
 export default function ProjectedPacePlanModal({ student, studentId, recommended, initialProjection, hideBackToRecommendation = false, schoolYearLabel, onBack, onCancel, onSaved }) {
-  // Seed from an existing saved plan when editing (initialProjection), otherwise from the
-  // accepted diagnostic recommendation. Reset Plan reseeds from the same source.
-  const seed = () => (initialProjection ? buildFromProjection(initialProjection) : buildInitial(recommended));
-  const [grid,   setGrid]   = useState(seed); // subject -> [q1,q2,q3,q4] start PACEs
+  // Capture the opening state once. Reset restores this immutable snapshot, so it
+  // never invents values for unsaved quarters or mutates the persisted plan.
+  const [openingGrid] = useState(() => initialProjection
+    ? buildFromProjection(initialProjection)
+    : buildInitial(recommended));
+  const [grid,   setGrid]   = useState(() => cloneGrid(openingGrid)); // subject -> [q1,q2,q3,q4] start PACEs
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState("");
+
+  const handleReset = () => {
+    setGrid(cloneGrid(openingGrid));
+    setError("");
+  };
+
+  const unchangedLegacyQuarter = (key, qi) => {
+    const savedPaces = initialProjection?.[key]?.quarters?.[qi]?.paces ?? [];
+    const savedStart = Number(savedPaces[0]);
+    return savedPaces.some((pace) => !isPaceInRange(pace))
+      && Number(grid[key]?.[qi]) === savedStart;
+  };
 
   const fullName  = student ? `${student.first_name ?? ""} ${student.last_name ?? ""}`.trim() : "—";
   const generated = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
@@ -99,13 +113,18 @@ export default function ProjectedPacePlanModal({ student, studentId, recommended
       const paces = {};
       PLAN_SUBJECTS.forEach(({ key }) => {
         const starts = grid[key];
-        paces[key] = {
-          1: { start: starts[0], count: 3 },
-          2: { start: starts[1], count: 3 },
-          3: { start: starts[2], count: 3 },
-          4: { start: starts[3], count: 3 },
-        };
+        const quarters = {};
+        starts.forEach((start, index) => {
+          if (unchangedLegacyQuarter(key, index)) return;
+          if (!isPaceInRange(start)) return;
+          quarters[index + 1] = { start, count: boundedPaceCount(start, 3) };
+        });
+        if (Object.keys(quarters).length) paces[key] = quarters;
       });
+      if (!Object.keys(paces).length && initialProjection) {
+        onSaved();
+        return;
+      }
       await generateProjection(studentId, paces); // persist the student's PACE projection
       onSaved();
     } catch (err) {
@@ -116,7 +135,14 @@ export default function ProjectedPacePlanModal({ student, studentId, recommended
 
   // Print/Export both render the CURRENT grid (each quarter's 3 PACEs = its start + slot
   // offset), so the output always matches what's on screen after any edits.
-  const cellVal = (key, qi, slot) => (grid[key]?.[qi] ?? DEFAULT_START) + slot;
+  const cellVal = (key, qi, slot) => {
+    const rawStart = grid[key]?.[qi];
+    if (rawStart == null || rawStart === "") return null;
+    const start = Number(rawStart);
+    if (!Number.isInteger(start)) return null;
+    const pace = start + slot;
+    return !unchangedLegacyQuarter(key, qi) && isPaceInRange(start) && pace > PACE_MAX ? null : pace;
+  };
 
   // Print = open a clean, standalone window with just the plan and trigger the print
   // dialog. It only prints — Export (below) is the one that downloads a PDF.
@@ -197,7 +223,7 @@ export default function ProjectedPacePlanModal({ student, studentId, recommended
       [0, 1, 2].map((slot) => {
         const row = [];
         if (slot === 0) row.push({ content: ql, rowSpan: 3, styles: { fontStyle: "bold", valign: "middle", halign: "left" } });
-        PLAN_SUBJECTS.forEach((s) => row.push(String(cellVal(s.key, qi, slot))));
+        PLAN_SUBJECTS.forEach((s) => row.push(String(cellVal(s.key, qi, slot) ?? "—")));
         return row;
       }),
     );
@@ -236,8 +262,8 @@ export default function ProjectedPacePlanModal({ student, studentId, recommended
             <button onClick={handlePrint} className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-outline-variant/40 text-xs font-bold text-on-surface hover:bg-surface-container-low transition-colors">
               <span className="material-symbols-outlined text-sm">print</span> Print
             </button>
-            {/* Reset Plan -> reseeds the grid from its source (existing plan or recommendation) */}
-            <button onClick={() => setGrid(seed())} className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-outline-variant/40 text-xs font-bold text-on-surface hover:bg-surface-container-low transition-colors">
+            {/* Reset is local only; Save Projection is still required to persist changes. */}
+            <button type="button" onClick={handleReset} disabled={saving} title={initialProjection ? "Restore the saved plan" : "Restore the recommended plan"} className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-outline-variant/40 text-xs font-bold text-on-surface hover:bg-surface-container-low transition-colors disabled:opacity-60">
               <span className="material-symbols-outlined text-sm">restart_alt</span> Reset Plan
             </button>
             <button onClick={onBack} className="w-8 h-8 flex items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container-low transition-colors">
@@ -302,17 +328,26 @@ export default function ProjectedPacePlanModal({ student, studentId, recommended
                         <td rowSpan={3} className="px-3 py-2 font-bold text-on-surface align-top border-r border-outline-variant/10 whitespace-nowrap">{ql}</td>
                       )}
                       {PLAN_SUBJECTS.map((s) => {
-                        const start = grid[s.key][qi];
-                        const value = start + slot;
+                        const value = cellVal(s.key, qi, slot);
+                        const options = value == null ? PACE_OPTIONS : paceOptionsWithLegacy(value);
                         return (
                           <td key={s.key} className="px-2 py-1.5">
                             {/* each cell -> setQuarterStart(subject, quarter, value) edits the grid */}
                             <select
-                              value={value}
-                              onChange={(e) => setQuarterStart(s.key, qi, Math.max(1, Number(e.target.value) - slot))}
+                              value={value ?? ""}
+                              onChange={(e) => setQuarterStart(s.key, qi, Number(e.target.value) - slot)}
                               className="w-full px-2 py-1.5 rounded-lg border border-outline-variant/40 bg-white text-on-surface focus:outline-none focus:border-primary"
                             >
-                              {startOptions(value).map((n) => <option key={n} value={n}>{n}</option>)}
+                              {value == null && <option value="" disabled>—</option>}
+                              {options.map((n) => (
+                                <option
+                                  key={n}
+                                  value={n}
+                                  disabled={!isPaceInRange(n) || n - slot < PACE_MIN}
+                                >
+                                  {n}{!isPaceInRange(n) ? " (existing)" : ""}
+                                </option>
+                              ))}
                             </select>
                           </td>
                         );

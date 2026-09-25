@@ -1828,6 +1828,7 @@ export default function StudentMonitoring() {
           student's saved projection. Save persists via generateProjection, then reloads. */}
       {planStudent && !planLoading && planProjection && (
         <ProjectedPacePlanModal
+          key={planStudent.student_id}
           student={planStudent}
           studentId={planStudent.student_id}
           initialProjection={planProjection}

@@ -1,6 +1,6 @@
 // Student Diagnostic & PACE Details modal (principal). Opened from DiagnosticAssessments.jsx
-// "View Details" (setViewTarget). Read-only: diagnostic results + system-recommended starting
-// PACEs + the projected 4-quarter PACE plan.
+// "View Details" (setViewTarget): diagnostic results + system-recommended starting
+// PACEs + the projected 4-quarter PACE plan, with an action to edit the saved plan.
 // Backend chains (loads TWO endpoints in parallel):
 //   diagnostics: GET /assessments/diagnostic?student_id (api/diagnosticAssessments.js fetchDiagnostics)
 //        -> controllers/assessment.controller.js > getDiagnostics (~line 43) -> services/assessment.service.js > getDiagnosticsByStudent (~line 20)
@@ -12,6 +12,8 @@ import autoTable from "jspdf-autotable";
 import { fetchDiagnostics } from "../api/diagnosticAssessments.js";
 import { fetchStudentProfile } from "../api/studentMonitoring.js";
 import { useAuth } from "../context/AuthContext.jsx";
+import { useSchoolYear } from "../hooks/useSchoolYear.js";
+import ProjectedPacePlanModal from "../pages/principal/ProjectedPacePlanModal.jsx";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 const QUARTER_LABELS = ["1st Quarter", "2nd Quarter", "3rd Quarter", "4th Quarter"];
@@ -50,10 +52,12 @@ const InfoCard = ({ icon, iconColor, label, children }) => (
 // `student` is the row clicked in the Diagnostic Assessments table; onClose = () => setViewTarget(null).
 export default function StudentDiagnosticDetailModal({ student, onClose }) {
   const { user } = useAuth();
+  const schoolYearLabel = useSchoolYear();
   const [diag,    setDiag]    = useState([]);     // diagnostic result rows for this student
   const [profile, setProfile] = useState(null);   // the projected-plan payload (subjectPaces)
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState("");
+  const [editingPlan, setEditingPlan] = useState(false);
 
   const sid       = student.student_id;
   const fullName  = `${student.first_name ?? ""} ${student.last_name ?? ""}`.trim();
@@ -79,6 +83,17 @@ export default function StudentDiagnosticDetailModal({ student, onClose }) {
   const dateAssessed = diag.find((d) => d.test_date)?.test_date ?? student.enrollment_date ?? null;
   const subjectPaces = profile?.subjectPaces ?? {};                        // subject -> quarters -> paces (the projected plan)
   const planSubjects = Object.keys(subjectPaces);                          // plan table column headers
+
+  const handlePlanSaved = async () => {
+    setEditingPlan(false);
+    try {
+      const response = await fetchStudentProfile(sid);
+      setProfile(response.data ?? null);
+      setError("");
+    } catch (err) {
+      setError(err.response?.data?.message ?? err.message);
+    }
+  };
 
   // Print = open a clean, standalone window with just the Projected PACE Plan and
   // trigger the browser's print dialog. It only prints — it never downloads a file.
@@ -190,6 +205,7 @@ export default function StudentDiagnosticDetailModal({ student, onClose }) {
   };
 
   return (
+    <>
     <div
       className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto"
       onClick={(e) => e.target === e.currentTarget && onClose()}
@@ -340,8 +356,18 @@ export default function StudentDiagnosticDetailModal({ student, onClose }) {
                     </table>
                   </div>
                 )}
-                {/* Export -> downloads the Projected PACE Plan as a PDF (handleExport, jsPDF); Print -> opens print dialog only (handlePrint) */}
+                {/* Edit opens the shared projected-plan editor; Export downloads a PDF; Print opens the print dialog. */}
                 <div className="flex justify-end gap-3 mt-4">
+                  {/* Temporarily hidden until projected-plan editing is enabled here again.
+                  <button
+                    type="button"
+                    onClick={() => setEditingPlan(true)}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-sm font-bold text-white shadow-sm hover:bg-primary/90 transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-base">edit</span>
+                    Edit Plan
+                  </button>
+                  */}
                   <button
                     onClick={handleExport}
                     className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-outline-variant/40 text-sm font-bold text-primary hover:bg-surface-container-low transition-colors"
@@ -373,5 +399,20 @@ export default function StudentDiagnosticDetailModal({ student, onClose }) {
         </div>
       </div>
     </div>
+
+    {editingPlan && profile && (
+      <ProjectedPacePlanModal
+        key={`${sid}-edit-plan`}
+        student={student}
+        studentId={sid}
+        initialProjection={subjectPaces}
+        hideBackToRecommendation
+        schoolYearLabel={schoolYearLabel}
+        onBack={() => setEditingPlan(false)}
+        onCancel={() => setEditingPlan(false)}
+        onSaved={handlePlanSaved}
+      />
+    )}
+    </>
   );
 }

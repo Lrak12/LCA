@@ -111,6 +111,7 @@ export default function ManageGradeSectionsModal({ level, onClose, onChanged }) 
                 </div>
                 <div className="rounded-xl border border-outline-variant/20 p-4">
                   <h3 className="font-bold text-on-surface">Students in {section.name} ({roster.length})</h3>
+                  <p className="mt-1 text-xs text-on-surface-variant">Removing a student also removes their {level.name} enrollment.</p>
                   <div className="mt-3 max-h-56 space-y-2 overflow-y-auto">
                     {roster.map((student) => <div key={student.student_id} className="flex items-center justify-between gap-2 rounded-lg bg-surface-container-lowest px-3 py-2 text-sm">
                       <span>{student.first_name} {student.last_name} · {student.student_id}</span>

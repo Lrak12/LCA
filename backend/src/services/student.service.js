@@ -348,7 +348,7 @@ export const createStudent = async (authPayload, profilePayload, extras = {}, ch
 };
 
 export const updateStudent = async (student_id, payload, changed_by = null) => {
-  const { is_active, ...studentFields } = payload;
+  const { is_active, parent, ...studentFields } = payload;
   const { data: previous } = studentFields.gl_id !== undefined
     ? await supabaseAdmin.from("student").select("gl_id").eq("student_id", student_id).maybeSingle()
     : { data: null };
@@ -380,6 +380,26 @@ export const updateStudent = async (student_id, payload, changed_by = null) => {
       .single();
     if (findErr || !student) throw new Error("Student account not found.");
     await setAccountActive(student.user_id, is_active, changed_by, "Status changed from student profile");
+  }
+
+  if (parent !== undefined) {
+    const parentName = String(parent?.parent_name ?? "").trim();
+    const relationship = String(parent?.relationship_to_student ?? "").trim();
+    if (!parentName || !relationship) {
+      throw new Error("Parent/guardian name and relationship are required.");
+    }
+
+    const { data: contacts, error: contactsError } = await StudentParentContactModel.findByStudentId(student_id);
+    if (contactsError) throw new Error(contactsError.message);
+    const primaryContact = (contacts ?? [])[0];
+    const parentFields = {
+      parent_name: parentName,
+      relationship_to_student: relationship,
+    };
+    const parentResult = primaryContact
+      ? await StudentParentContactModel.update(primaryContact.contact_id, student_id, parentFields)
+      : await StudentParentContactModel.create({ student_id: Number(student_id), ...parentFields });
+    if (parentResult.error) throw new Error(parentResult.error.message);
   }
   return data;
 };

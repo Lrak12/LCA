@@ -21,6 +21,10 @@ import TeacherLayout from "../../components/TeacherLayout.jsx";
 import { fetchTeacherStudents, fetchStudentPaceProjection, fetchLastCompletedPaces } from "../../api/teacher.js";
 import { useSchoolYear } from "../../hooks/useSchoolYear.js";
 import client from "../../api/client.js";
+import {
+  PACE_MAX, PACE_MIN, PACE_OPTIONS, boundedPaceCount,
+  isPaceInRange, paceOptionsWithLegacy,
+} from "../../utils/paceRange.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
 
@@ -68,11 +72,14 @@ function autoProject(basis) {
   SUBJECTS.forEach(({ label }) => {
     const last = Number(basis[label]);
     if (!last || isNaN(last) || last <= 0) return;
-    proj[label] = {};
     let cursor = last + 1;
+    if (cursor > PACE_MAX) return;
+    proj[label] = {};
     QUARTERS.forEach((q) => {
-      proj[label][q] = { start: String(cursor), count: String(DEFAULT_PPQ) };
-      cursor += DEFAULT_PPQ;
+      if (cursor > PACE_MAX) return;
+      const count = boundedPaceCount(cursor, DEFAULT_PPQ);
+      proj[label][q] = { start: String(cursor), count: String(count) };
+      cursor += count;
     });
   });
   return proj;
@@ -83,7 +90,13 @@ function rowsToProjection(rows) {
   const proj = {};
   rows.forEach((r) => {
     if (!proj[r.subject]) proj[r.subject] = {};
-    proj[r.subject][r.quarter] = { start: String(r.pace_start), count: String(r.pace_count) };
+    const start = Number(r.pace_start);
+    const count = Number(r.pace_count) || DEFAULT_PPQ;
+    proj[r.subject][r.quarter] = {
+      start: String(r.pace_start),
+      count: String(r.pace_count),
+      legacy: !isPaceInRange(start) || start + count - 1 > PACE_MAX,
+    };
   });
   return proj;
 }
@@ -93,7 +106,7 @@ function endPace(start, count) {
   const s = Number(start);
   const c = Number(count);
   if (!s || !c || isNaN(s) || isNaN(c)) return "—";
-  return s + c - 1;
+  return Math.min(s + c - 1, PACE_MAX);
 }
 
 const deepCopy = (o) => (o ? JSON.parse(JSON.stringify(o)) : o);
@@ -275,6 +288,7 @@ export default function AssignPace() {
         [quarter]: {
           ...((prev[subject] ?? {})[quarter] ?? { start: "", count: String(DEFAULT_PPQ) }),
           [field]: value,
+          ...(field === "start" ? { legacy: false } : {}),
         },
       },
     }));
@@ -314,8 +328,12 @@ export default function AssignPace() {
         QUARTERS.forEach((q) => {
           if (lockedQuarters.includes(q)) return; // locked quarters are never re-sent
           const cell = subProj[q];
-          if (cell && cell.start && Number(cell.start) > 0) {
-            qMap[String(q)] = { start: Number(cell.start), count: Number(cell.count) || DEFAULT_PPQ };
+          if (cell?.legacy) return;
+          if (cell && isPaceInRange(cell.start)) {
+            qMap[String(q)] = {
+              start: Number(cell.start),
+              count: boundedPaceCount(cell.start, cell.count || DEFAULT_PPQ),
+            };
           }
         });
         if (Object.keys(qMap).length) pacesPayload[label] = qMap;
@@ -606,15 +624,18 @@ export default function AssignPace() {
                         </td>
                         {SUBJECTS.map((s) => (
                           <td key={s.label} className="px-3 py-3 text-center border border-gray-200">
-                            <input
-                              type="number"
-                              min="1001"
-                              max="9999"
+                            <select
                               value={basis[s.label]}
                               onChange={(e) => setBasisFn(s.label, e.target.value)}
-                              placeholder="—"
                               className="w-20 text-center border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20"
-                            />
+                            >
+                              <option value="">—</option>
+                              {paceOptionsWithLegacy(basis[s.label]).map((n) => (
+                                <option key={n} value={n} disabled={!isPaceInRange(n)}>
+                                  {n}{!isPaceInRange(n) ? " (existing)" : ""}
+                                </option>
+                              ))}
+                            </select>
                           </td>
                         ))}
                       </tr>
@@ -736,19 +757,24 @@ export default function AssignPace() {
                                 <td key={label} className="px-3 py-3 border-r border-gray-200 last:border-r-0 align-top">
                                   <div className="flex flex-col gap-1.5">
                                     {Array.from({ length: n }, (_, i) => {
-                                      const val = cell.start && !isNaN(start) ? start + i : "";
+                                      const rawValue = cell.start && !isNaN(start) ? start + i : null;
+                                      const val = !cell.legacy && isPaceInRange(start) && rawValue > PACE_MAX ? "" : (rawValue ?? "");
+                                      const options = val === "" ? PACE_OPTIONS : paceOptionsWithLegacy(val);
                                       return (
-                                        <input
+                                        <select
                                           key={i}
-                                          type="number"
-                                          min="1001"
-                                          max="9999"
                                           value={val}
                                           onChange={(e) => updatePaceSlot(label, q, i, e.target.value)}
-                                          placeholder="—"
                                           disabled={isLocked}
                                           className="w-full text-center border border-gray-200 rounded-lg px-2 py-1.5 text-xs font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-gray-50"
-                                        />
+                                        >
+                                          {val === "" && <option value="" disabled>—</option>}
+                                          {options.map((n) => (
+                                            <option key={n} value={n} disabled={!isPaceInRange(n) || n - i < PACE_MIN}>
+                                              {n}{!isPaceInRange(n) ? " (existing)" : ""}
+                                            </option>
+                                          ))}
+                                        </select>
                                       );
                                     })}
                                   </div>

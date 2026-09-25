@@ -40,8 +40,8 @@ export const assignSectionStudents = asyncHandler(async (req, res) => {
 });
 
 export const removeSectionStudent = asyncHandler(async (req, res) => {
-  const data = await SectionService.removeStudentFromGradeSection(req.params.id, req.params.sectionId, req.params.studentId, req.user?.user_id);
-  sendSuccess(res, data, "Student removed from section");
+  const data = await SectionService.removeStudentFromGradeSection(req.params.id, req.params.sectionId, req.params.studentId);
+  sendSuccess(res, data, "Student removed from section and grade level");
 });
 
 export const assignSectionTeacher = asyncHandler(async (req, res) => {

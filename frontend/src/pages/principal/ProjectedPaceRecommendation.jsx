@@ -12,18 +12,9 @@ import { useSchoolYear } from "../../hooks/useSchoolYear.js";
 import { fetchDiagnostics } from "../../api/diagnosticAssessments.js";
 import client from "../../api/client.js";
 import ProjectedPacePlanModal from "./ProjectedPacePlanModal.jsx";
+import { isPaceInRange, paceOptionsWithLegacy } from "../../utils/paceRange.js";
 
 const fillStyle = { fontVariationSettings: '"FILL" 1' };
-
-// Modify dropdown: a window around the recommended starting PACE (-2 to +12).
-const paceOptions = (start) => {
-  const s = Number(start);
-  if (!s || isNaN(s)) return [];
-  const lo = Math.max(1, s - 2);
-  const opts = [];
-  for (let n = lo; n <= s + 12; n++) opts.push(n);
-  return opts;
-};
 
 export default function ProjectedPaceRecommendation() {
   const { studentId } = useParams();
@@ -239,7 +230,11 @@ export default function ProjectedPaceRecommendation() {
                         onChange={(e) => setOverride(d.subject, e.target.value)}
                         className="w-full px-3.5 py-2.5 rounded-xl border-2 border-outline-variant/30 text-sm focus:outline-none focus:border-primary bg-white"
                       >
-                        {paceOptions(d.start_pace).map((n) => <option key={n} value={n}>{n}</option>)}
+                        {paceOptionsWithLegacy(overrides[d.subject] ?? d.start_pace).map((n) => (
+                          <option key={n} value={n} disabled={!isPaceInRange(n)}>
+                            {n}{!isPaceInRange(n) ? " (existing)" : ""}
+                          </option>
+                        ))}
                       </select>
                     </div>
                   ))}
